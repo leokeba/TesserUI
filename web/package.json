@@ -1,0 +1,41 @@
+{
+  "name": "tesserui",
+  "version": "0.1.0",
+  "description": "User interfaces for TesserAPI nodes, rendered from their schema",
+  "license": "MIT",
+  "author": "Leo Baque",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/leokeba/TesserUI.git",
+    "directory": "web"
+  },
+  "type": "module",
+  "packageManager": "pnpm@11.7.0",
+  "files": [
+    "dist/ui.js",
+    "dist/index.html"
+  ],
+  "scripts": {
+    "dev": "vite --host",
+    "build": "vite build && node scripts/bundle.mjs",
+    "test": "vitest run",
+    "check": "svelte-check --tsconfig ./tsconfig.json",
+    "size": "node scripts/bundle.mjs --check",
+    "e2e": "playwright test"
+  },
+  "devDependencies": {
+    "@gfx/zopfli": "^1.0.15",
+    "@playwright/test": "1.64.0",
+    "@sveltejs/vite-plugin-svelte": "^7.3.1",
+    "@tsconfig/svelte": "^5.0.8",
+    "@types/node": "^22.20.5",
+    "@types/ws": "^8.18.2",
+    "svelte": "^5.57.2",
+    "svelte-check": "^4.7.6",
+    "terser": "^5.51.2",
+    "typescript": "~6.0.2",
+    "vite": "^8.3.4",
+    "vitest": "^5.0.3",
+    "ws": "^8.22.0"
+  }
+}

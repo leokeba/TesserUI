@@ -1,0 +1,137 @@
+// The demo and motors fixtures, generated through real TesserAPI by
+// test/fixtures_main.cpp: every widget and hint of DESIGN §4 and §5.
+import { describe, expect, it } from 'vitest';
+import { buildPage, type Item, type Leaf, type LinkItem, type Section } from '../src/model/model';
+import { mergeSchema, type Schema } from '../src/model/schema';
+import { buildView, viewModelItems, type ViewPage } from '../src/model/views';
+import { fixture } from './fixtures';
+
+const demo = fixture('demo');
+const page = buildPage(demo.schema, '/');
+
+function find(path: string): Item {
+  let found: Item | undefined;
+  const walk = (items: Item[]) => {
+    for (const i of items) {
+      if (i.path === path) found = i;
+      if (i.kind === 'section') walk([...i.items, ...i.advancedItems]);
+    }
+  };
+  walk(page.cards);
+  if (!found) throw new Error(`no item at ${path}`);
+  return found;
+}
+const leaf = (p: string) => find(p) as Leaf;
+const sec = (p: string) => find(p) as Section;
+
+describe('demo: widgets', () => {
+  it('covers every widget', () => {
+    const widgets = new Set<string>();
+    const walk = (items: Item[]) => {
+      for (const i of items) {
+        if (i.kind === 'leaf') widgets.add(i.widget).add(i.field ?? 'button');
+        if (i.kind === 'link') widgets.add('link');
+        if (i.kind === 'section') walk([...i.items, ...i.advancedItems]);
+      }
+    };
+    walk(page.cards);
+    for (const w of ['toggle', 'checkbox', 'led', 'slider', 'knob', 'number', 'stepper', 'readout', 'bar', 'gauge', 'chart', 'segmented', 'select', 'radio', 'text', 'password', 'textarea', 'color', 'button', 'hold', 'json', 'events', 'table', 'link']) {
+      expect(widgets, w).toContain(w);
+    }
+  });
+  it('maps the lamp', () => {
+    expect(leaf('/lamp/brightness')).toMatchObject({ widget: 'slider', step: 5, precision: 0 });
+    expect(leaf('/lamp/color').widget).toBe('color');
+    expect(leaf('/lamp/mode')).toMatchObject({ widget: 'segmented', options: [{ label: 'Off' }, { label: 'Automatic' }, { label: 'Manual' }] });
+    expect(leaf('/lamp/effect').widget).toBe('select');
+    expect(leaf('/lamp/power')).toMatchObject({ widget: 'gauge', unit: 'W', editable: false });
+    expect(leaf('/lamp/name')).toMatchObject({ widget: 'text', maxLength: 15, placeholder: 'Lamp name' });
+    expect(leaf('/lamp/preset')).toMatchObject({ widget: 'button', value: 3, label: 'Preset 3' });
+    expect(sec('/lamp').icon).toBe('bulb');
+  });
+  it('maps the motor', () => {
+    expect(leaf('/motor/speed')).toMatchObject({ widget: 'knob', precision: 2 });
+    expect(leaf('/motor/duty')).toMatchObject({ widget: 'stepper', unit: '%' });
+    expect(leaf('/motor/position')).toMatchObject({ widget: 'chart', history: 30 });
+    expect(leaf('/motor/jog').widget).toBe('hold');
+    expect(leaf('/motor/moveTo')).toMatchObject({ field: 'slider', confirm: 'Move the mirror?', min: 0, max: 360 });
+    expect(leaf('/motor/stop')).toMatchObject({ style: 'danger', icon: 'stop' });
+    expect(leaf('/motor/home')).toMatchObject({ widget: 'button', deferred: true });
+    expect(sec('/motor').advancedItems.map((i) => i.name)).toEqual(['pid']);
+  });
+  it('maps sensors, forms and conditions', () => {
+    expect(leaf('/sensors/temperature').precision).toBe(1);
+    expect(leaf('/sensors/pressure').format).toBe('%.0f hPa');
+    expect(leaf('/sensors/pressed')).toMatchObject({ widget: 'events', toast: true });
+    expect(leaf('/sensors/raw')).toMatchObject({ widget: 'json', editable: true });
+    expect(sec('/settings').form).toBe(true);
+    expect(leaf('/settings/apply').submit).toBe(true);
+    expect(leaf('/config/manualSpeed').visibleWhen).toEqual([{ path: '/config/mode', equal: true, literal: 'manual' }]);
+    expect(leaf('/config/threshold').enabledWhen).toEqual([{ path: '/config/enabled', equal: true, literal: 'true' }]);
+    expect(leaf('/config/token').hidden).toBe(true);
+    expect(leaf('/config/readonlyLevel')).toMatchObject({ widget: 'readout', editable: false });
+    expect(leaf('/widgets/conditional').visibleWhen).toEqual([
+      { path: '/config/enabled', equal: true, literal: 'true' },
+      { path: '/config/mode', equal: false, literal: 'auto' },
+    ]);
+  });
+  it('lays out sections (DESIGN §6.1)', () => {
+    expect(page.columns).toBe(3);
+    expect(page.cards[0]).toMatchObject({ label: '', items: [{ name: 'uptime' }, { name: 'online' }, { name: 'schedule' }, { name: 'info', kind: 'link' }, { name: 'blob' }, { name: '_ui', hidden: true }] });
+    expect(sec('/config/network')).toMatchObject({ level: 2, collapsed: true });
+    // Depth 3 from the root: the 4th level is fetched on opening.
+    expect(sec('/config/network/deep')).toMatchObject({ level: 3, lazy: false });
+    expect(sec('/config/network/deep/deeper')).toMatchObject({ level: 4 });
+    expect(sec('/offset').inline).toBe(true);
+    expect(sec('/channels').tabs).toBe(true);
+    const labels = page.cards.map((c) => c.label);
+    expect(labels.indexOf('Pinned')).toBe(labels.indexOf('Widget overrides') + 1);
+    const peers = sec('/peers');
+    expect(peers.items).toMatchObject([
+      { kind: 'link', name: 'heliostat-3', online: true },
+      { kind: 'link', name: 'kitchen-lamp', online: false },
+      { kind: 'link', name: 'porch-lamp', online: true },
+    ]);
+    expect((find('/info') as LinkItem).remote).toBe(false);
+    expect(leaf('/schedule').columns?.map((c) => c.name)).toEqual(['hour', 'enabled', 'label']);
+    expect(page.keys?.split(',')).not.toContain('info');
+    expect(page.keys?.split(',')).toContain('peers');
+  });
+});
+
+describe('demo: views (DESIGN §8)', () => {
+  const view = demo.views!.pages[0] as ViewPage;
+  it('builds from the schema, waiting for peers', () => {
+    const v = buildView(view, demo.schema);
+    expect(v.items[0]).toMatchObject({ kind: 'row', items: [{ kind: 'node', item: { widget: 'gauge' } }, { kind: 'node', item: { widget: 'readout' } }] });
+    // A card around one subtree is that subtree's card.
+    expect(v.items[1]).toMatchObject({ kind: 'node', item: { kind: 'section', level: 1, label: 'Motor', path: '/motor' } });
+    expect(v.items[2]).toEqual({ kind: 'text', text: 'Live values from **every** node.' });
+    // `each` over the peers: their trees aren't fetched yet.
+    expect(v.missing).toEqual(['/peers/heliostat-3/lamp/on', '/peers/kitchen-lamp/lamp/on', '/peers/porch-lamp/lamp/on']);
+    expect(v.specs).toEqual([{ path: '/', depth: 3 }]);
+    expect(viewModelItems(v.items).map((i) => i.path)).toEqual(['/lamp/power', '/sensors/temperature', '/motor']);
+  });
+  it('labels repeated items with the peer and subscribes per node', () => {
+    const root = structuredClone(demo.schema) as Schema;
+    const peer: Schema = { type: 'object', label: 'Heliostat 3', children: { lamp: { type: 'object', children: { on: { type: 'boolean', writable: true } } } } };
+    mergeSchema(root, '/peers/heliostat-3', peer);
+    const v = buildView(view, root);
+    expect(v.items[3]).toMatchObject({ kind: 'node', item: { path: '/peers/heliostat-3/lamp/on', label: 'Heliostat 3', widget: 'toggle' } });
+    expect(v.specs).toContainEqual({ path: '/peers/heliostat-3/lamp/on', depth: 0 });
+  });
+});
+
+describe('motors: helionext ported with no hand-written UI', () => {
+  const m = fixture('motors');
+  const p = buildPage(m.schema, '/');
+  it('renders both motors and the calibration form', () => {
+    expect(p.cards.map((c) => c.label)).toEqual(['Azimuth motor', 'Elevation motor', 'Calibration']);
+    const az = p.cards[0];
+    const control = az.items[0] as Section;
+    expect(control.items.map((i) => (i as Leaf).label)).toEqual(['Speed', 'Duty cycle', 'Direction']);
+    expect((control.items[0] as Leaf).widget).toBe('slider');
+    expect(az.items.find((i) => i.name === 'config')).toMatchObject({ label: 'Settings', collapsed: true });
+    expect(p.cards[2].form).toBe(true);
+  });
+});
