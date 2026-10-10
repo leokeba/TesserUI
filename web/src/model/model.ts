@@ -318,6 +318,8 @@ export function buildLeaf(name: string, path: string, s: Schema, parent: string,
   }
   leaf.editable = !!s.writable && ui(s, 'readonly') !== true;
   if (s.secret) leaf.secret = true;
+  // A read-only value styled as a warning: a callout, usually with visibleWhen.
+  if (!leaf.editable && uiStr(s, 'style') === 'warning') leaf.style = 'warning';
   leaf.widget = s.secret && leaf.editable && s.type === 'string' ? 'password' : inferWidget(s, s.type, leaf.editable);
   number(leaf, s);
   if (s.enum) leaf.options = optionsOf(s);

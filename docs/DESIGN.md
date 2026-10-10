@@ -136,7 +136,7 @@ m.object("pid").ui("advanced");
 | `format` | string | readout | `"%.1f"`-style formatting, printf subset: `%d %i %u %f %.Nf %e %g %s %%`. |
 | `placeholder` | string | text, number | Input placeholder. |
 | `confirm` | string | action, writable value | Asks this question before the call or write. |
-| `style` | string | action | `primary`, `danger` or `quiet`. |
+| `style` | string | action, read-only value | Actions: `primary`, `danger` or `quiet`. A read-only value: `warning` shows it as a warning callout, its label and value on a tinted background, usually with `visibleWhen` (TesserKIT's "no admin account" notice). |
 | `icon` | string | any | A name from TesserUI's built-in icon set (§9.3); unknown names are ignored. |
 | `value` | number or string | action | The argument the action's button sends, instead of an input: `o.action("preset", ...).ui("value", 3)`. `"$now"` sends the browser's clock (milliseconds since 1970). |
 | `auth` | string | action | `"login"`: the action signing clients in (§7.4). `"whoami"`: the action telling a client its access level. |

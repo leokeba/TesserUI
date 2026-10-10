@@ -39,10 +39,10 @@
 </script>
 
 {#if visible}
-  <div class="row {layout}" class:modified>
+  <div class="row {layout}" class:modified class:warning={leaf.style === 'warning'}>
     {#if layout !== 'bare' && leaf.label}
       <label for={leaf.editable ? id : undefined} title={leaf.description}>
-        {#if leaf.icon}<Icon name={leaf.icon} />{/if}
+        {#if leaf.icon || leaf.style === 'warning'}<Icon name={leaf.icon ?? 'alert'} />{/if}
         <span>{leaf.label}</span>
         {#if leaf.description}<span class="info" aria-hidden="true"><Icon name="info" /></span>{/if}
       </label>
@@ -68,6 +68,26 @@
   .row.wide,
   .row.bare {
     grid-template-columns: minmax(0, 1fr);
+  }
+  .row.warning {
+    grid-template-columns: minmax(0, 1fr);
+    margin: 4px 0;
+    padding: 8px 10px;
+    border: 1px solid var(--warn);
+    border-radius: 6px;
+    background: color-mix(in srgb, var(--warn) 12%, transparent);
+  }
+  .warning label {
+    font-weight: 600;
+  }
+  .warning label :global(.icon) {
+    color: var(--warn);
+  }
+  .warning .control {
+    justify-content: flex-start;
+  }
+  .warning .control :global(output) {
+    text-align: left;
   }
   .row.modified label {
     font-style: italic;

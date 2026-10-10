@@ -25,6 +25,15 @@ describe('files (DESIGN §4)', () => {
   });
 });
 
+describe('warnings (DESIGN §5.2)', () => {
+  it('style read-only values only', () => {
+    expect(leaf({ type: 'string', ui: { style: 'warning' } }).style).toBe('warning');
+    expect(leaf({ type: 'boolean', ui: { style: 'warning' } }).style).toBe('warning');
+    expect(leaf({ type: 'string', writable: true, ui: { style: 'warning' } }).style).toBeUndefined();
+    expect(leaf({ type: 'string', ui: { style: 'danger' } }).style).toBeUndefined();
+  });
+});
+
 describe('flags and time zones (DESIGN §5.1)', () => {
   it('fit integers and strings', () => {
     expect(leaf({ type: 'integer', writable: true, ui: { widget: 'flags', labels: 'Mon,Tue' } }).widget).toBe('flags');

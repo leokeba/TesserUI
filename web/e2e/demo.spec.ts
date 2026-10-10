@@ -76,6 +76,16 @@ test('conditions and forms', async ({ page }) => {
   await expect(row(page, 'Ssid').locator('input')).toHaveValue('field-net');
 });
 
+test('warnings show while their condition holds', async ({ page }) => {
+  await open(page);
+  await page.locator('summary', { hasText: 'Network' }).click();
+  const warning = row(page, 'Static address');
+  await expect(warning).toHaveClass(/warning/);
+  await expect(warning.locator('output')).toHaveText('Make sure no other device on the network uses this address.');
+  await row(page, 'Dhcp').locator('input[role=switch]').click();
+  await expect(warning).toHaveCount(0);
+});
+
 test('lists are edited as a whole', async ({ page }) => {
   await open(page);
   const schedule = row(page, 'Schedule');

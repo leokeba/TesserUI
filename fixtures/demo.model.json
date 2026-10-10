@@ -846,6 +846,25 @@
         "editable": true
        },
        {
+        "name": "staticWarning",
+        "path": "/config/network/staticWarning",
+        "label": "Static address",
+        "advanced": false,
+        "hidden": false,
+        "visibleWhen": [
+         {
+          "path": "/config/network/dhcp",
+          "equal": true,
+          "literal": "false"
+         }
+        ],
+        "kind": "leaf",
+        "widget": "readout",
+        "type": "string",
+        "editable": false,
+        "style": "warning"
+       },
+       {
         "name": "deep",
         "path": "/config/network/deep",
         "label": "Deep",

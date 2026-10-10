@@ -229,6 +229,10 @@ Demo::Demo()
     auto& network = config.object("network").ui("collapsed");
     network.value("dhcp", dhcp);
     network.value("ip", ip).ui("visibleWhen", "dhcp=false");
+    network.value("staticWarning", [] { return std::string("Make sure no other device on the network uses this address."); })
+        .label("Static address")
+        .ui("style", "warning")
+        .ui("visibleWhen", "dhcp=false");
     // A fourth level below the root page, for lazy schema fetches.
     network.object("deep").object("deeper").value("leaf", leaf);
 
