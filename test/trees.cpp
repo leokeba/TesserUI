@@ -275,7 +275,8 @@ Demo::Demo()
     sky.value("sunEl", [this] { return sunEl; }).unit("°").watch();
     sky.value("targetAz", targetAz).range(0, 360).unit("°").watch();
     sky.value("targetEl", targetEl).range(0, 90).unit("°").watch();
-    sky.list("sources", sources).maxSize(8);
+    // Keyed: /sky/sources/Tower, and rows matched by name on writes.
+    sky.list("sources", sources).maxSize(8).key("name");
     // An object argument: one field per value of Source.
     sky.action("addSource", [this](const Source& s) { sources.push_back(s); }).label("Add source");
 
@@ -288,6 +289,13 @@ Demo::Demo()
     seq.action("start", [this] { sequenceStartMs = clockMs(); });
     seq.action("stop", [this] { sequenceStartMs = 0; });
     seq.action("clear", [this] { frames.clear(); });
+
+    // Scalar arrays: a calibration table drawn as a chart, and an editable
+    // one.
+    for (int i = 0; i < 16; i++) offsets[i] = static_cast<float>(2.0 * sin(i * 3.14159265358979 / 8.0));
+    auto& tables = api.object("tables").label("Tables");
+    tables.array("offsets", offsets).readOnly().unit("°").ui("widget", "chart").label("Encoder offsets");
+    tables.array("gains", gains).range(0, 100).maxSize(6);
 
     // What TesserKIT's services declare: admin-only settings, secrets,
     // flags, a time zone, the browser's clock, sign-in.

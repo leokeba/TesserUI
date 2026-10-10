@@ -1334,6 +1334,80 @@
     "form": false
    },
    {
+    "name": "tables",
+    "path": "/tables",
+    "label": "Tables",
+    "advanced": false,
+    "hidden": false,
+    "kind": "section",
+    "level": 1,
+    "items": [
+     {
+      "name": "offsets",
+      "path": "/tables/offsets",
+      "label": "Encoder offsets",
+      "advanced": false,
+      "hidden": false,
+      "kind": "leaf",
+      "widget": "chart",
+      "type": "number",
+      "editable": false,
+      "unit": "°",
+      "maxSize": 16,
+      "fixed": true,
+      "columns": [
+       {
+        "name": "value",
+        "path": "",
+        "label": "Value",
+        "advanced": false,
+        "hidden": false,
+        "kind": "leaf",
+        "widget": "readout",
+        "type": "number",
+        "editable": false
+       }
+      ]
+     },
+     {
+      "name": "gains",
+      "path": "/tables/gains",
+      "label": "Gains",
+      "advanced": false,
+      "hidden": false,
+      "kind": "leaf",
+      "widget": "table",
+      "type": "array",
+      "editable": true,
+      "maxSize": 6,
+      "fixed": false,
+      "columns": [
+       {
+        "name": "value",
+        "path": "",
+        "label": "Value",
+        "advanced": false,
+        "hidden": false,
+        "kind": "leaf",
+        "widget": "slider",
+        "type": "integer",
+        "editable": true,
+        "min": 0,
+        "max": 100,
+        "step": 1,
+        "precision": 0
+       }
+      ]
+     }
+    ],
+    "advancedItems": [],
+    "lazy": false,
+    "tabs": false,
+    "inline": false,
+    "collapsed": false,
+    "form": false
+   },
+   {
     "name": "system",
     "path": "/system",
     "label": "System",
@@ -1543,7 +1617,7 @@
   ],
   "columns": 3,
   "depth": null,
-  "keys": "uptime,online,lamp,motor,sensors,settings,config,offset,channels,schedule,widgets,sky,sequence,system,account,blob,peers,_ui"
+  "keys": "uptime,online,lamp,motor,sensors,settings,config,offset,channels,schedule,widgets,sky,sequence,tables,system,account,blob,peers,_ui"
  },
  "views": [
   {

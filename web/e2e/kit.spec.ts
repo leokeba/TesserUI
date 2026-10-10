@@ -62,6 +62,22 @@ test('secrets are never shown, and sign-in goes through the login action', async
   await expect(page.locator('header').getByRole('button', { name: 'Sign out' })).toBeVisible();
 });
 
+test('arrays: edited whole, or plotted', async ({ page }) => {
+  await open(page);
+  const gains = row(page, 'Gains');
+  await expect(gains.locator('tbody tr')).toHaveCount(3);
+  await gains.getByRole('button', { name: 'Add' }).click();
+  await expect(gains.locator('tbody tr')).toHaveCount(4);
+  const cell = gains.locator('tbody tr').nth(1).locator('input[type=number]');
+  await cell.fill('55');
+  await cell.press('Enter');
+  await expect(cell).toHaveValue('55');
+  await cell.fill('500');
+  await cell.press('Enter');
+  await expect(page.locator('.error').first()).toContainText('range');
+  await expect(row(page, 'Encoder offsets').locator('canvas')).toBeVisible();
+});
+
 test('custom elements: keyframes and the sky', async ({ page }) => {
   await open(page);
   const keyframes = page.locator('x-keyframes');

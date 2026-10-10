@@ -114,6 +114,9 @@ describe('demo: widgets', () => {
       ['password', 'password'],
     ]);
     expect(find('/account/whoami')?.hidden).toBe(true);
+    expect(leaf('/tables/offsets')).toMatchObject({ widget: 'chart', unit: '°', fixed: true, editable: false });
+    expect(leaf('/tables/gains')).toMatchObject({ widget: 'table', editable: true, maxSize: 6, fixed: false });
+    expect(leaf('/tables/gains').columns?.[0]).toMatchObject({ widget: 'slider', min: 0, max: 100 });
     // Drawn by its element, the sky's action has no row: built on its own.
     const add = buildLeaf('addSource', '/sky/addSource', demo.schema.children!.sky.children!.addSource, '/sky', '/');
     expect(add.params?.map((p) => p.name)).toEqual(['name', 'azimuth', 'elevation']);

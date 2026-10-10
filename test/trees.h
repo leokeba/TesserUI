@@ -178,6 +178,9 @@ struct Demo {
     int days = 0x1f;  // Monday to Friday
     std::string tz = "<+01>-1<+02>,M3.5.0,M10.5.0/3";
     int64_t clockSetMs = 0;
+    // tables: scalar arrays
+    float offsets[16] = {};
+    std::vector<int> gains{10, 40, 80};
     // sequence: keyframes (<x-keyframes>)
     std::vector<Frame> frames{{0, 0}, {2000, 30}, {5000, -20}, {8000, 0}};
     bool loop = true;
