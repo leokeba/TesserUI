@@ -16,6 +16,20 @@
   const full = $derived(leaf.maxSize !== undefined && rows.length >= leaf.maxSize);
 
   const copy = () => parse(stringify(rows)) as unknown[];
+  // Secrets read as null: left out of the rows written, the device keeps them.
+  const secrets = $derived(cols.filter((c) => c.secret && c.path));
+  function send(next: unknown[]) {
+    for (const row of next) {
+      for (const c of secrets) {
+        const names = c.path.split('/');
+        let o: unknown = row;
+        for (const n of names.slice(0, -1)) o = isObject(o) ? o[n] : undefined;
+        const last = names[names.length - 1];
+        if (isObject(o) && o[last] === null) delete o[last];
+      }
+    }
+    set(next);
+  }
   const cell = (row: unknown, col: Leaf): unknown => {
     if (!col.path) return row;
     let v = row;
@@ -32,11 +46,11 @@
       for (const n of names.slice(0, -1)) o = (o[n] ??= {}) as Record<string, unknown>;
       o[names[names.length - 1]] = v;
     }
-    set(next);
+    send(next);
   }
   // New elements start from their defaults: an empty patch.
-  const add = () => set([...copy(), cols.length === 1 && !cols[0].path ? null : {}]);
-  const remove = (i: number) => set(copy().filter((_, j) => j !== i));
+  const add = () => send([...copy(), cols.length === 1 && !cols[0].path ? null : {}]);
+  const remove = (i: number) => send(copy().filter((_, j) => j !== i));
 </script>
 
 <div class="table">
@@ -78,7 +92,15 @@
                   }}
                 />
               {:else}
-                <input type="text" maxlength={c.maxLength} value={v ?? ''} {disabled} aria-label="{c.label} {i}" onchange={(e) => edit(i, c, e.currentTarget.value)} />
+                <input
+                  type={c.secret ? 'password' : 'text'}
+                  maxlength={c.maxLength}
+                  placeholder={c.secret ? '••••••••' : undefined}
+                  value={v ?? ''}
+                  {disabled}
+                  aria-label="{c.label} {i}"
+                  onchange={(e) => edit(i, c, e.currentTarget.value)}
+                />
               {/if}
             </td>
           {/each}

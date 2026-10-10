@@ -1,6 +1,7 @@
 <script lang="ts">
   // Actions (DESIGN.md §4): a button; a typed argument's input and a button;
-  // raw JSON and a button; or a hold button (true on press, false on release).
+  // an object argument's inputs and a button; raw JSON and a button; or a
+  // hold button (true on press, false on release).
   import { useSession } from '../shared.svelte';
   import { parse } from '../client/json';
   import { DEFERRED_TIMEOUT_MS } from '../client/types';
@@ -17,6 +18,9 @@
   // svelte-ignore state_referenced_locally
   let arg: unknown = $state(leaf.type === 'boolean' ? false : leaf.type === 'string' ? (leaf.options?.[0]?.value ?? '') : (leaf.min ?? 0));
   let json = $state('null');
+  // An object argument's fields, by path relative to it; untouched ones are
+  // left out, so the device uses its defaults.
+  let params: Record<string, unknown> = $state({});
   let busy = $state(false);
   let result: string | null = $state(null);
   let jsonError = $state('');
@@ -29,6 +33,18 @@
     busy = false;
     if (r.status === 'ok' && (leaf.returns || leaf.field === 'json')) result = formatValue(r.body, { type: leaf.returns ?? '' });
   }
+
+  function paramsValue() {
+    const out: Record<string, unknown> = {};
+    for (const [p, v] of Object.entries(params)) {
+      const names = p.split('/');
+      let o = out;
+      for (const n of names.slice(0, -1)) o = (o[n] ??= {}) as Record<string, unknown>;
+      o[names[names.length - 1]] = v;
+    }
+    return out;
+  }
+  const fixedArg = () => (leaf.value === '$now' ? Date.now() : (leaf.value ?? null));
 
   function runJson() {
     try {
@@ -68,8 +84,19 @@
     {#if leaf.icon}<Icon name={leaf.icon} />{/if}{leaf.label}
   </button>
 {:else}
-  <div class="action" class:wide={leaf.field === 'json'} class:field={!!leaf.field}>
-    {#if Field}
+  <div class="action" class:wide={leaf.field === 'json' || !!leaf.params} class:field={!!leaf.field}>
+    {#if leaf.params}
+      <div class="params">
+        {#each leaf.params as p (p.path)}
+          {@const F = fieldOf(p.widget)}
+          {#if F}
+            {@const pid = `${id}_${p.path.replace(/\W/g, '_')}`}
+            <label for={pid}>{p.label}</label>
+            <F leaf={p} value={params[p.path]} set={(v) => (params[p.path] = v)} {disabled} id={pid} />
+          {/if}
+        {/each}
+      </div>
+    {:else if Field}
       <Field leaf={{ ...leaf, widget: leaf.field! }} value={arg} set={(v) => (arg = v)} {disabled} {id} />
     {:else if leaf.field === 'json'}
       <textarea {id} rows="2" bind:value={json} {disabled} spellcheck="false" aria-label={session.t('{label} argument (JSON)', { label: leaf.label })}></textarea>
@@ -80,7 +107,7 @@
       id={Field || leaf.field === 'json' ? undefined : id}
       disabled={disabled || busy}
       aria-busy={busy}
-      onclick={() => (leaf.field === 'json' ? runJson() : run(leaf.field ? arg : (leaf.value ?? null)))}
+      onclick={() => (leaf.field === 'json' ? runJson() : run(leaf.params ? paramsValue() : leaf.field ? arg : fixedArg()))}
     >
       {#if leaf.icon}<Icon name={leaf.icon} />{/if}
       {leaf.field ? session.t('Run') : leaf.label}{busy ? '…' : ''}
@@ -111,6 +138,12 @@
   }
   .action.wide button {
     align-self: flex-end;
+  }
+  .params {
+    display: grid;
+    grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+    align-items: center;
+    gap: 6px 12px;
   }
   output {
     color: var(--muted);

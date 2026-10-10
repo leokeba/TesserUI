@@ -12,7 +12,7 @@
     type={leaf.widget === 'password' ? 'password' : 'text'}
     autocomplete={leaf.widget === 'password' ? 'new-password' : 'off'}
     maxlength={leaf.maxLength}
-    placeholder={leaf.placeholder}
+    placeholder={leaf.placeholder ?? (leaf.secret ? '••••••••' : undefined)}
     value={text}
     {disabled}
     onchange={(e) => set(e.currentTarget.value)}

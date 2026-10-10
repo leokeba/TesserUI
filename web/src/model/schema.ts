@@ -10,7 +10,14 @@ export type SchemaType =
   | 'event'
   | 'custom'
   | 'list'
+  | 'array'
+  | 'file'
   | 'remote';
+
+// Access levels (TesserAPI §13.1), ordered.
+export type Level = 'public' | 'user' | 'admin';
+export const rank = (l: Level | null | undefined) => (l === 'admin' ? 2 : l === 'user' ? 1 : 0);
+export const higher = (a: Level | undefined, b: Level | undefined): Level | undefined => (rank(b) > rank(a) ? b : a);
 
 export type Hint = string | number | boolean;
 
@@ -22,8 +29,14 @@ export interface Schema {
   maxLength?: number;
   enum?: string[];
   arg?: string;
+  // Actions taking an object: its fields' schema.
+  params?: Schema;
   returns?: string;
   deferred?: boolean;
+  // Never read back (passwords).
+  secret?: boolean;
+  // The level writing this node takes (its own; inherited by its subtree).
+  access?: Level;
   persist?: boolean;
   description?: string;
   label?: string;
@@ -32,9 +45,16 @@ export interface Schema {
   ui?: Record<string, Hint>;
   // Objects: absent when the fetch's depth stopped above them.
   children?: Record<string, Schema>;
-  // Lists
+  // Lists and arrays
   maxSize?: number;
   items?: Schema;
+  // Keyed lists: the element field that names it.
+  key?: string;
+  // Arrays of a fixed length.
+  fixed?: boolean;
+  // Files
+  readable?: boolean;
+  contentType?: string;
   // Remote stubs
   mirror?: boolean;
   online?: boolean;
@@ -70,6 +90,20 @@ export function schemaAt(root: Schema, path: string): Schema | undefined {
     if (!s) return undefined;
   }
   return s;
+}
+
+// The level writing the node at `path` takes: the highest of its own and
+// its ancestors' (TesserAPI §13.1).
+export function accessAt(root: Schema, path: string): Level | undefined {
+  let s: Schema | undefined = root;
+  let need = root.access;
+  for (const name of segments(path)) {
+    if (s?.type === 'remote') s = s.tree;
+    s = s?.children?.[name];
+    if (!s) break;
+    need = higher(need, s.access);
+  }
+  return need;
 }
 
 // Merges a fetched schema into the tree at `path`. Deeper fetches add

@@ -2,6 +2,7 @@
   import { untrack } from 'svelte';
   import { compareVersions, provideSession } from './shared.svelte';
   import Icon from './Icon.svelte';
+  import { humanize } from './model/format';
   import { isUnder } from './model/schema';
   import Page from './Page.svelte';
   import type { Session } from './store/session.svelte';
@@ -72,6 +73,20 @@
   const tooOld = $derived(!!config.minVersion && compareVersions(__VERSION__, config.minVersion) < 0);
 
   let token = $state('');
+  // The login action's text fields (DESIGN.md §7.4).
+  const loginFields = $derived(
+    Object.entries(session.login?.schema.params?.children ?? {})
+      .filter(([, c]) => c.type === 'string')
+      .map(([name, c]) => ({ name, label: c.label ?? humanize(name), secret: !!c.secret })),
+  );
+  let creds: Record<string, string> = $state({});
+  let loginError = $state('');
+  async function authenticate(e: SubmitEvent) {
+    e.preventDefault();
+    if (!session.login) return session.setToken(token);
+    loginError = (await session.signIn(creds)) ?? '';
+    if (!loginError) creds = {};
+  }
   let serialError = $state('');
   const hasSerial = 'serial' in navigator;
   async function connectUsb() {
@@ -98,6 +113,11 @@
         </nav>
       {/if}
       <span class="state {session.state}" role="status"><i></i>{stateText}</span>
+      {#if session.signedIn}
+        <button type="button" class="quiet" onclick={() => session.signOut()}><Icon name="lock" /> {t('Sign out')}</button>
+      {:else if session.login}
+        <button type="button" class="quiet" onclick={() => (session.needToken = true)}><Icon name="lock" /> {t('Sign in')}</button>
+      {/if}
     </header>
   {/if}
 
@@ -139,19 +159,26 @@
 
   {#if session.needToken}
     <dialog open aria-labelledby="token-title">
-      <form
-        method="dialog"
-        onsubmit={(e) => {
-          e.preventDefault();
-          session.setToken(token);
-        }}
-      >
+      <form method="dialog" onsubmit={authenticate}>
         <h2 id="token-title"><Icon name="lock" /> {t('Authentication')}</h2>
-        <p>{t('This node needs a token to make changes.')}</p>
-        <input type="password" bind:value={token} aria-label={t('Token')} autocomplete="current-password" />
+        {#if session.login}
+          {#each loginFields as f (f.name)}
+            <input
+              type={f.secret ? 'password' : 'text'}
+              bind:value={creds[f.name]}
+              placeholder={f.label}
+              aria-label={f.label}
+              autocomplete={f.secret ? 'current-password' : 'username'}
+            />
+          {/each}
+          {#if loginError}<p class="error" role="alert">{loginError}</p>{/if}
+        {:else}
+          <p>{t('This node needs a token to make changes.')}</p>
+          <input type="password" bind:value={token} aria-label={t('Token')} autocomplete="current-password" />
+        {/if}
         <div class="actions">
           <button type="button" class="quiet" onclick={() => (session.needToken = false)}>{t('Cancel')}</button>
-          <button class="primary">{t('Save')}</button>
+          <button class="primary">{session.login ? t('Sign in') : t('Save')}</button>
         </div>
       </form>
     </dialog>

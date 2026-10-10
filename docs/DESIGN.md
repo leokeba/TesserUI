@@ -73,11 +73,13 @@ Without any hint, each schema node maps to one semantic widget. The table is nor
 | `integer`/`number`, read-only | `readout` | Formatted with `unit` and `precision`. |
 | `string` with `enum`, writable | `segmented` if ≤ 4 options and each label ≤ 10 characters, else `select` | Display labels from `ui.labels` (§5.2), else the names. |
 | `string`, writable | `text` | `maxLength` enforced in the input. |
+| `string`, writable, `secret` | `password` | Whatever `ui.widget` says. The value always reads as `null` (TesserAPI §4.1): the field starts empty with a `••••••••` placeholder, and only what the user types is sent. |
 | `string`, read-only (with or without `enum`) | `readout` | |
 | `action`, no `arg` | `button` | |
 | `action`, typed `arg` | `field` + `button` | One input of the argument's type (the rules above, with the action's `min`, `max`, `unit`), then a button. |
+| `action`, `arg: "object"` | `button` with its `params` as fields | One input per value of the argument's object (nested objects flattened), each inferred by the rules above, then the button with the action's label. Untouched fields are left out of the argument, so the device uses its defaults. |
 | `action`, `arg: "any"` | `json` + `button` | Raw JSON entry, shown only under "Advanced"; hidden on LCD. |
-| `action`, `deferred` | `button`, with a busy state until the reply | Deferred actions take `tesser::Call&`, which the schema reports as `arg: "any"`: the argument isn't typed, so no JSON entry. Their reply may take up to TesserAPI's `deferTimeoutMs`: the request timeout is 15 s. |
+| `action`, `deferred` | as above, with a busy state until the reply | A deferred action taking `tesser::Call&` alone reports `arg: "any"`: it is a plain button, no JSON entry. Typed deferred actions (`(T, Call&)`) get their input. Their reply may take up to TesserAPI's `deferTimeoutMs`: the request timeout is 15 s. |
 | `action`, `returns` | as above; the result is shown next to the button | |
 | `event` | `events` | The last occurrences with their payloads (web), or a toast (LCD). |
 | `list` | `table` | Columns are the leaves of `items`. Rows can be edited, added (up to `maxSize`) and removed: each edit writes the whole array (TesserAPI §4.4). |
@@ -131,7 +133,8 @@ m.object("pid").ui("advanced");
 | `confirm` | string | action, writable value | Asks this question before the call or write. |
 | `style` | string | action | `primary`, `danger` or `quiet`. |
 | `icon` | string | any | A name from TesserUI's built-in icon set (§9.3); unknown names are ignored. |
-| `value` | number or string | action | The argument a `button` sends: `o.action("preset", ...).ui("widget","button").ui("value", 3)`. |
+| `value` | number or string | action | The argument the action's button sends, instead of an input: `o.action("preset", ...).ui("value", 3)`. `"$now"` sends the browser's clock (milliseconds since 1970). |
+| `auth` | string | action | `"login"`: the action signing clients in (§7.4). `"whoami"`: the action telling a client its access level. |
 | `history` | number | chart | Seconds of history (default 60). |
 | `advanced` | flag | any | Shown under a collapsed "Advanced" group of its section. |
 | `hidden` | flag | any | Not shown. Its value is still read and usable in conditions. |
@@ -222,7 +225,11 @@ Notifications are merge patches: apply them to `values` exactly as TesserAPI app
 - **Errors:** an error reply restores the last confirmed value and shows the message on the widget at the error's `path`. If that path isn't visible, on its nearest visible ancestor. `"partial": true` adds "some changes were applied".
 - **Actions:** `set <path> <arg>`. `confirm` asks first. A button is disabled while its call is in flight. `returns` shows the result, and errors appear as for values.
 - **Forms** (`ui.form` objects): edits stay in a local draft, shown as modified. Submit sends one patch to the object with the edited values and the submit action, either `ui.submit` or the first action: `{"az": 120, "el": 30, "go": null}`. TesserAPI validates every value before applying any and runs the action after the values (TesserAPI §6.3), so the form is atomic up to the action. Success clears the draft; errors highlight fields by `path`. Reset discards the draft.
-- **Authentication:** an `unauthorized` reply opens a token prompt (web). The token is kept in `localStorage` and sent as `?token=` on the WebSocket handshake and with HTTP requests.
+- **Authentication:** an `unauthorized` reply opens a sign-in dialog (web). The token it yields is kept in `localStorage` and sent as `?token=` on the WebSocket handshake and as `Authorization: Bearer` with HTTP requests.
+  - **Login action:** when the tree has an action with `ui.auth: "login"` (TesserKIT's `/sys/auth/login`), the dialog shows its argument's string fields (`secret` ones as passwords) and calls it. The reply is the token, as a string or as `{"token": ..., "access": ...}`. The header offers "Sign in" and, once signed in, "Sign out".
+  - **Without one,** the dialog asks for the token itself (a node using `HttpServer::setToken`).
+  - **Access levels:** the schema's `access` (TesserAPI §13.1) is inherited down the model. When the tree has an action with `ui.auth: "whoami"`, the renderer calls it after loading the schema, and its reply (a level, or `{"access": level}`) is the client's level: controls needing more are disabled. Without it, the level is unknown and nothing is disabled; the device's `unauthorized` replies still apply.
+  - **Signing in or out** changes what the node shows (hidden nodes, TesserAPI §13.1): the schema is read again and the WebSocket reconnects with the new token.
 
 ### 7.5 Connection state
 
@@ -518,10 +525,9 @@ None blocks the first release; each has a workaround above.
 |---|---|---|
 | Expose `schemaHash()` over the API (for instance `view=hash`) | Cache the schema of nodes reached directly (§7.2). | Fetch the schema on every load. |
 | Re-advertise automatically when the tree changes (`mountPeers` mounts change a gateway's schema) | The advertised hash goes stale on gateways, and stale caches would show the wrong schema. | Gateways call `advertise()` again after mounting; renderers don't cache gateways' own schemas (§7.2). |
-| Typed object arguments for actions (`describe(Target)` → `arg` is an object schema) | Forms for multi-field actions without a wrapper object. | The `form` hint on an object of values plus an action. |
 | Coalescing per forwarded subscriber (`interval` is the first subscriber's) | Slow clients behind a UI host. | Pages ask for 100 ms everywhere. |
 | A BLE transport | Web Bluetooth, phones without Wi-Fi access to the node. | USB or a UI host. |
-| Deferred actions without an argument shouldn't report `arg: "any"` | Tell a deferred action that takes an argument from one that doesn't. | Deferred actions are buttons (§4). |
+| Deferred actions without an argument shouldn't report `arg: "any"` | Tell a deferred action that takes no argument from one taking raw JSON. | Deferred `arg: "any"` actions are buttons (§4); typed deferred actions report their type. |
 
 ## 14. Roadmap
 

@@ -2,7 +2,7 @@
 // from anywhere in the tree, peers included.
 
 import { buildLeaf, buildSection, depthOf, isElement, type Item, type Leaf } from './model';
-import { joinPath, parentPath, remoteOf, schemaAt, segments, type Hint, type Schema } from './schema';
+import { accessAt, joinPath, parentPath, remoteOf, schemaAt, segments, type Hint, type Schema } from './schema';
 import { commonAncestor, type SubSpec } from '../store/subs';
 
 export interface ViewItemDoc {
@@ -87,9 +87,9 @@ export function buildView(page: ViewPage, root: Schema): View {
     // A custom element over an object draws it whole: a custom page when
     // it is a view's only item (DESIGN.md §9.8).
     if (hinted.type === 'object' && !isElement(hinted.ui?.widget)) {
-      return { kind: 'node', path, item: buildSection(path, hinted, level, nodeRoot) };
+      return { kind: 'node', path, item: buildSection(path, hinted, level, nodeRoot, accessAt(root, parentPath(path))) };
     }
-    const leaf: Leaf = buildLeaf(path.slice(path.lastIndexOf('/') + 1), path, hinted, parentPath(path), nodeRoot);
+    const leaf: Leaf = buildLeaf(path.slice(path.lastIndexOf('/') + 1), path, hinted, parentPath(path), nodeRoot, accessAt(root, parentPath(path)));
     return { kind: 'node', path, item: leaf };
   };
 

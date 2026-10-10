@@ -101,7 +101,7 @@
     <div class="form-actions">
       {#if draft.size}<span class="muted">{t('{n} modified', { n: draft.size })}</span>{/if}
       <button class="quiet" disabled={!draft.size || busy} onclick={() => (draft.values = {})}>{t('Reset')}</button>
-      <button class={submitAction?.style ?? 'primary'} disabled={busy || session.state !== 'open' || !enabled} onclick={submit}>
+      <button class={submitAction?.style ?? 'primary'} disabled={busy || session.state !== 'open' || !enabled || !session.can(submitAction?.access ?? sec.access)} onclick={submit}>
         {submitAction?.label ?? t('Apply')}
       </button>
     </div>

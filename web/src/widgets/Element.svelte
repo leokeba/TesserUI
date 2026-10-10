@@ -108,7 +108,7 @@
   // The inferred widget, without the custom one.
   const fallback = $derived(
     failed && leaf.type !== 'object'
-      ? buildLeaf(leaf.name, leaf.path, { ...leaf.schema, ui: { ...leaf.schema.ui, widget: '' } }, parentPath(leaf.path))
+      ? { ...buildLeaf(leaf.name, leaf.path, { ...leaf.schema, ui: { ...leaf.schema.ui, widget: '' } }, parentPath(leaf.path)), access: leaf.access }
       : null,
   );
   const Fallback = $derived(fallback ? widgetOf(fallback).component : null);

@@ -3,7 +3,7 @@
 
 import { parseConditions, type Condition } from './conditions';
 import { decimalsOf, humanize } from './format';
-import { isUnder, joinPath, parentPath, type Hint, type Schema } from './schema';
+import { higher, isUnder, joinPath, parentPath, type Hint, type Level, type Schema } from './schema';
 
 export type Widget =
   | 'toggle'
@@ -53,6 +53,8 @@ interface Base {
   hidden: boolean;
   visibleWhen?: Condition[];
   enabledWhen?: Condition[];
+  // The level changing it takes, when above public (TesserAPI §13.1).
+  access?: Level;
 }
 
 export interface Leaf extends Base {
@@ -73,8 +75,11 @@ export interface Leaf extends Base {
   maxLength?: number;
   options?: Option[];
   confirm?: string;
+  // Never read back: an empty password field.
+  secret?: boolean;
   // Actions
   field?: Widget; // the argument's input, for typed actions
+  params?: Leaf[]; // the fields of an object argument, paths relative to it
   value?: Hint; // the argument a `button` sends
   returns?: string;
   deferred?: boolean;
@@ -198,6 +203,8 @@ export function optionsOf(s: Schema): Option[] | undefined {
 // The root of the node being built: absolute condition paths are relative to
 // it. Set by buildPage() and buildLeaf() for the duration of one build.
 let nodeRoot = '/';
+// The access level the ancestors of what is being built require.
+let inherited: Level | undefined;
 
 function base(name: string, path: string, s: Schema, parent: string): Base {
   const b: Base = {
@@ -208,6 +215,8 @@ function base(name: string, path: string, s: Schema, parent: string): Base {
     hidden: ui(s, 'hidden') === true,
   };
   if (s.description) b.description = s.description;
+  const need = higher(inherited, s.access);
+  if (need && need !== 'public') b.access = need;
   const icon = uiStr(s, 'icon');
   if (icon) b.icon = icon;
   const vis = uiStr(s, 'visibleWhen');
@@ -217,8 +226,13 @@ function base(name: string, path: string, s: Schema, parent: string): Base {
   return b;
 }
 
-export function buildLeaf(name: string, path: string, s: Schema, parent: string, root?: string): Leaf {
-  if (root !== undefined) nodeRoot = root;
+// `root` and `above` (the level its ancestors require) are given when
+// building a leaf on its own, outside a page.
+export function buildLeaf(name: string, path: string, s: Schema, parent: string, root?: string, above?: Level): Leaf {
+  if (root !== undefined) {
+    nodeRoot = root;
+    inherited = above;
+  }
   const leaf: Leaf = { ...base(name, path, s, parent), kind: 'leaf', widget: 'readout', schema: s, type: s.type, editable: false };
   if (s.min !== undefined) leaf.min = s.min;
   if (s.max !== undefined) leaf.max = s.max;
@@ -261,7 +275,8 @@ export function buildLeaf(name: string, path: string, s: Schema, parent: string,
       return leaf; // links are built by sections
   }
   leaf.editable = !!s.writable && ui(s, 'readonly') !== true;
-  leaf.widget = inferWidget(s, s.type, leaf.editable);
+  if (s.secret) leaf.secret = true;
+  leaf.widget = s.secret && leaf.editable && s.type === 'string' ? 'password' : inferWidget(s, s.type, leaf.editable);
   number(leaf, s);
   if (s.enum) leaf.options = optionsOf(s);
   if (leaf.widget === 'chart') leaf.history = uiNum(s, 'history') ?? 60;
@@ -285,12 +300,18 @@ function action(leaf: Leaf, s: Schema): Leaf {
   const arg = s.arg;
   const hint = uiStr(s, 'widget');
   leaf.widget = 'button';
-  // Deferred actions take tesser::Call&, which the schema reports as an
-  // untyped argument: they're buttons.
-  if (!arg || s.deferred) return leaf;
+  // Deferred actions taking tesser::Call& alone report an untyped argument:
+  // they're buttons. Typed deferred actions get their input.
+  if (!arg || (s.deferred && arg === 'any')) return leaf;
   leaf.type = arg;
-  if (hint === 'button' && ui(s, 'value') !== undefined) {
+  // A fixed argument: the button sends it ("$now": the browser's clock).
+  if (ui(s, 'value') !== undefined) {
     leaf.value = ui(s, 'value');
+    return leaf;
+  }
+  if (arg === 'object') {
+    leaf.editable = true;
+    leaf.params = s.params ? fields(s.params, '') : [];
     return leaf;
   }
   if (hint === 'hold' && arg === 'boolean') {
@@ -323,6 +344,18 @@ function columns(items: Schema, prefix: string): Leaf[] {
   return out;
 }
 
+// The inputs of an object argument: its values, nested objects flattened
+// into paths relative to the argument.
+function fields(params: Schema, prefix: string): Leaf[] {
+  const out: Leaf[] = [];
+  for (const [name, c] of Object.entries(params.children ?? {})) {
+    const rel = prefix ? `${prefix}/${name}` : name;
+    if (c.type === 'object') out.push(...fields(c, rel));
+    else if (c.type !== 'action' && c.type !== 'event' && ui(c, 'hidden') !== true) out.push(buildLeaf(name, rel, c, ''));
+  }
+  return out;
+}
+
 function link(name: string, path: string, s: Schema, parent: string): LinkItem {
   const l: LinkItem = { ...base(name, path, s, parent), kind: 'link', remote: s.type === 'remote', online: s.online !== false };
   if (s.type === 'remote') {
@@ -350,6 +383,8 @@ function section(name: string, path: string, s: Schema, level: number, parent: s
   };
   const cols = uiNum(s, 'columns');
   if (cols) sec.columns = cols;
+  const above = inherited;
+  inherited = higher(inherited, s.access);
   for (const [childName, c] of Object.entries(s.children ?? {})) {
     const childPath = joinPath(path, childName);
     let item: Item;
@@ -369,6 +404,7 @@ function section(name: string, path: string, s: Schema, level: number, parent: s
     }
     (item.advanced ? sec.advancedItems : sec.items).push(item);
   }
+  inherited = above;
   if (sec.form) {
     const actions = sec.items.filter((i): i is Leaf => i.kind === 'leaf' && i.schema.type === 'action');
     const submit = actions.find((a) => a.submit) ?? actions[0];
@@ -379,8 +415,10 @@ function section(name: string, path: string, s: Schema, level: number, parent: s
 
 // The page at `path`, from the schema of the page's object. `root` is the
 // path of the node it belongs to ('/', or a remote node's path).
-export function buildPage(s: Schema, path: string, root = '/', t: (text: string) => string = (x) => x): Page {
+// `above`: the level the page's ancestors require.
+export function buildPage(s: Schema, path: string, root = '/', t: (text: string) => string = (x) => x, above?: Level): Page {
   nodeRoot = root;
+  inherited = above;
   const page: Page = {
     path,
     label: s.label ?? (path === '/' ? t('Device') : root === path ? path.slice(path.lastIndexOf('/') + 1) : humanize(path.slice(path.lastIndexOf('/') + 1))),
@@ -391,7 +429,7 @@ export function buildPage(s: Schema, path: string, root = '/', t: (text: string)
   if (s.description) page.description = s.description;
   // A page drawn by a custom element: one card, the element.
   if (isElement(s.ui?.widget)) {
-    const leaf = buildLeaf(path.slice(path.lastIndexOf('/') + 1) || 'root', path, s, parentPath(path), root);
+    const leaf = buildLeaf(path.slice(path.lastIndexOf('/') + 1) || 'root', path, s, parentPath(path), root, above);
     leaf.label = '';
     page.cards.push({ ...base('', path, {type: 'object'}, path), kind: 'section', level: 1, items: [leaf], advancedItems: [], lazy: false, tabs: false, inline: false, collapsed: false, form: false });
     return page;
@@ -431,8 +469,9 @@ export function buildPage(s: Schema, path: string, root = '/', t: (text: string)
 }
 
 // A subtree rendered as one section at `level` (a view's node item).
-export function buildSection(path: string, s: Schema, level: number, root = '/'): Section {
+export function buildSection(path: string, s: Schema, level: number, root = '/', above?: Level): Section {
   nodeRoot = root;
+  inherited = above;
   const promoted: Section[] = [];
   const name = path.slice(path.lastIndexOf('/') + 1);
   const sec = section(name, path, s, level, parentPath(path), promoted);

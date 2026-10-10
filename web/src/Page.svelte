@@ -2,7 +2,7 @@
   import { useSession } from './shared.svelte';
   import Icon from './Icon.svelte';
   import { buildPage } from './model/model';
-  import { parentPath } from './model/schema';
+  import { accessAt, parentPath } from './model/schema';
   import Section from './Section.svelte';
 
   // home: where the UI starts; back doesn't go above it.
@@ -22,7 +22,7 @@
     void session.schemaVersion;
     return session.nodeRoot(path);
   });
-  const page = $derived(schema ? buildPage(schema, path, nodeRoot, t) : null);
+  const page = $derived(schema ? buildPage(schema, path, nodeRoot, t, accessAt(session.root, parentPath(path))) : null);
   $effect(() => {
     if (page) session.showPage(page);
   });

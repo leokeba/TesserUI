@@ -4,10 +4,10 @@
 import { EnvelopeClient, serialLink, webSocketLink } from '../client/envelope';
 import { HttpClient } from '../client/http';
 import { isObject } from '../client/json';
-import type { Client, ConnState, Notification, Reply, Request } from '../client/types';
+import { errorText, type Client, type ConnState, type Notification, type Reply, type Request } from '../client/types';
 import type { Condition } from '../model/conditions';
 import { visiblePaths, type Item, type Leaf, type Page, type Section } from '../model/model';
-import { isUnder, joinPath, mergeSchema, parentPath, remoteOf, schemaAt, segments, type Schema } from '../model/schema';
+import { isUnder, joinPath, mergeSchema, parentPath, rank, remoteOf, schemaAt, segments, type Level, type Schema } from '../model/schema';
 import type { ViewPage } from '../model/views';
 import { Store } from './store.svelte';
 import { commonAncestor, Subscriptions, type SubSpec } from './subs';
@@ -44,13 +44,17 @@ function storageGet(key: string): string | null {
   }
 }
 
-function storageSet(key: string, value: string) {
+function storageSet(key: string, value: string | null) {
   try {
-    localStorage.setItem(key, value);
+    if (value === null) localStorage.removeItem(key);
+    else localStorage.setItem(key, value);
   } catch {
     // private mode, full: the cache is only a cache
   }
 }
+
+const LEVELS: Level[] = ['public', 'user', 'admin'];
+const asLevel = (v: unknown): Level | null => (LEVELS.includes(v as Level) ? (v as Level) : null);
 
 export class Session {
   state: ConnState = $state('connecting');
@@ -59,7 +63,15 @@ export class Session {
   views: ViewPage[] | null = $state(null);
   loaded = $state(false);
   needToken = $state(false);
-  // The node's own root, once known: its label names the device.
+  // This client's access level, when the node says (a `whoami` action); null
+  // while unknown: nothing is disabled for it then.
+  level: Level | null = $state(null);
+  signedIn = $state(!!storageGet(TOKEN_KEY));
+  // Actions with ui.auth: "login" signs in with its object argument and
+  // replies with a token; "whoami" replies with the client's level
+  // (DESIGN.md §7.4).
+  login: { path: string; schema: Schema } | null = $state(null);
+  private whoamiPath: string | null = null;  // The node's own root, once known: its label names the device.
   root: Schema = { type: 'object' };
   store: Store;
   subs: Subscriptions;
@@ -93,13 +105,47 @@ export class Session {
     return storageGet(TOKEN_KEY);
   }
 
-  setToken(token: string) {
+  setToken(token: string | null) {
     storageSet(TOKEN_KEY, token);
+    this.signedIn = !!token;
     this.needToken = false;
-    // The WebSocket authenticates on its handshake: reconnect.
+    this.reload();
+  }
+
+  // Whether this client may change a node needing `need`.
+  can(need: Level | undefined): boolean {
+    return this.level === null || rank(this.level) >= rank(need);
+  }
+
+  // Signs in through the login action; returns an error text, or null.
+  async signIn(values: Record<string, unknown>): Promise<string | null> {
+    if (!this.login) return null;
+    const r = await this.client.request({ op: 'set', path: this.login.path, body: values });
+    if (r.status !== 'ok') return errorText(r, this.store.t);
+    const body = r.body as { token?: unknown } | string;
+    const token = typeof body === 'string' ? body : body?.token;
+    if (typeof token !== 'string') return this.t('No token in the reply');
+    this.setToken(token);
+    return null;
+  }
+
+  signOut() {
+    this.setToken(null);
+  }
+
+  // A new identity: what the node shows may differ, so the schema is read
+  // again. The WebSocket authenticates on its handshake: it reconnects.
+  private reload() {
+    if (!this.client) return;
+    this.loaded = false;
+    for (const k of Object.keys(this.root)) delete (this.root as unknown as Record<string, unknown>)[k];
+    this.root.type = 'object';
+    this.schemaVersion++;
     if (this.client.kind === 'ws') {
       this.client.close();
       this.client.connect();
+    } else {
+      this.load();
     }
   }
 
@@ -157,6 +203,8 @@ export class Session {
 
   private async load() {
     if (!(await this.fetchSchema('/', 3))) return;
+    this.findAuth();
+    await this.whoami();
     // Views first: they decide the landing page.
     const ui = this.root.children?._ui;
     if (ui?.type === 'custom') {
@@ -164,6 +212,27 @@ export class Session {
       if (r.status === 'ok' && isObject(r.body) && Array.isArray(r.body.pages)) this.views = r.body.pages as unknown as ViewPage[];
     }
     this.loaded = true;
+  }
+
+  private findAuth() {
+    this.login = null;
+    this.whoamiPath = null;
+    const walk = (s: Schema, path: string) => {
+      for (const [name, c] of Object.entries(s.children ?? {})) {
+        const p = joinPath(path, name);
+        if (c.type === 'object') walk(c, p);
+        else if (c.type === 'action' && c.ui?.auth === 'login') this.login = { path: p, schema: c };
+        else if (c.type === 'action' && c.ui?.auth === 'whoami') this.whoamiPath = p;
+      }
+    };
+    walk(this.root, '/');
+  }
+
+  private async whoami() {
+    this.level = null;
+    if (!this.whoamiPath) return;
+    const r = await this.client.request({ op: 'set', path: this.whoamiPath, body: null });
+    if (r.status === 'ok') this.level = asLevel(isObject(r.body) ? r.body.access : r.body);
   }
 
   private notify(n: Notification) {

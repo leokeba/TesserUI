@@ -14,7 +14,10 @@
   const get = (p: string) => store.get(p);
   const visible = $derived(!leaf.visibleWhen || holds(leaf.visibleWhen, get));
   const disabled = $derived(
-    session.state !== 'open' || session.isOffline(leaf.path) || (!!leaf.enabledWhen && !holds(leaf.enabledWhen, get)),
+    session.state !== 'open' ||
+      session.isOffline(leaf.path) ||
+      !session.can(leaf.access) ||
+      (!!leaf.enabledWhen && !holds(leaf.enabledWhen, get)),
   );
   const modified = $derived(!!draft && leaf.path in draft.values);
   const value = $derived(modified ? draft!.values[leaf.path] : store.get(leaf.path));
