@@ -76,6 +76,15 @@ test('conditions and forms', async ({ page }) => {
   await expect(row(page, 'Ssid').locator('input')).toHaveValue('field-net');
 });
 
+test('groups load their schema on opening', async ({ page }) => {
+  await open(page);
+  await page.locator('summary', { hasText: 'Network' }).click();
+  // Below the page's schema depth: fetched when opened, then shown.
+  await page.locator('summary', { hasText: 'Deep' }).click();
+  await page.locator('summary', { hasText: 'Deeper' }).click();
+  await expect(row(page, 'Leaf').locator('input')).toHaveValue('42');
+});
+
 test('warnings show while their condition holds', async ({ page }) => {
   await open(page);
   await page.locator('summary', { hasText: 'Network' }).click();

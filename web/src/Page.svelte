@@ -22,7 +22,12 @@
     void session.schemaVersion;
     return session.nodeRoot(path);
   });
-  const page = $derived(schema ? buildPage(schema, path, nodeRoot, t, accessAt(session.root, parentPath(path))) : null);
+  // Schema loaded below the page (lazy groups, lists' items) is merged into
+  // the same tree in place: the page is rebuilt on every merge.
+  const page = $derived.by(() => {
+    void session.schemaVersion;
+    return schema ? buildPage(schema, path, nodeRoot, t, accessAt(session.root, parentPath(path))) : null;
+  });
   $effect(() => {
     if (page) session.showPage(page);
   });
