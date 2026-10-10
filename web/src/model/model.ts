@@ -29,7 +29,14 @@ export type Widget =
   | 'json'
   | 'events'
   | 'table'
-  | 'link';
+  | 'link'
+  // A custom element (DESIGN.md §9.8): any name with a hyphen.
+  | `${string}-${string}`;
+
+// Custom element names: lowercase, starting with a letter, with a hyphen
+// (the HTML rule).
+export const isElement = (w: unknown): w is `${string}-${string}` =>
+  typeof w === 'string' && /^[a-z][a-z0-9._]*-[a-z0-9._-]*$/.test(w);
 
 export interface Option {
   value: string;
@@ -73,6 +80,8 @@ export interface Leaf extends Base {
   deferred?: boolean;
   style?: string;
   submit?: boolean;
+  // Custom elements: the module script that defines it.
+  script?: string;
   // Charts, events, tables
   history?: number;
   toast?: boolean;
@@ -220,6 +229,17 @@ export function buildLeaf(name: string, path: string, s: Schema, parent: string,
   if (placeholder) leaf.placeholder = placeholder;
   if (s.maxLength) leaf.maxLength = s.maxLength;
 
+  // A custom element takes any node, objects included, as it is.
+  if (isElement(s.ui?.widget)) {
+    leaf.widget = s.ui.widget;
+    leaf.editable = (!!s.writable || s.type === 'action' || s.type === 'list') && ui(s, 'readonly') !== true;
+    const script = uiStr(s, 'script');
+    if (script) leaf.script = script;
+    if (s.type === 'action' && s.arg) leaf.type = s.arg;
+    number(leaf, s);
+    if (s.enum) leaf.options = optionsOf(s);
+    return leaf;
+  }
   switch (s.type) {
     case 'action':
       return action(leaf, s);
@@ -333,7 +353,9 @@ function section(name: string, path: string, s: Schema, level: number, parent: s
   for (const [childName, c] of Object.entries(s.children ?? {})) {
     const childPath = joinPath(path, childName);
     let item: Item;
-    if (c.type === 'remote' || (c.type === 'object' && ui(c, 'page') === true)) {
+    if (c.type === 'object' && isElement(c.ui?.widget) && ui(c, 'page') !== true) {
+      item = buildLeaf(childName, childPath, c, path);
+    } else if (c.type === 'remote' || (c.type === 'object' && ui(c, 'page') === true)) {
       item = link(childName, childPath, c, path);
     } else if (c.type === 'object') {
       if (ui(c, 'card') === true && level >= 1) {
@@ -357,23 +379,30 @@ function section(name: string, path: string, s: Schema, level: number, parent: s
 
 // The page at `path`, from the schema of the page's object. `root` is the
 // path of the node it belongs to ('/', or a remote node's path).
-export function buildPage(s: Schema, path: string, root = '/'): Page {
+export function buildPage(s: Schema, path: string, root = '/', t: (text: string) => string = (x) => x): Page {
   nodeRoot = root;
   const page: Page = {
     path,
-    label: s.label ?? (path === '/' ? 'Device' : root === path ? path.slice(path.lastIndexOf('/') + 1) : humanize(path.slice(path.lastIndexOf('/') + 1))),
+    label: s.label ?? (path === '/' ? t('Device') : root === path ? path.slice(path.lastIndexOf('/') + 1) : humanize(path.slice(path.lastIndexOf('/') + 1))),
     cards: [],
     columns: uiNum(s, 'columns') ?? 3,
     depth: depthOf(s),
   };
   if (s.description) page.description = s.description;
+  // A page drawn by a custom element: one card, the element.
+  if (isElement(s.ui?.widget)) {
+    const leaf = buildLeaf(path.slice(path.lastIndexOf('/') + 1) || 'root', path, s, parentPath(path), root);
+    leaf.label = '';
+    page.cards.push({ ...base('', path, {type: 'object'}, path), kind: 'section', level: 1, items: [leaf], advancedItems: [], lazy: false, tabs: false, inline: false, collapsed: false, form: false });
+    return page;
+  }
   // Values directly under the page form a first, untitled card; each child
   // object is a card (advanced ones start collapsed); remote nodes get a card
   // of their own.
   const promoted: Section[] = [];
   const top = section('', path, { ...s, ui: { ...s.ui, form: false, tabs: false, inline: false } }, 0, path, promoted);
   const first: Section = { ...top, level: 1, label: '', items: [], advancedItems: [] };
-  const nodes: Section = { ...first, label: 'Nodes', items: [], advancedItems: [] };
+  const nodes: Section = { ...first, label: t('Nodes'), items: [], advancedItems: [] };
   for (const item of [...top.items, ...top.advancedItems]) {
     if (item.kind === 'section') {
       if (item.advanced) item.collapsed = true;
@@ -414,6 +443,8 @@ export function buildSection(path: string, s: Schema, level: number, root = '/')
 // Object levels below `s` that its schema expands (the `depth` that reads
 // all of it).
 export function depthOf(s: Schema): number {
+  // A custom element may read anything below its object.
+  if (s.type === 'object' && isElement(s.ui?.widget)) return Infinity;
   if (s.type !== 'object' || !s.children) return 0;
   let d = 0;
   for (const c of Object.values(s.children)) d = Math.max(d, depthOf(c));

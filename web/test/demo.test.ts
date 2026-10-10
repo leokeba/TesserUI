@@ -25,6 +25,11 @@ const leaf = (p: string) => find(p) as Leaf;
 const sec = (p: string) => find(p) as Section;
 
 describe('demo: widgets', () => {
+  it('draws an object with a custom element (DESIGN §9.8)', () => {
+    expect(leaf('/sky')).toMatchObject({ kind: 'leaf', type: 'object', widget: 'x-sun-dial', script: '/ext/sun-dial.js', editable: false });
+    // The element may read anything below its object: no depth limit.
+    expect(page.depth).toBe(Infinity);
+  });
   it('covers every widget', () => {
     const widgets = new Set<string>();
     const walk = (items: Item[]) => {
@@ -77,7 +82,7 @@ describe('demo: widgets', () => {
   });
   it('lays out sections (DESIGN §6.1)', () => {
     expect(page.columns).toBe(3);
-    expect(page.cards[0]).toMatchObject({ label: '', items: [{ name: 'uptime' }, { name: 'online' }, { name: 'schedule' }, { name: 'info', kind: 'link' }, { name: 'blob' }, { name: '_ui', hidden: true }] });
+    expect(page.cards[0]).toMatchObject({ label: '', items: [{ name: 'uptime' }, { name: 'online' }, { name: 'schedule' }, { name: 'info', kind: 'link' }, { name: 'sky', kind: 'leaf', widget: 'x-sun-dial', script: '/ext/sun-dial.js' }, { name: 'blob' }, { name: '_ui', hidden: true }] });
     expect(sec('/config/network')).toMatchObject({ level: 2, collapsed: true });
     // Depth 3 from the root: the 4th level is fetched on opening.
     expect(sec('/config/network/deep')).toMatchObject({ level: 3, lazy: false });
@@ -119,6 +124,15 @@ describe('demo: views (DESIGN §8)', () => {
     const v = buildView(view, root);
     expect(v.items[3]).toMatchObject({ kind: 'node', item: { path: '/peers/heliostat-3/lamp/on', label: 'Heliostat 3', widget: 'toggle' } });
     expect(v.specs).toContainEqual({ path: '/peers/heliostat-3/lamp/on', depth: 0 });
+  });
+});
+
+describe('demo: custom pages', () => {
+  it('a view of one custom element is a custom page', () => {
+    const sky = demo.views!.pages.find((p) => (p as ViewPage).id === 'sky') as ViewPage;
+    const v = buildView(sky, demo.schema);
+    expect(v.items).toMatchObject([{ kind: 'node', item: { kind: 'leaf', widget: 'x-sun-dial', path: '/sky' } }]);
+    expect(v.specs).toEqual([{ path: '/sky', depth: undefined }]);
   });
 });
 

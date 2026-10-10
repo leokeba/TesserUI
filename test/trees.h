@@ -151,6 +151,9 @@ struct Demo {
     bool armed = false;
     int conditional = 5;
     std::string scene = "none";
+    // sky: drawn by a custom element (<x-sun-dial>)
+    double sunAz = 135, sunEl = 40;
+    double targetAz = 180, targetEl = 45;
 
     // The links, after the trees they serve (destroyed first).
     tesser::DatagramEndpoint link;           // this node's side

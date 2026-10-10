@@ -1,7 +1,9 @@
 <script lang="ts">
+  import { useSession } from '../shared.svelte';
   import { asNumber, fixed, parseNumber, type WidgetProps } from './types';
   let { leaf, value, set, disabled, id }: WidgetProps = $props();
 
+  const session = useSession();
   const step = $derived(leaf.step ?? 1);
   function bump(d: number) {
     const n = asNumber(value);
@@ -12,7 +14,7 @@
 
 <div class="num">
   {#if leaf.widget === 'stepper'}
-    <button type="button" {disabled} aria-label="Decrease {leaf.label}" onclick={() => bump(-1)}>−</button>
+    <button type="button" {disabled} aria-label={session.t('Decrease {label}', { label: leaf.label })} onclick={() => bump(-1)}>−</button>
   {/if}
   <input
     {id}
@@ -29,7 +31,7 @@
     }}
   />
   {#if leaf.widget === 'stepper'}
-    <button type="button" {disabled} aria-label="Increase {leaf.label}" onclick={() => bump(1)}>+</button>
+    <button type="button" {disabled} aria-label={session.t('Increase {label}', { label: leaf.label })} onclick={() => bump(1)}>+</button>
   {/if}
   {#if leaf.unit}<span class="unit">{leaf.unit}</span>{/if}
 </div>

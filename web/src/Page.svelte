@@ -1,12 +1,14 @@
 <script lang="ts">
-  import { app } from './shared.svelte';
+  import { useSession } from './shared.svelte';
   import Icon from './Icon.svelte';
   import { buildPage } from './model/model';
   import { parentPath } from './model/schema';
   import Section from './Section.svelte';
 
-  let { path }: { path: string } = $props();
-  const session = app.session;
+  // home: where the UI starts; back doesn't go above it.
+  let { path, home = '/' }: { path: string; home?: string } = $props();
+  const session = useSession();
+  const t = (text: string) => session.t(text);
 
   let failed = $state(false);
   async function load() {
@@ -20,7 +22,7 @@
     void session.schemaVersion;
     return session.nodeRoot(path);
   });
-  const page = $derived(schema ? buildPage(schema, path, nodeRoot) : null);
+  const page = $derived(schema ? buildPage(schema, path, nodeRoot, t) : null);
   $effect(() => {
     if (page) session.showPage(page);
   });
@@ -34,9 +36,9 @@
   // ui.page (DESIGN.md §6.1).
   const back = $derived.by(() => {
     void session.schemaVersion;
-    if (path === '/') return null;
+    if (path === home) return null;
     let p = parentPath(path);
-    while (p !== '/') {
+    while (p !== '/' && p !== home) {
       const s = session.schemaAt(p);
       if (s?.type === 'remote' || s?.ui?.page === true) break;
       p = parentPath(p);
@@ -45,19 +47,19 @@
   });
 </script>
 
-{#if back !== null}
+{#if path !== '/'}
   <div class="head">
-    <a class="back" href="#{back}" aria-label="Back"><Icon name="left" /></a>
+    {#if back !== null}<a class="back" href="#{back}" aria-label={t('Back')}><Icon name="left" /></a>{/if}
     <h1>{page?.label ?? path.slice(path.lastIndexOf('/') + 1)}</h1>
     {#if nodeRoot === path && nodeRoot !== '/'}
-      <span class="dot" class:off={offline}></span><span class="muted">{offline ? 'Offline' : 'Online'}</span>
+      <span class="dot" class:off={offline}></span><span class="muted">{t(offline ? 'Offline' : 'Online')}</span>
     {/if}
   </div>
 {/if}
 {#if page?.description}<p class="muted desc">{page.description}</p>{/if}
 
 {#if offline}
-  <p class="banner warn card"><Icon name="alert" /> This node is offline. Its controls come back when it is heard from again.</p>
+  <p class="banner warn card"><Icon name="alert" /> {t('This node is offline. Its controls come back when it is heard from again.')}</p>
 {/if}
 
 {#if page}
@@ -68,11 +70,11 @@
   </div>
 {:else if failed}
   <div class="center">
-    <p class="muted">This page could not be loaded{offline ? ': the node is offline' : ''}.</p>
-    <button onclick={load}><Icon name="refresh" /> Retry</button>
+    <p class="muted">{t(offline ? 'This page could not be loaded: the node is offline.' : 'This page could not be loaded.')}</p>
+    <button onclick={load}><Icon name="refresh" /> {t('Retry')}</button>
   </div>
 {:else}
-  <p class="muted center">Loading…</p>
+  <p class="muted center">{t('Loading…')}</p>
 {/if}
 
 <style>

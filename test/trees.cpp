@@ -251,6 +251,15 @@ Demo::Demo()
     widgets.action("scene", [this](std::string s) { scene = s; }).ui("widget", "button").ui("value", "sunset");
     widgets.object("pinned").ui("card").value("note", "A nested object shown as its own card.");
 
+    // A custom element draws this object whole (DESIGN.md §9.8): the sun and
+    // a target set by clicking the sky. The script is served by the node, or
+    // by the host page (web/scripts/device.mjs serves examples/elements).
+    auto& sky = api.object("sky").label("Sky").ui("widget", "x-sun-dial").ui("script", "/ext/sun-dial.js");
+    sky.value("sunAz", [this] { return sunAz; }).unit("°").watch();
+    sky.value("sunEl", [this] { return sunEl; }).unit("°").watch();
+    sky.value("targetAz", targetAz).range(0, 360).unit("°").watch();
+    sky.value("targetEl", targetEl).range(0, 90).unit("°").watch();
+
     api.custom("blob", [](tesser::JsonWriter& w) { w.raw("{\"a\":1,\"b\":[1,2]}"); });
 
     // Discovered peers, as a UI host shows them: two live ones, advertising
@@ -270,6 +279,8 @@ Demo::Demo()
     overview.card("Motor").node("/motor");
     overview.text("Live values from **every** node.");
     overview.each("/peers", "$/lamp/on");
+    // A view whose only item is a custom element: a custom page.
+    views.page("sky", "Sky").widget("x-sun-dial", "/sky");
 }
 
 void Demo::tick(uint32_t nowMs) {
@@ -279,6 +290,10 @@ void Demo::tick(uint32_t nowMs) {
     lastMs_ = nowMs;
 
     uptime = 3600 + (nowMs - startMs_) / 1000;
+    // The sun crosses the sky in two minutes, east to west.
+    double day = fmod(t / 120.0, 1.0);
+    sunAz = 90.0 + 180.0 * day;
+    sunEl = 60.0 * sin(3.14159265358979 * day);
     temperature = 21.5f + 1.5f * static_cast<float>(sin(t / 20.0));
     humidity = 48.25f + 6.0f * static_cast<float>(sin(t / 33.0));
     pressure = 1013.25f + 3.0f * static_cast<float>(sin(t / 61.0));

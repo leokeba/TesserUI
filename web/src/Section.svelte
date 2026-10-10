@@ -1,6 +1,6 @@
 <script lang="ts">
   import { setContext } from 'svelte';
-  import { app, Draft, DRAFT } from './shared.svelte';
+  import { useSession, Draft, DRAFT } from './shared.svelte';
   import { isObject } from './client/json';
   import Icon from './Icon.svelte';
   import Item from './Item.svelte';
@@ -10,8 +10,9 @@
   import EventList from './widgets/EventList.svelte';
 
   let { sec }: { sec: Section } = $props();
-  const session = app.session;
+  const session = useSession();
   const store = session.store;
+  const t = (text: string, vars?: Record<string, string | number>) => session.t(text, vars);
 
   const visible = $derived(!sec.visibleWhen || holds(sec.visibleWhen, (p) => store.get(p)));
   const enabled = $derived(!sec.enabledWhen || holds(sec.enabledWhen, (p) => store.get(p)));
@@ -67,7 +68,7 @@
 {#snippet body()}
   {#if sec.description && sec.level > 0}<p class="help">{sec.description}</p>{/if}
   {#if sec.lazy}
-    <p class="muted">Loading…</p>
+    <p class="muted">{t('Loading…')}</p>
   {:else}
     <div class="items" class:inline={sec.inline}>
       {#each plain as item (item.path)}
@@ -90,7 +91,7 @@
   {/if}
   {#if sec.advancedItems.length}
     <details class="adv">
-      <summary>Advanced</summary>
+      <summary>{t('Advanced')}</summary>
       <div class="items">
         {#each sec.advancedItems as item (item.path)}<Item {item} />{/each}
       </div>
@@ -98,10 +99,10 @@
   {/if}
   {#if draft}
     <div class="form-actions">
-      {#if draft.size}<span class="muted">{draft.size} modified</span>{/if}
-      <button class="quiet" disabled={!draft.size || busy} onclick={() => (draft.values = {})}>Reset</button>
+      {#if draft.size}<span class="muted">{t('{n} modified', { n: draft.size })}</span>{/if}
+      <button class="quiet" disabled={!draft.size || busy} onclick={() => (draft.values = {})}>{t('Reset')}</button>
       <button class={submitAction?.style ?? 'primary'} disabled={busy || session.state !== 'open' || !enabled} onclick={submit}>
-        {submitAction?.label ?? 'Apply'}
+        {submitAction?.label ?? t('Apply')}
       </button>
     </div>
   {/if}

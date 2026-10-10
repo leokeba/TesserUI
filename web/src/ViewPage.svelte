@@ -1,14 +1,15 @@
 <script lang="ts">
   // A view page (DESIGN.md §8): items from anywhere in the tree, peers
   // included, laid out as cards.
-  import { app } from './shared.svelte';
+  import { useSession } from './shared.svelte';
   import Item from './Item.svelte';
-  import type { Section as SectionModel } from './model/model';
+  import { isElement, type Section as SectionModel } from './model/model';
+  import Row from './Row.svelte';
   import { buildView, viewModelItems, type ViewItem, type ViewPage } from './model/views';
   import Section from './Section.svelte';
 
   let { page }: { page: ViewPage } = $props();
-  const session = app.session;
+  const session = useSession();
 
   const view = $derived.by(() => {
     void session.schemaVersion;
@@ -42,6 +43,12 @@
     return out;
   });
 
+  // A view of one custom element is a custom page: the element, full width.
+  const custom = $derived.by(() => {
+    const [only, ...rest] = view.items;
+    return !rest.length && only?.kind === 'node' && only.item?.kind === 'leaf' && isElement(only.item.widget) ? { ...only.item, label: '' } : null;
+  });
+
   // **bold** is the only markup.
   const parts = (text: string) => text.split('**');
 </script>
@@ -59,11 +66,14 @@
     {:else if i.item}
       <Item item={i.item} />
     {:else}
-      <p class="muted">{i.path}: {session.isOffline(i.path) ? 'offline' : failed[i.path] ? 'unavailable' : 'loading…'}</p>
+      <p class="muted">{i.path}: {session.t(session.isOffline(i.path) ? 'offline' : failed[i.path] ? 'unavailable' : 'loading…')}</p>
     {/if}
   {/each}
 {/snippet}
 
+{#if custom}
+  <div class="custom"><Row leaf={custom} /></div>
+{:else}
 <div class="grid">
   {#each blocks as b, n (n)}
     {#if 'section' in b}
@@ -76,6 +86,7 @@
     {/if}
   {/each}
 </div>
+{/if}
 
 <style>
   .grid {
@@ -85,6 +96,9 @@
     grid-template-columns: repeat(auto-fill, minmax(min(360px, 100%), 1fr));
   }
   .card {
+    container-type: inline-size;
+  }
+  .custom {
     container-type: inline-size;
   }
   h2 {

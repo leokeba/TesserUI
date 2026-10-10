@@ -1,7 +1,9 @@
 <script lang="ts">
   import { formatValue } from '../model/format';
+  import { useSession } from '../shared.svelte';
   import { asNumber, fixed, parseNumber, type WidgetProps } from './types';
   let { leaf, value, set, disabled, id }: WidgetProps = $props();
+  const session = useSession();
   const n = $derived(asNumber(value));
 </script>
 
@@ -25,7 +27,7 @@
     step={leaf.step ?? 'any'}
     value={fixed(value, leaf.precision)}
     {disabled}
-    aria-label="{leaf.label} value"
+    aria-label={session.t('{label} value', { label: leaf.label })}
     onchange={(e) => {
       const v = parseNumber(e.currentTarget.value, leaf.type);
       if (v !== undefined) set(v);

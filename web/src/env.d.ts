@@ -1,5 +1,6 @@
 declare const __VERSION__: string;
 
 interface Window {
-  TESSER?: { api?: string; ws?: string | null; minVersion?: string; serial?: boolean };
+  // The configuration a node's page provides (DESIGN.md §9.2).
+  TESSER?: import('./embed').Options & { serial?: boolean };
 }

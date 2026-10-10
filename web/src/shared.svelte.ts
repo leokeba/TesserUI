@@ -1,7 +1,17 @@
-// Shared by every component: the session, set once by main.ts.
+// Shared by every component of one UI: its session, through Svelte context,
+// so that several UIs can live on one page (DESIGN.md §9.9).
+import { getContext, setContext } from 'svelte';
 import type { Session } from './store/session.svelte';
 
-export const app = { session: null as unknown as Session };
+const SESSION = Symbol('tesserui');
+
+export function provideSession(s: Session) {
+  setContext(SESSION, s);
+}
+
+export function useSession(): Session {
+  return getContext(SESSION);
+}
 
 // A form's local edits (DESIGN.md §7.4, ui.form), provided to its rows.
 export class Draft {

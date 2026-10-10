@@ -1,11 +1,12 @@
 <script lang="ts">
   // A time series of the value, kept by the renderer for ui.history seconds
   // (DESIGN.md §7.7), drawn on a canvas.
-  import { app } from '../shared.svelte';
+  import { useSession } from '../shared.svelte';
   import { formatValue } from '../model/format';
   import type { WidgetProps } from './types';
   let { leaf, value }: WidgetProps = $props();
-  const store = app.session.store;
+  const session = useSession();
+  const store = session.store;
 
   let canvas: HTMLCanvasElement | undefined = $state();
   let now = $state(Date.now());
@@ -52,7 +53,7 @@
   });
 </script>
 
-<div class="chart" role="img" aria-label="{leaf.label}, last {leaf.history} s">
+<div class="chart" role="img" aria-label={session.t('{label}, last {n} s', { label: leaf.label, n: leaf.history ?? 60 })}>
   <output>{formatValue(value, leaf)}</output>
   <canvas bind:this={canvas}></canvas>
 </div>

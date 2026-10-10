@@ -5,9 +5,12 @@
   import Icon from '../Icon.svelte';
   import { formatValue } from '../model/format';
   import type { Leaf } from '../model/model';
+  import { useSession } from '../shared.svelte';
   import { parseNumber, type WidgetProps } from './types';
   let { leaf, value, set, disabled }: WidgetProps = $props();
 
+  const session = useSession();
+  const t = (text: string, vars?: Record<string, string | number>) => session.t(text, vars);
   const rows = $derived(Array.isArray(value) ? value : []);
   const cols = $derived(leaf.columns ?? []);
   const full = $derived(leaf.maxSize !== undefined && rows.length >= leaf.maxSize);
@@ -42,7 +45,7 @@
       <tr>
         <th scope="col">#</th>
         {#each cols as c (c.path)}<th scope="col">{c.label}</th>{/each}
-        <th><span class="sr">Remove</span></th>
+        <th><span class="sr">{t('Remove')}</span></th>
       </tr>
     </thead>
     <tbody>
@@ -79,14 +82,14 @@
               {/if}
             </td>
           {/each}
-          <td><button type="button" class="quiet" {disabled} aria-label="Remove row {i}" onclick={() => remove(i)}><Icon name="trash" /></button></td>
+          <td><button type="button" class="quiet" {disabled} aria-label={t('Remove row {i}', { i })} onclick={() => remove(i)}><Icon name="trash" /></button></td>
         </tr>
       {:else}
-        <tr><td colspan={cols.length + 2} class="muted">Empty</td></tr>
+        <tr><td colspan={cols.length + 2} class="muted">{t('Empty')}</td></tr>
       {/each}
     </tbody>
   </table>
-  <button type="button" disabled={disabled || full} onclick={add}><Icon name="plus" /> Add{full ? ` (max ${leaf.maxSize})` : ''}</button>
+  <button type="button" disabled={disabled || full} onclick={add}><Icon name="plus" /> {full ? t('Add (max {n})', { n: leaf.maxSize! }) : t('Add')}</button>
 </div>
 
 <style>

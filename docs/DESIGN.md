@@ -19,7 +19,7 @@ TesserUI renders user interfaces for [TesserAPI](https://github.com/leokeba/Tess
 
 - A general UI framework, pixel-level layout, or custom drawing from the device.
 - An expression language. Conditions are equality tests (§5.3).
-- Replacing hand-written UIs for exceptional screens. Custom pages remain possible (§7.9, *later*), but they're outside the generic renderer.
+- Replacing hand-written UIs for exceptional screens. Those are custom elements (§9.8), which the generic renderer hosts: a widget for one node, or a whole page.
 - Rendering without TesserAPI. The schema format, the request envelope and the subscription semantics are TesserAPI's.
 
 ## 2. Constraints
@@ -118,6 +118,7 @@ m.object("pid").ui("advanced");
 | `chart` | number | A time series of the value, kept by the renderer (§7.7). |
 | `hold` | action with a boolean `arg` | Called with `true` on press and `false` on release: jog buttons. |
 | `button` | action | Explicitly a button (e.g. a typed action whose argument comes from `ui.value`). |
+| any name with a hyphen (`x-sun-dial`) | any node, objects included | A custom element (§9.8), web only. Other renderers use the tier 0 widget; on an object, its section. |
 
 ### 5.2 Other keys
 
@@ -145,6 +146,7 @@ m.object("pid").ui("advanced");
 | `submit` | flag | action in a `form` | The form's submit action, when it has several. |
 | `visibleWhen`, `enabledWhen` | string | any | A condition (§5.3). |
 | `toast` | flag | event | Also show each occurrence as a toast (web). |
+| `script` | string | custom element | URL of the module script defining the element (§9.8), relative to the node's API. |
 
 ### 5.3 Conditions
 
@@ -270,6 +272,7 @@ field.card("Calibration").node("/calib");         // an auto-rendered subtree
 | `{"text": s}` | A paragraph. Plain text; `**bold**` is the only markup. |
 | `{"each": path, "item": item}` | The item repeated for each child of the object at `path`, with `$` replaced by the child's path. With `/peers`, one entry per discovered node. |
 
+- A `widget` item may name a custom element (§9.8) over any path, an object included. A view whose only item is one is a **custom page**: the element alone, the page's full width.
 - The renderer shows view pages first, before the node's own tree, as entries of the root menu (LCD) or as tabs (web). Route: `#/v/<id>`.
 - A view's subscriptions follow §7.3: one per distinct remote node involved, plus one local, within the budget of 4. When a page involves more than 3 nodes, the renderer subscribes to the nodes on screen and falls back to polling (one get per second) for the rest.
 - `Views` stores its declaration as C++ structures of string literals and renders the JSON on request: no JSON document at rest. A UI host may instead serve a JSON file from its filesystem through a `custom` node with the same name and format.
@@ -281,13 +284,17 @@ field.card("Calibration").node("/calib");         // an auto-rendered subtree
 ```
 web/
   src/client/      envelope client: WebSocket, HTTP, Web Serial transports
-  src/model/       schema → UI model (§4, §5), conditions, formatting
-  src/store/       values, pending writes, merge patches, subscriptions
-  src/widgets/     one Svelte component per semantic widget
-  src/Node.svelte  recursive renderer: dispatches on the model node's widget
+  src/model/       schema → UI model (§4, §5), conditions, formatting, views
+  src/store/       values, pending writes, merge patches, subscriptions, the session
+  src/widgets/     one Svelte component per semantic widget; registry.ts maps names to them
+  src/Item.svelte  recursive renderer: dispatches on the model node's kind and widget
   src/App.svelte   routing, connection state, the device list
-  test/            vitest: model and store against schema fixtures
+  src/main.ts      the bundle a node serves (ui.js); src/lib.ts the npm module (§9.9)
+  test/            vitest: model and store against schema fixtures; golden models (§11)
+  e2e/             Playwright: the built bundle against the host node (§11)
 ```
+
+**Adding a widget:** its rules in `model.ts` (`fits()` and inference), its component in `widgets/registry.ts`, and its row in §5.1. Custom elements need none of this.
 
 ### 9.2 Client
 
@@ -297,7 +304,22 @@ web/
   - writes with `PUT`
   - no subscriptions: the visible page is polled once per second
 - **Web Serial** (§9.7): newline-delimited envelopes. Lines that don't start with `{"` are ignored, and parsing starts at the first `{"` of a line, since ESP log output can interleave. A bare `\n` is sent after opening, because opening the port resets most devkits.
-- **Configuration:** `window.TESSER = {api: "/api", ws: "/ws", minVersion: "x.y.z"}` in the page (`ws: null`: HTTP only), or the defaults `/api` and `/ws` on the page's origin. For development, the query string overrides it: `?api=http://<ip>/api` (the WebSocket defaults to `/ws` on the same host), `?ws=` (empty: HTTP only), `?transport=serial`.
+- **Configuration:** `window.TESSER` in the page, or the defaults `/api` and `/ws` on the page's origin. The same options are `mount()`'s (§9.9):
+
+  | Key | Meaning |
+  |---|---|
+  | `api`, `ws` | API base and WebSocket URL; `ws: null`: HTTP only. The WebSocket defaults to `/ws` on the API's host. |
+  | `transport` | `ws`, `http` or `serial` (§9.7). |
+  | `minVersion` | The oldest bundle the node accepts: older ones show a warning. |
+  | `title` | The page title until the device's label is known. |
+  | `scripts` | Module scripts defining custom elements, resolved against the page (§9.8). |
+  | `theme` | CSS variables without their `--`: `{"accent": "#d97706", "radius": "4px"}`. They apply in both color schemes. |
+  | `strings` | The interface's text (§9.10). |
+  | `path` | The path the UI starts from and doesn't go above: a subtree, or a peer. View pages show only when it is `/`. |
+  | `header` | `false` hides the top bar; a lost connection still shows a banner. |
+  | `routing` | `hash` (default) follows `location.hash`; `memory` keeps the route inside the UI, for pages that own the URL. |
+
+  For development, the query string overrides the page's: `?api=http://<ip>/api`, `?ws=` (empty: HTTP only), `?transport=serial`.
 - **Fallback:** if the WebSocket never opens, the client switches to HTTP for good. Once it has opened, it reconnects with backoff (§7.5).
 - **Numbers:** integers beyond 2^53 (TesserAPI serves 64-bit values) are parsed as `BigInt` and written back exactly (`JSON.rawJSON`).
 
@@ -326,6 +348,7 @@ web.serve(http.handle());              // GET / and GET /ui.js on the same serve
 - **API base path:** must not be empty: TesserAPI's wildcard would shadow `/`.
 - **Handlers:** two URI handlers. `HttpServer::begin()` registers 10, of which TesserAPI uses at most 6.
 - **Flash:** the bundle and about 2 KB of code.
+- **Options** (before `serve()`): `basePath("/ui/")` serves the page there and the bundle next to it, leaving `/` to the application; `title()`, `theme(var, value)`, `text(english, translation)` and `script(url)` fill the configuration of §9.2; `asset(uri, data, size, type, gzipped)` serves a file from flash, such as a custom element's script (one handler slot each).
 
 ### 9.5 UI host
 
@@ -356,6 +379,53 @@ web.serveStub(http.handle(), "https://cdn.jsdelivr.net/npm/tesserui@1.0.0/dist/u
 ### 9.7 USB (Web Serial)
 
 The same bundle, published on GitHub Pages, connects to a node over USB with Web Serial (Chromium-based browsers only; Pages provides the secure context it needs). It works for a node with no radio at all, and serves as the debugging tool. An HTTPS page can't talk to `http://` or `ws://` devices (mixed content), so on Pages, Web Serial is the only transport offered.
+
+### 9.8 Custom elements
+
+What the generic widgets can't show (a map of a heliostat field, a sky dome, a wiring diagram) is a **custom element**: a standard web component, written with any framework or none, that TesserUI hosts.
+
+```cpp
+auto& sky = api.object("sky").ui("widget", "x-sun-dial").ui("script", "/ext/sun-dial.js");
+sky.value("sunAz", sunAz).watch();  sky.value("targetAz", targetAz).range(0, 360);  // ...
+views.page("sky", "Sky").widget("x-sun-dial", "/sky");   // the same element as a whole page (§8)
+```
+
+- **Naming:** `ui.widget` with a hyphen, the HTML rule for custom element names. It fits any node: a value, an action, a list, a custom node, or an object, which the element then draws whole (its subscription has no depth limit).
+- **Script:** a module script defining the element, from `ui.script` on the node (resolved against the node's API, so a UI host serves it for its peers) or from the page's `scripts` (resolved against the page). Each URL loads once per page. A node can serve it from flash with `WebUi::asset()`.
+- **Properties** TesserUI sets, and updates as they change:
+
+  | Property | Value |
+  |---|---|
+  | `value` | The node's value (an object's whole subtree), a copy: 64-bit integers as `BigInt`. |
+  | `schema` | The node's schema, hints included. |
+  | `label` | The node's label. |
+  | `disabled` | No connection, the peer is offline, or `enabledWhen` fails. |
+  | `error` | The last error at the node's path, or `null`. |
+  | `tesser` | `get(path)`, `set(path, value, drag)` and `call(path, arg)` (a promise of the result; rejects with the error body). Paths are relative to the node, `""` being the node itself, or absolute within the node's tree. `set` is optimistic and reconciled like any write (§7.4); `drag: true` throttles it. Setting an object writes a patch, validated whole. |
+
+- **Fallback:** if the element isn't defined within 8 s, its script fails to load, or it throws when created, the tier 0 widget is drawn instead (an object's values as JSON). Elements must not set attributes in their constructor (the HTML rule).
+- **Styling:** the interface's CSS variables (`--accent`, `--text`, `--surface`...) reach into shadow roots, so elements follow the theme and the color scheme.
+- **LCD:** not rendered; the tier 0 widget is used.
+
+### 9.9 Embedding
+
+The npm package's module (`import {mount} from "tesserui"`) puts UIs into an application's own pages:
+
+```js
+const ui = mount(document.getElementById("motor"), {
+  api: "http://heliostat.local/api", path: "/motor", routing: "memory", header: false,
+});
+ui.destroy();
+```
+
+- **Options** are §9.2's. `mount()` returns the `Session` (values, writes, subscriptions) and `destroy()`.
+- **Several UIs** on one page each have their own session and connection; their styles are scoped to the `.tesserui` element they render into, and leave the page's alone.
+- **Custom UIs** can use the same pieces without the generic renderer: the client, the store, the model (`buildPage`, `buildView`, conditions, formatting), exported with their types.
+- **Local devices from public pages:** Chrome's Local Network Access asks the user before a public origin reaches a device on the local network.
+
+### 9.10 Interface text
+
+The renderer's own text ("Advanced", "Apply", "Offline"...) is English, replaced through `strings`, keyed by the English text: `{"Advanced": "Avancé", "{n} modified": "{n} modifiés"}`. `{name}` placeholders are kept. Labels, units and descriptions come from the device, which localizes them itself.
 
 ## 10. LVGL renderer
 
@@ -409,6 +479,7 @@ void lvglTask() {
 | `link` | a menu entry with an online dot |
 | `confirm` | `lv_msgbox` |
 | `json`, `color` | not rendered *(color later)* |
+| custom elements (§9.8) | the tier 0 widget |
 
 - **Units:** LVGL's built-in Montserrat fonts cover ASCII and `°`. Other units (`µ`, `Ω`) need the application to provide a font, set with `ui.font()`.
 - **Monochrome displays** (SSD1306 128×64 with buttons or an encoder) *(later)*: a compact profile with one row per line, no cards, and value editing on a focus-and-edit screen.
@@ -418,17 +489,18 @@ void lvglTask() {
 1. **Schema fixtures:** JSON schemas and value trees captured from real firmware: TesserAPI's test firmware, the demo, and the ported helionext motors page. They are shared by both renderers' tests.
 2. **Model tests** (vitest): inference (§4), hints (§5), conditions, formatting and layout decisions produce the expected UI model for each fixture.
 3. **Store tests** (vitest): merge patches, pending writes and their reconciliation, overflow, reconnect and forms, against a fake client.
-4. **Web end-to-end** (Playwright): the bundle against the TesserAPI test firmware on hardware, self-hosted and through a UI host. Each widget type gets a scripted interaction, checked against the device's read-back value. The suite also measures the bundle size, a first render under 1 s on a mid-range phone, and the write round trip.
-5. **Host node:** `test/` builds `tesserui_demo`, the demo tree on real TesserAPI over `LineTransport`s on stdin/stdout, with live values, events, a deferred action, and peers behind an in-memory link through TesserAPI's real forwarding. `web/scripts/device.mjs` serves it as a self-hosted node does (page, bundle, HTTP, WebSocket), shared by every client, or with one fresh node per connection for the end-to-end tests (Playwright, `web/e2e`).
-6. **LVGL:** the renderer is built for the host with LVGL's SDL driver and screenshot-tested against the fixtures. On-target tests then check memory per page and that no heap is lost across page changes.
-7. **CI:** web tests, bundle-size budget, LVGL host build and screenshots, plus ESP-IDF and Arduino builds of the examples, as in TesserAPI.
+4. **Golden models:** `fixtures/<name>.model.json`, the UI model the web renderer's model gives for each fixture (the page, and the views). They are the expected output of every renderer's model, LVGL's included: renderers share the fixtures' inputs and these outputs. Rewritten deliberately (`vitest -u`), checked in CI.
+5. **Web end-to-end** (Playwright): the bundle against the TesserAPI test firmware on hardware, self-hosted and through a UI host. Each widget type gets a scripted interaction, checked against the device's read-back value. The suite also measures the bundle size, a first render under 1 s on a mid-range phone, and the write round trip.
+6. **Host node:** `test/` builds `tesserui_demo`, the demo tree on real TesserAPI over `LineTransport`s on stdin/stdout, with live values, events, a deferred action, and peers behind an in-memory link through TesserAPI's real forwarding. `web/scripts/device.mjs` serves it as a self-hosted node does (page, bundle, HTTP, WebSocket), shared by every client, or with one fresh node per connection for the end-to-end tests (Playwright, `web/e2e`).
+7. **LVGL:** the renderer is built for the host with LVGL's SDL driver and screenshot-tested against the fixtures. On-target tests then check memory per page and that no heap is lost across page changes.
+8. **CI:** web tests, bundle-size budget, LVGL host build and screenshots, plus ESP-IDF and Arduino builds of the examples, as in TesserAPI.
 
 ## 12. Packaging
 
 ```
 TesserUI/
   docs/DESIGN.md
-  web/                 the web renderer (npm package "tesserui": dist/ui.js, index.html)
+  web/                 the web renderer (npm package "tesserui": dist/ui.js and index.html for nodes, tesserui.js and its types for applications)
   src/tesserui/        C++: WebUi (bundle and stub serving), Views, LvglUi
   src/tesserui/bundle/ tesserui_bundle.h, generated by the web build and committed per release
   examples/            self-hosted, UI host + NowTP node, stub, LCD local, LCD remote
@@ -459,11 +531,12 @@ None blocks the first release; each has a workaround above.
 | 2 | UI host: `/peers` links, peer pages through the gateway, offline handling, stub serving, Web Serial | A NowTP-only node is controlled from a browser through a UI host, with live values. | implemented; peer pages and forwarded subscriptions checked through the test firmware's gateway over ESP-NOW. Built but not yet run on hardware: the UI host and NowTP-only node examples, stub serving (host-tested), Web Serial. |
 | 3 | LVGL renderer: pages, widget mapping, `LocalClient` and `PeerClient` | The same node on a 320×240 touchscreen, locally and from a remote handheld. | not started |
 | 4 | Views (§8), charts, forms, conditions | helionext's motors and calibration pages, ported with no hand-written UI: `describe()` plus hints. | implemented; the motors fixture renders without UI code, and views, charts, forms and conditions pass end-to-end tests against the host demo device |
-| 5 | Monochrome profile, color widget, custom pages *(later)* | | color widget done (web) |
+| 5 | Monochrome profile, color widget, custom pages *(later)* | | web: color widget, custom elements and pages (§9.8), embedding (§9.9), interface text (§9.10) |
 
 ## 15. Decisions
 
 - **Hints live in TesserAPI's schema, not in a separate UI file.** One declaration per field, and they reach every renderer through every transport. TesserAPI only stores them (§7.1 of TesserAPI), so it stays UI-agnostic.
 - **Renderers don't share code.** A shared C core compiled to WebAssembly would cost more bundle than the TypeScript it replaces. Consistency comes from the shared fixtures (§11).
 - **Svelte rather than Preact or Lit:** compiled output, signals-based reactivity, and the stack `small-webui` and helionext already use. The deciding rule is the bundle budget (§2). If the budget is at risk, reconsider.
+- **Custom elements for custom widgets and pages:** a web standard any framework can produce, isolated in its shadow root, loaded only where used, and costing the bundle under 1 KB. A plugin API of TesserUI's own would tie extensions to Svelte and to TesserUI's internals.
 - **No device-side history for charts.** A renderer keeps history while it watches. Devices that need logged history expose it as a list or a custom node.

@@ -1,19 +1,18 @@
-import { mount } from 'svelte';
-import App from './App.svelte';
-import { app } from './shared.svelte';
-import { Session, type Config } from './store/session.svelte';
+// The bundle a node serves (ui.js): one UI on the whole page.
+import { mountUi, type Options } from './embed';
 
 // Configuration: window.TESSER from the page the node serves, overridable
 // from the query string for development (?api=http://<ip>/api).
 const q = new URLSearchParams(location.search);
 const t = window.TESSER;
-const api = q.get('api') ?? t?.api ?? '/api';
-const ws = q.has('ws') ? q.get('ws') || null : t && 'ws' in t ? (t.ws ?? null) : new URL('/ws', new URL(api, location.href)).href;
+const options: Options = { ...t, api: q.get('api') ?? t?.api ?? '/api' };
+if (q.has('ws')) options.ws = q.get('ws') || null;
+else if (!t || !('ws' in t)) delete options.ws;
 // On an HTTPS page that no node served (GitHub Pages), browsers block
 // http:// and ws:// devices: Web Serial is the only transport (DESIGN.md §9.7).
 const pages = !t && location.protocol === 'https:' && !q.has('api');
-const transport = (q.get('transport') ?? (t?.serial || pages ? 'serial' : ws ? 'ws' : 'http')) as Config['transport'];
+if (q.has('transport')) options.transport = q.get('transport') as Options['transport'];
+else if (t?.serial || pages) options.transport = 'serial';
 
-app.session = new Session({ api, ws, transport, minVersion: t?.minVersion });
-app.session.start();
-mount(App, { target: document.body });
+document.body.style.margin = '0';
+mountUi(document.body, options);

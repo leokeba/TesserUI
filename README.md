@@ -2,7 +2,7 @@
 
 User interfaces for [TesserAPI](https://github.com/leokeba/TesserAPI) nodes, rendered from their **schema**. Declare your firmware's tree once in C++, and get a web UI without writing any UI code. A node that can't spare flash for HTML or JavaScript is still usable: another node, or a CDN, provides the renderer.
 
-> **Status: early development.** The design is in [docs/DESIGN.md](docs/DESIGN.md). The web renderer, self-hosted serving, UI hosts with peer pages over ESP-NOW, stub pages, Web Serial, views, charts, forms and conditions are implemented. The LVGL touchscreen renderer is not started yet. The API will change before 1.0.
+> **Status: early development.** The design is in [docs/DESIGN.md](docs/DESIGN.md). The web renderer, self-hosted serving, UI hosts with peer pages over ESP-NOW, stub pages, Web Serial, views, charts, forms, conditions, custom elements and embedding are implemented. The LVGL touchscreen renderer is not started yet. The API will change before 1.0.
 
 ```cpp
 #include <TesserAPI.h>
@@ -67,11 +67,35 @@ field.each("/peers", "$/heliostat/status");       // one entry per mounted peer
 field.card("Calibration").node("/calib");
 ```
 
+## Custom widgets and pages
+
+What the generic widgets can't show is a [custom element](docs/DESIGN.md#98-custom-elements): a standard web component, written with any framework or none. A hint puts it on any node, an object included, and a view of one element is a whole custom page:
+
+```cpp
+auto& sky = api.object("sky").ui("widget", "x-sun-dial").ui("script", "/ext/sun-dial.js");
+views.page("sky", "Sky").widget("x-sun-dial", "/sky");
+web.asset("/ext/sun-dial.js", kSunDial, sizeof(kSunDial) - 1, "text/javascript");   // served from flash
+```
+
+TesserUI sets the element's `value` (the node's values), `schema` and `disabled`, and gives it a `tesser` handle to write values and call actions. If it can't load, the inferred widget stands in. [examples/elements/sun-dial.js](examples/elements/sun-dial.js) is a complete one.
+
+## Embedding and theming
+
+The npm package mounts UIs in an application's own pages, with their own sessions and scoped styles:
+
+```js
+import { mount } from "tesserui";
+mount(document.getElementById("motor"), { api: "http://heliostat.local/api", path: "/motor", routing: "memory", header: false });
+```
+
+The interface's colors (`theme`) and its own text (`strings`) are options too: `web.theme("accent", "#d97706").text("Advanced", "Avancé")` on a node.
+
 ## Examples
 
 - [examples/arduino/SelfHosted](examples/arduino/SelfHosted): HTTP, WebSocket and the UI on one node.
 - [examples/arduino/UiHost](examples/arduino/UiHost) and [examples/arduino/NowTpNode](examples/arduino/NowTpNode): a UI host and the NowTP-only nodes it renders.
 - [examples/arduino/Stub](examples/arduino/Stub): the UI loaded from a CDN.
+- [examples/arduino/CustomWidget](examples/arduino/CustomWidget): a custom element served from flash, on a node and as a custom page.
 - [examples/idf/self_hosted](examples/idf/self_hosted): ESP-IDF.
 
 ## Development

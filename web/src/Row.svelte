@@ -1,27 +1,13 @@
 <script lang="ts">
   import { getContext } from 'svelte';
-  import { app, DRAFT, type Draft } from './shared.svelte';
+  import { useSession, DRAFT, type Draft } from './shared.svelte';
   import Icon from './Icon.svelte';
   import { holds } from './model/conditions';
   import type { Leaf } from './model/model';
-  import Action from './widgets/Action.svelte';
-  import Bool from './widgets/Bool.svelte';
-  import Chart from './widgets/Chart.svelte';
-  import Choice from './widgets/Choice.svelte';
-  import Color from './widgets/Color.svelte';
-  import Events from './widgets/Events.svelte';
-  import Gauge from './widgets/Gauge.svelte';
-  import JsonView from './widgets/JsonView.svelte';
-  import Knob from './widgets/Knob.svelte';
-  import Num from './widgets/Num.svelte';
-  import Range from './widgets/Range.svelte';
-  import Readout from './widgets/Readout.svelte';
-  import Table from './widgets/Table.svelte';
-  import Text from './widgets/Text.svelte';
-  import type { WidgetProps } from './widgets/types';
+  import { widgetOf } from './widgets/registry';
 
   let { leaf }: { leaf: Leaf } = $props();
-  const session = app.session;
+  const session = useSession();
   const store = session.store;
   const draft = getContext<Draft | undefined>(DRAFT);
 
@@ -44,45 +30,14 @@
     else store.write(leaf.path, v);
   }
 
-  const WIDGETS = {
-    toggle: Bool,
-    checkbox: Bool,
-    led: Bool,
-    slider: Range,
-    knob: Knob,
-    number: Num,
-    stepper: Num,
-    readout: Readout,
-    bar: Readout,
-    gauge: Gauge,
-    chart: Chart,
-    segmented: Choice,
-    select: Choice,
-    radio: Choice,
-    text: Text,
-    password: Text,
-    textarea: Text,
-    color: Color,
-    button: Action,
-    hold: Action,
-    json: JsonView,
-    events: Events,
-    table: Table,
-  } as const;
-  const Widget = $derived(WIDGETS[leaf.widget as keyof typeof WIDGETS] ?? Readout) as unknown as import('svelte').Component<WidgetProps>;
-  // Buttons stand alone; lists, charts, events and JSON take the card's width.
-  const layout = $derived(
-    (leaf.widget === 'button' || leaf.widget === 'hold') && !leaf.field
-      ? 'bare'
-      : ['events', 'table', 'chart', 'json', 'textarea'].includes(leaf.widget) || leaf.field === 'json'
-        ? 'wide'
-        : 'pair',
-  );
+  const widget = $derived(widgetOf(leaf));
+  const Widget = $derived(widget.component);
+  const layout = $derived(widget.layout);
 </script>
 
 {#if visible}
   <div class="row {layout}" class:modified>
-    {#if layout !== 'bare'}
+    {#if layout !== 'bare' && leaf.label}
       <label for={leaf.editable ? id : undefined} title={leaf.description}>
         {#if leaf.icon}<Icon name={leaf.icon} />{/if}
         <span>{leaf.label}</span>
@@ -93,7 +48,7 @@
       {#key revert}
         <Widget {leaf} {value} {set} {disabled} {id} />
       {/key}
-      {#if store.pending[leaf.path]}<span class="busy" aria-label="Saving"></span>{/if}
+      {#if store.pending[leaf.path]}<span class="busy" aria-label={session.t('Saving')}></span>{/if}
     </div>
     {#if error}<p class="error" role="alert">{error}</p>{/if}
   </div>

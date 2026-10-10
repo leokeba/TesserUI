@@ -7,15 +7,19 @@ const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 
 
 // The bundle is one IIFE script, ui.js, with its CSS injected by Svelte:
 // the node serves two files (DESIGN.md §9.4). scripts/bundle.mjs then writes
-// dist/index.html, the gzipped copies and the C++ header.
-export default defineConfig({
+// dist/index.html, the gzipped copies and the C++ header. `--mode lib`
+// builds the npm package's module entry, tesserui.js (§9.9), next to it.
+export default defineConfig(({ mode }) => ({
   plugins: [svelte({ emitCss: false })],
   define: { __VERSION__: JSON.stringify(pkg.version) },
   build: {
     target: 'es2022',
     outDir: 'dist',
-    emptyOutDir: true,
-    lib: { entry: 'src/main.ts', formats: ['iife'], name: 'TesserUI', fileName: () => 'ui.js' },
+    emptyOutDir: mode !== 'lib',
+    lib:
+      mode === 'lib'
+        ? { entry: 'src/lib.ts', formats: ['es'], fileName: () => 'tesserui.js' }
+        : { entry: 'src/main.ts', formats: ['iife'], name: 'TesserUI', fileName: () => 'ui.js' },
   },
   test: { include: ['test/**/*.test.ts'] },
-});
+}));

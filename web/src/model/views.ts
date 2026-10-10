@@ -1,7 +1,7 @@
 // Views (DESIGN.md §8): explicit pages served at /_ui, combining values
 // from anywhere in the tree, peers included.
 
-import { buildLeaf, buildSection, depthOf, type Item, type Leaf } from './model';
+import { buildLeaf, buildSection, depthOf, isElement, type Item, type Leaf } from './model';
 import { joinPath, parentPath, remoteOf, schemaAt, segments, type Hint, type Schema } from './schema';
 import { commonAncestor, type SubSpec } from '../store/subs';
 
@@ -83,11 +83,12 @@ export function buildView(page: ViewPage, root: Schema): View {
     if (!s) return { kind: 'node', path, item: null };
     const hinted = withHints(s, label && !doc.label ? { ...doc, label } : doc);
     const nodeRoot = remoteOf(root, path)?.path ?? '/';
-    if (hinted.type === 'object') {
-      watched.push({ path, depth: depthOf(hinted) });
+    watched.push({ path, depth: depthOf(hinted) });
+    // A custom element over an object draws it whole: a custom page when
+    // it is a view's only item (DESIGN.md §9.8).
+    if (hinted.type === 'object' && !isElement(hinted.ui?.widget)) {
       return { kind: 'node', path, item: buildSection(path, hinted, level, nodeRoot) };
     }
-    watched.push({ path, depth: 0 });
     const leaf: Leaf = buildLeaf(path.slice(path.lastIndexOf('/') + 1), path, hinted, parentPath(path), nodeRoot);
     return { kind: 'node', path, item: leaf };
   };
@@ -131,7 +132,7 @@ export function buildView(page: ViewPage, root: Schema): View {
   for (const list of groups.values()) {
     const base = commonAncestor(list.map((w) => w.path));
     const depth = Math.max(...list.map((w) => segments(w.path).length - segments(base).length + w.depth));
-    specs.push({ path: base, depth });
+    specs.push({ path: base, depth: Number.isFinite(depth) ? depth : undefined });
   }
   return { items, missing, specs };
 }

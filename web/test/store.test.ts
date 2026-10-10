@@ -153,6 +153,18 @@ describe('subscriptions (DESIGN §7.3)', () => {
   });
 });
 
+describe('store: object writes', () => {
+  it('merges an object written to a path, as a patch', async () => {
+    const { client, store } = setup();
+    store.apply('/', { sky: { sunAz: 100, targetAz: 1, targetEl: 2 } });
+    const done = store.write('/sky', { targetAz: 10, targetEl: 20 });
+    expect(store.get('/sky')).toEqual({ sunAz: 100, targetAz: 10, targetEl: 20 });
+    client.reply('ok', { targetAz: 10, targetEl: 20 });
+    await done;
+    expect(store.get('/sky')).toEqual({ sunAz: 100, targetAz: 10, targetEl: 20 });
+  });
+});
+
 describe('session: transport fallback', () => {
   it('falls back to HTTP once when the WebSocket never opens', async () => {
     const { Session } = await import('../src/store/session.svelte');
@@ -179,6 +191,7 @@ describe('session: transport fallback', () => {
     expect(sockets.length).toBe(1);
     expect(s.kind).toBe('http');
     expect(fetched[0]).toBe('http://node.local/api/?depth=0');
+    s.close();
     vi.unstubAllGlobals();
   });
 });

@@ -1,0 +1,1683 @@
+{
+ "page": {
+  "path": "/",
+  "label": "TesserUI demo",
+  "cards": [
+   {
+    "name": "",
+    "path": "/",
+    "label": "",
+    "advanced": false,
+    "hidden": false,
+    "kind": "section",
+    "level": 1,
+    "items": [
+     {
+      "name": "uptime",
+      "path": "/uptime",
+      "label": "Uptime",
+      "advanced": false,
+      "hidden": false,
+      "kind": "leaf",
+      "widget": "readout",
+      "type": "integer",
+      "editable": false,
+      "unit": "s",
+      "step": 1,
+      "precision": 0
+     },
+     {
+      "name": "online",
+      "path": "/online",
+      "label": "Online",
+      "advanced": false,
+      "hidden": false,
+      "kind": "leaf",
+      "widget": "led",
+      "type": "boolean",
+      "editable": false
+     },
+     {
+      "name": "schedule",
+      "path": "/schedule",
+      "label": "Schedule",
+      "advanced": false,
+      "hidden": false,
+      "kind": "leaf",
+      "widget": "table",
+      "type": "list",
+      "editable": true,
+      "maxSize": 8,
+      "columns": [
+       {
+        "name": "hour",
+        "path": "hour",
+        "label": "Hour",
+        "advanced": false,
+        "hidden": false,
+        "kind": "leaf",
+        "widget": "slider",
+        "type": "integer",
+        "editable": true,
+        "min": 0,
+        "max": 23,
+        "step": 1,
+        "precision": 0
+       },
+       {
+        "name": "enabled",
+        "path": "enabled",
+        "label": "Enabled",
+        "advanced": false,
+        "hidden": false,
+        "kind": "leaf",
+        "widget": "toggle",
+        "type": "boolean",
+        "editable": true
+       },
+       {
+        "name": "label",
+        "path": "label",
+        "label": "Label",
+        "advanced": false,
+        "hidden": false,
+        "kind": "leaf",
+        "widget": "text",
+        "type": "string",
+        "editable": true
+       }
+      ]
+     },
+     {
+      "name": "info",
+      "path": "/info",
+      "label": "Device info",
+      "advanced": false,
+      "hidden": false,
+      "kind": "link",
+      "remote": false,
+      "online": true
+     },
+     {
+      "name": "sky",
+      "path": "/sky",
+      "label": "Sky",
+      "advanced": false,
+      "hidden": false,
+      "kind": "leaf",
+      "widget": "x-sun-dial",
+      "type": "object",
+      "editable": false,
+      "script": "/ext/sun-dial.js"
+     },
+     {
+      "name": "blob",
+      "path": "/blob",
+      "label": "Blob",
+      "advanced": false,
+      "hidden": false,
+      "kind": "leaf",
+      "widget": "json",
+      "type": "custom",
+      "editable": false
+     },
+     {
+      "name": "_ui",
+      "path": "/_ui",
+      "label": "Views",
+      "advanced": false,
+      "hidden": true,
+      "kind": "leaf",
+      "widget": "json",
+      "type": "custom",
+      "editable": false
+     }
+    ],
+    "advancedItems": [],
+    "lazy": false,
+    "tabs": false,
+    "inline": false,
+    "collapsed": false,
+    "form": false,
+    "columns": 3
+   },
+   {
+    "name": "lamp",
+    "path": "/lamp",
+    "label": "Lamp",
+    "advanced": false,
+    "hidden": false,
+    "icon": "bulb",
+    "kind": "section",
+    "level": 1,
+    "items": [
+     {
+      "name": "on",
+      "path": "/lamp/on",
+      "label": "On",
+      "advanced": false,
+      "hidden": false,
+      "kind": "leaf",
+      "widget": "toggle",
+      "type": "boolean",
+      "editable": true
+     },
+     {
+      "name": "brightness",
+      "path": "/lamp/brightness",
+      "label": "Brightness",
+      "advanced": false,
+      "hidden": false,
+      "kind": "leaf",
+      "widget": "slider",
+      "type": "integer",
+      "editable": true,
+      "min": 0,
+      "max": 255,
+      "step": 5,
+      "precision": 0
+     },
+     {
+      "name": "color",
+      "path": "/lamp/color",
+      "label": "Color",
+      "advanced": false,
+      "hidden": false,
+      "kind": "leaf",
+      "widget": "color",
+      "type": "string",
+      "editable": true,
+      "maxLength": 7
+     },
+     {
+      "name": "mode",
+      "path": "/lamp/mode",
+      "label": "Mode",
+      "advanced": false,
+      "hidden": false,
+      "kind": "leaf",
+      "widget": "segmented",
+      "type": "string",
+      "editable": true,
+      "options": [
+       {
+        "value": "off",
+        "label": "Off"
+       },
+       {
+        "value": "auto",
+        "label": "Automatic"
+       },
+       {
+        "value": "manual",
+        "label": "Manual"
+       }
+      ]
+     },
+     {
+      "name": "effect",
+      "path": "/lamp/effect",
+      "label": "Effect",
+      "advanced": false,
+      "hidden": false,
+      "kind": "leaf",
+      "widget": "select",
+      "type": "string",
+      "editable": true,
+      "options": [
+       {
+        "value": "none",
+        "label": "none"
+       },
+       {
+        "value": "rainbow",
+        "label": "rainbow"
+       },
+       {
+        "value": "breathe",
+        "label": "breathe"
+       },
+       {
+        "value": "strobe",
+        "label": "strobe"
+       },
+       {
+        "value": "candle",
+        "label": "candle"
+       },
+       {
+        "value": "fire",
+        "label": "fire"
+       }
+      ]
+     },
+     {
+      "name": "level",
+      "path": "/lamp/level",
+      "label": "Level",
+      "advanced": false,
+      "hidden": false,
+      "kind": "leaf",
+      "widget": "number",
+      "type": "integer",
+      "editable": true,
+      "step": 1,
+      "precision": 0
+     },
+     {
+      "name": "power",
+      "path": "/lamp/power",
+      "label": "Power",
+      "advanced": false,
+      "hidden": false,
+      "kind": "leaf",
+      "widget": "gauge",
+      "type": "number",
+      "editable": false,
+      "min": 0,
+      "max": 60,
+      "unit": "W"
+     },
+     {
+      "name": "name",
+      "path": "/lamp/name",
+      "label": "Name",
+      "advanced": false,
+      "hidden": false,
+      "kind": "leaf",
+      "widget": "text",
+      "type": "string",
+      "editable": true,
+      "placeholder": "Lamp name",
+      "maxLength": 15
+     },
+     {
+      "name": "toggle",
+      "path": "/lamp/toggle",
+      "label": "Toggle",
+      "advanced": false,
+      "hidden": false,
+      "kind": "leaf",
+      "widget": "button",
+      "type": "action",
+      "editable": false,
+      "deferred": false,
+      "submit": false
+     },
+     {
+      "name": "preset",
+      "path": "/lamp/preset",
+      "label": "Preset 3",
+      "advanced": false,
+      "hidden": false,
+      "kind": "leaf",
+      "widget": "button",
+      "type": "integer",
+      "editable": false,
+      "deferred": false,
+      "submit": false,
+      "value": 3
+     }
+    ],
+    "advancedItems": [],
+    "lazy": false,
+    "tabs": false,
+    "inline": false,
+    "collapsed": false,
+    "form": false
+   },
+   {
+    "name": "motor",
+    "path": "/motor",
+    "label": "Motor",
+    "advanced": false,
+    "hidden": false,
+    "kind": "section",
+    "level": 1,
+    "items": [
+     {
+      "name": "speed",
+      "path": "/motor/speed",
+      "label": "Speed",
+      "advanced": false,
+      "hidden": false,
+      "kind": "leaf",
+      "widget": "knob",
+      "type": "number",
+      "editable": true,
+      "min": -1,
+      "max": 1,
+      "step": 0.01,
+      "precision": 2
+     },
+     {
+      "name": "duty",
+      "path": "/motor/duty",
+      "label": "Duty",
+      "advanced": false,
+      "hidden": false,
+      "kind": "leaf",
+      "widget": "stepper",
+      "type": "integer",
+      "editable": true,
+      "min": 0,
+      "max": 100,
+      "unit": "%",
+      "step": 1,
+      "precision": 0
+     },
+     {
+      "name": "position",
+      "path": "/motor/position",
+      "label": "Position",
+      "advanced": false,
+      "hidden": false,
+      "kind": "leaf",
+      "widget": "chart",
+      "type": "number",
+      "editable": false,
+      "unit": "°",
+      "history": 30
+     },
+     {
+      "name": "invert",
+      "path": "/motor/invert",
+      "label": "Invert",
+      "advanced": false,
+      "hidden": false,
+      "kind": "leaf",
+      "widget": "checkbox",
+      "type": "boolean",
+      "editable": true
+     },
+     {
+      "name": "jog",
+      "path": "/motor/jog",
+      "label": "Jog",
+      "advanced": false,
+      "hidden": false,
+      "kind": "leaf",
+      "widget": "hold",
+      "type": "boolean",
+      "editable": false,
+      "deferred": false,
+      "submit": false
+     },
+     {
+      "name": "moveTo",
+      "path": "/motor/moveTo",
+      "label": "Move to",
+      "advanced": false,
+      "hidden": false,
+      "kind": "leaf",
+      "widget": "button",
+      "type": "number",
+      "editable": true,
+      "min": 0,
+      "max": 360,
+      "unit": "°",
+      "confirm": "Move the mirror?",
+      "deferred": false,
+      "submit": false,
+      "field": "slider"
+     },
+     {
+      "name": "stop",
+      "path": "/motor/stop",
+      "label": "Stop",
+      "advanced": false,
+      "hidden": false,
+      "icon": "stop",
+      "kind": "leaf",
+      "widget": "button",
+      "type": "action",
+      "editable": false,
+      "deferred": false,
+      "style": "danger",
+      "submit": false
+     },
+     {
+      "name": "home",
+      "path": "/motor/home",
+      "label": "Home",
+      "advanced": false,
+      "hidden": false,
+      "kind": "leaf",
+      "widget": "button",
+      "type": "action",
+      "editable": false,
+      "deferred": true,
+      "submit": false
+     },
+     {
+      "name": "count",
+      "path": "/motor/count",
+      "label": "Count",
+      "advanced": false,
+      "hidden": false,
+      "kind": "leaf",
+      "widget": "button",
+      "type": "action",
+      "editable": false,
+      "deferred": false,
+      "returns": "integer",
+      "style": "quiet",
+      "submit": false
+     }
+    ],
+    "advancedItems": [
+     {
+      "name": "pid",
+      "path": "/motor/pid",
+      "label": "Pid",
+      "advanced": true,
+      "hidden": false,
+      "kind": "section",
+      "level": 2,
+      "items": [
+       {
+        "name": "kp",
+        "path": "/motor/pid/kp",
+        "label": "Kp",
+        "advanced": false,
+        "hidden": false,
+        "kind": "leaf",
+        "widget": "number",
+        "type": "number",
+        "editable": true
+       },
+       {
+        "name": "ki",
+        "path": "/motor/pid/ki",
+        "label": "Ki",
+        "advanced": false,
+        "hidden": false,
+        "kind": "leaf",
+        "widget": "number",
+        "type": "number",
+        "editable": true
+       },
+       {
+        "name": "kd",
+        "path": "/motor/pid/kd",
+        "label": "Kd",
+        "advanced": false,
+        "hidden": false,
+        "kind": "leaf",
+        "widget": "number",
+        "type": "number",
+        "editable": true
+       }
+      ],
+      "advancedItems": [],
+      "lazy": false,
+      "tabs": false,
+      "inline": false,
+      "collapsed": false,
+      "form": false
+     }
+    ],
+    "lazy": false,
+    "tabs": false,
+    "inline": false,
+    "collapsed": false,
+    "form": false
+   },
+   {
+    "name": "sensors",
+    "path": "/sensors",
+    "label": "Sensors",
+    "advanced": false,
+    "hidden": false,
+    "kind": "section",
+    "level": 1,
+    "items": [
+     {
+      "name": "temperature",
+      "path": "/sensors/temperature",
+      "label": "Temperature",
+      "advanced": false,
+      "hidden": false,
+      "kind": "leaf",
+      "widget": "readout",
+      "type": "number",
+      "editable": false,
+      "unit": "°C",
+      "precision": 1
+     },
+     {
+      "name": "humidity",
+      "path": "/sensors/humidity",
+      "label": "Humidity",
+      "advanced": false,
+      "hidden": false,
+      "kind": "leaf",
+      "widget": "bar",
+      "type": "number",
+      "editable": false,
+      "min": 0,
+      "max": 100,
+      "unit": "%"
+     },
+     {
+      "name": "pressure",
+      "path": "/sensors/pressure",
+      "label": "Pressure",
+      "advanced": false,
+      "hidden": false,
+      "kind": "leaf",
+      "widget": "readout",
+      "type": "number",
+      "editable": false,
+      "format": "%.0f hPa"
+     },
+     {
+      "name": "status",
+      "path": "/sensors/status",
+      "label": "Status",
+      "advanced": false,
+      "hidden": false,
+      "kind": "leaf",
+      "widget": "readout",
+      "type": "string",
+      "editable": false
+     },
+     {
+      "name": "pressed",
+      "path": "/sensors/pressed",
+      "label": "Pressed",
+      "advanced": false,
+      "hidden": false,
+      "kind": "leaf",
+      "widget": "events",
+      "type": "event",
+      "editable": false,
+      "toast": true
+     },
+     {
+      "name": "raw",
+      "path": "/sensors/raw",
+      "label": "Raw",
+      "advanced": false,
+      "hidden": false,
+      "kind": "leaf",
+      "widget": "json",
+      "type": "custom",
+      "editable": true
+     }
+    ],
+    "advancedItems": [],
+    "lazy": false,
+    "tabs": false,
+    "inline": false,
+    "collapsed": false,
+    "form": false
+   },
+   {
+    "name": "settings",
+    "path": "/settings",
+    "label": "Settings",
+    "advanced": false,
+    "hidden": false,
+    "kind": "section",
+    "level": 1,
+    "items": [
+     {
+      "name": "ssid",
+      "path": "/settings/ssid",
+      "label": "Ssid",
+      "advanced": false,
+      "hidden": false,
+      "kind": "leaf",
+      "widget": "text",
+      "type": "string",
+      "editable": true
+     },
+     {
+      "name": "password",
+      "path": "/settings/password",
+      "label": "Password",
+      "advanced": false,
+      "hidden": false,
+      "kind": "leaf",
+      "widget": "password",
+      "type": "string",
+      "editable": true
+     },
+     {
+      "name": "notes",
+      "path": "/settings/notes",
+      "label": "Notes",
+      "advanced": false,
+      "hidden": false,
+      "kind": "leaf",
+      "widget": "textarea",
+      "type": "string",
+      "editable": true
+     },
+     {
+      "name": "apply",
+      "path": "/settings/apply",
+      "label": "Apply",
+      "advanced": false,
+      "hidden": false,
+      "kind": "leaf",
+      "widget": "button",
+      "type": "action",
+      "editable": false,
+      "deferred": false,
+      "submit": true
+     }
+    ],
+    "advancedItems": [],
+    "lazy": false,
+    "tabs": false,
+    "inline": false,
+    "collapsed": false,
+    "form": true
+   },
+   {
+    "name": "config",
+    "path": "/config",
+    "label": "Config",
+    "advanced": false,
+    "hidden": false,
+    "kind": "section",
+    "level": 1,
+    "items": [
+     {
+      "name": "mode",
+      "path": "/config/mode",
+      "label": "Mode",
+      "advanced": false,
+      "hidden": false,
+      "kind": "leaf",
+      "widget": "segmented",
+      "type": "string",
+      "editable": true,
+      "options": [
+       {
+        "value": "auto",
+        "label": "auto"
+       },
+       {
+        "value": "manual",
+        "label": "manual"
+       }
+      ]
+     },
+     {
+      "name": "manualSpeed",
+      "path": "/config/manualSpeed",
+      "label": "Manual speed",
+      "advanced": false,
+      "hidden": false,
+      "visibleWhen": [
+       {
+        "path": "/config/mode",
+        "equal": true,
+        "literal": "manual"
+       }
+      ],
+      "kind": "leaf",
+      "widget": "slider",
+      "type": "number",
+      "editable": true,
+      "min": 0,
+      "max": 1
+     },
+     {
+      "name": "enabled",
+      "path": "/config/enabled",
+      "label": "Enabled",
+      "advanced": false,
+      "hidden": false,
+      "kind": "leaf",
+      "widget": "toggle",
+      "type": "boolean",
+      "editable": true
+     },
+     {
+      "name": "threshold",
+      "path": "/config/threshold",
+      "label": "Threshold",
+      "advanced": false,
+      "hidden": false,
+      "enabledWhen": [
+       {
+        "path": "/config/enabled",
+        "equal": true,
+        "literal": "true"
+       }
+      ],
+      "kind": "leaf",
+      "widget": "number",
+      "type": "integer",
+      "editable": true,
+      "step": 1,
+      "precision": 0
+     },
+     {
+      "name": "token",
+      "path": "/config/token",
+      "label": "Token",
+      "advanced": false,
+      "hidden": true,
+      "kind": "leaf",
+      "widget": "text",
+      "type": "string",
+      "editable": true
+     },
+     {
+      "name": "readonlyLevel",
+      "path": "/config/readonlyLevel",
+      "label": "Readonly level",
+      "advanced": false,
+      "hidden": false,
+      "kind": "leaf",
+      "widget": "readout",
+      "type": "integer",
+      "editable": false,
+      "step": 1,
+      "precision": 0
+     },
+     {
+      "name": "network",
+      "path": "/config/network",
+      "label": "Network",
+      "advanced": false,
+      "hidden": false,
+      "kind": "section",
+      "level": 2,
+      "items": [
+       {
+        "name": "dhcp",
+        "path": "/config/network/dhcp",
+        "label": "Dhcp",
+        "advanced": false,
+        "hidden": false,
+        "kind": "leaf",
+        "widget": "toggle",
+        "type": "boolean",
+        "editable": true
+       },
+       {
+        "name": "ip",
+        "path": "/config/network/ip",
+        "label": "Ip",
+        "advanced": false,
+        "hidden": false,
+        "visibleWhen": [
+         {
+          "path": "/config/network/dhcp",
+          "equal": true,
+          "literal": "false"
+         }
+        ],
+        "kind": "leaf",
+        "widget": "text",
+        "type": "string",
+        "editable": true
+       },
+       {
+        "name": "deep",
+        "path": "/config/network/deep",
+        "label": "Deep",
+        "advanced": false,
+        "hidden": false,
+        "kind": "section",
+        "level": 3,
+        "items": [
+         {
+          "name": "deeper",
+          "path": "/config/network/deep/deeper",
+          "label": "Deeper",
+          "advanced": false,
+          "hidden": false,
+          "kind": "section",
+          "level": 4,
+          "items": [
+           {
+            "name": "leaf",
+            "path": "/config/network/deep/deeper/leaf",
+            "label": "Leaf",
+            "advanced": false,
+            "hidden": false,
+            "kind": "leaf",
+            "widget": "number",
+            "type": "integer",
+            "editable": true,
+            "step": 1,
+            "precision": 0
+           }
+          ],
+          "advancedItems": [],
+          "lazy": false,
+          "tabs": false,
+          "inline": false,
+          "collapsed": false,
+          "form": false
+         }
+        ],
+        "advancedItems": [],
+        "lazy": false,
+        "tabs": false,
+        "inline": false,
+        "collapsed": false,
+        "form": false
+       }
+      ],
+      "advancedItems": [],
+      "lazy": false,
+      "tabs": false,
+      "inline": false,
+      "collapsed": true,
+      "form": false
+     }
+    ],
+    "advancedItems": [],
+    "lazy": false,
+    "tabs": false,
+    "inline": false,
+    "collapsed": false,
+    "form": false
+   },
+   {
+    "name": "offset",
+    "path": "/offset",
+    "label": "Offset",
+    "advanced": false,
+    "hidden": false,
+    "kind": "section",
+    "level": 1,
+    "items": [
+     {
+      "name": "x",
+      "path": "/offset/x",
+      "label": "X",
+      "advanced": false,
+      "hidden": false,
+      "kind": "leaf",
+      "widget": "number",
+      "type": "number",
+      "editable": true
+     },
+     {
+      "name": "y",
+      "path": "/offset/y",
+      "label": "Y",
+      "advanced": false,
+      "hidden": false,
+      "kind": "leaf",
+      "widget": "number",
+      "type": "number",
+      "editable": true
+     },
+     {
+      "name": "z",
+      "path": "/offset/z",
+      "label": "Z",
+      "advanced": false,
+      "hidden": false,
+      "kind": "leaf",
+      "widget": "number",
+      "type": "number",
+      "editable": true
+     }
+    ],
+    "advancedItems": [],
+    "lazy": false,
+    "tabs": false,
+    "inline": true,
+    "collapsed": false,
+    "form": false
+   },
+   {
+    "name": "channels",
+    "path": "/channels",
+    "label": "Channels",
+    "advanced": false,
+    "hidden": false,
+    "kind": "section",
+    "level": 1,
+    "items": [
+     {
+      "name": "ch1",
+      "path": "/channels/ch1",
+      "label": "Ch1",
+      "advanced": false,
+      "hidden": false,
+      "kind": "section",
+      "level": 2,
+      "items": [
+       {
+        "name": "gain",
+        "path": "/channels/ch1/gain",
+        "label": "Gain",
+        "advanced": false,
+        "hidden": false,
+        "kind": "leaf",
+        "widget": "slider",
+        "type": "number",
+        "editable": true,
+        "min": 0,
+        "max": 2,
+        "step": 0.1,
+        "precision": 1
+       },
+       {
+        "name": "mute",
+        "path": "/channels/ch1/mute",
+        "label": "Mute",
+        "advanced": false,
+        "hidden": false,
+        "kind": "leaf",
+        "widget": "toggle",
+        "type": "boolean",
+        "editable": true
+       }
+      ],
+      "advancedItems": [],
+      "lazy": false,
+      "tabs": false,
+      "inline": false,
+      "collapsed": false,
+      "form": false
+     },
+     {
+      "name": "ch2",
+      "path": "/channels/ch2",
+      "label": "Ch2",
+      "advanced": false,
+      "hidden": false,
+      "kind": "section",
+      "level": 2,
+      "items": [
+       {
+        "name": "gain",
+        "path": "/channels/ch2/gain",
+        "label": "Gain",
+        "advanced": false,
+        "hidden": false,
+        "kind": "leaf",
+        "widget": "slider",
+        "type": "number",
+        "editable": true,
+        "min": 0,
+        "max": 2,
+        "step": 0.1,
+        "precision": 1
+       },
+       {
+        "name": "mute",
+        "path": "/channels/ch2/mute",
+        "label": "Mute",
+        "advanced": false,
+        "hidden": false,
+        "kind": "leaf",
+        "widget": "toggle",
+        "type": "boolean",
+        "editable": true
+       }
+      ],
+      "advancedItems": [],
+      "lazy": false,
+      "tabs": false,
+      "inline": false,
+      "collapsed": false,
+      "form": false
+     }
+    ],
+    "advancedItems": [],
+    "lazy": false,
+    "tabs": true,
+    "inline": false,
+    "collapsed": false,
+    "form": false
+   },
+   {
+    "name": "widgets",
+    "path": "/widgets",
+    "label": "Widget overrides",
+    "advanced": false,
+    "hidden": false,
+    "kind": "section",
+    "level": 1,
+    "items": [
+     {
+      "name": "switch",
+      "path": "/widgets/switch",
+      "label": "Switch",
+      "advanced": false,
+      "hidden": false,
+      "kind": "leaf",
+      "widget": "toggle",
+      "type": "boolean",
+      "editable": true
+     },
+     {
+      "name": "indicator",
+      "path": "/widgets/indicator",
+      "label": "Indicator",
+      "advanced": false,
+      "hidden": false,
+      "kind": "leaf",
+      "widget": "led",
+      "type": "boolean",
+      "editable": true
+     },
+     {
+      "name": "linear",
+      "path": "/widgets/linear",
+      "label": "Linear",
+      "advanced": false,
+      "hidden": false,
+      "kind": "leaf",
+      "widget": "slider",
+      "type": "integer",
+      "editable": true,
+      "min": 0,
+      "max": 10,
+      "step": 1,
+      "precision": 0
+     },
+     {
+      "name": "entry",
+      "path": "/widgets/entry",
+      "label": "Entry",
+      "advanced": false,
+      "hidden": false,
+      "kind": "leaf",
+      "widget": "number",
+      "type": "number",
+      "editable": true,
+      "min": 0,
+      "max": 1,
+      "step": 0.001,
+      "precision": 3
+     },
+     {
+      "name": "picker",
+      "path": "/widgets/picker",
+      "label": "Picker",
+      "advanced": false,
+      "hidden": false,
+      "kind": "leaf",
+      "widget": "select",
+      "type": "string",
+      "editable": true,
+      "options": [
+       {
+        "value": "low",
+        "label": "low"
+       },
+       {
+        "value": "mid",
+        "label": "mid"
+       },
+       {
+        "value": "high",
+        "label": "high"
+       }
+      ]
+     },
+     {
+      "name": "segments",
+      "path": "/widgets/segments",
+      "label": "Segments",
+      "advanced": false,
+      "hidden": false,
+      "kind": "leaf",
+      "widget": "segmented",
+      "type": "string",
+      "editable": true,
+      "options": [
+       {
+        "value": "xs",
+        "label": "xs"
+       },
+       {
+        "value": "s",
+        "label": "s"
+       },
+       {
+        "value": "m",
+        "label": "m"
+       },
+       {
+        "value": "l",
+        "label": "l"
+       },
+       {
+        "value": "xl",
+        "label": "xl"
+       }
+      ]
+     },
+     {
+      "name": "choice",
+      "path": "/widgets/choice",
+      "label": "Choice",
+      "advanced": false,
+      "hidden": false,
+      "kind": "leaf",
+      "widget": "radio",
+      "type": "string",
+      "editable": true,
+      "options": [
+       {
+        "value": "red",
+        "label": "red"
+       },
+       {
+        "value": "green",
+        "label": "green"
+       },
+       {
+        "value": "blue",
+        "label": "blue"
+       }
+      ]
+     },
+     {
+      "name": "line",
+      "path": "/widgets/line",
+      "label": "Line",
+      "advanced": false,
+      "hidden": false,
+      "description": "A description, shown as help text.",
+      "kind": "leaf",
+      "widget": "text",
+      "type": "string",
+      "editable": true
+     },
+     {
+      "name": "display",
+      "path": "/widgets/display",
+      "label": "Display",
+      "advanced": false,
+      "hidden": false,
+      "kind": "leaf",
+      "widget": "readout",
+      "type": "integer",
+      "editable": true,
+      "step": 1,
+      "precision": 0
+     },
+     {
+      "name": "hue",
+      "path": "/widgets/hue",
+      "label": "Hue",
+      "advanced": false,
+      "hidden": false,
+      "kind": "leaf",
+      "widget": "color",
+      "type": "integer",
+      "editable": true,
+      "min": 0,
+      "max": 16777215,
+      "step": 1,
+      "precision": 0
+     },
+     {
+      "name": "armed",
+      "path": "/widgets/armed",
+      "label": "Armed",
+      "advanced": false,
+      "hidden": false,
+      "kind": "leaf",
+      "widget": "toggle",
+      "type": "boolean",
+      "editable": true,
+      "confirm": "Really change it?"
+     },
+     {
+      "name": "conditional",
+      "path": "/widgets/conditional",
+      "label": "Conditional",
+      "advanced": false,
+      "hidden": false,
+      "visibleWhen": [
+       {
+        "path": "/config/enabled",
+        "equal": true,
+        "literal": "true"
+       },
+       {
+        "path": "/config/mode",
+        "equal": false,
+        "literal": "auto"
+       }
+      ],
+      "kind": "leaf",
+      "widget": "number",
+      "type": "integer",
+      "editable": true,
+      "step": 1,
+      "precision": 0
+     },
+     {
+      "name": "go",
+      "path": "/widgets/go",
+      "label": "Go",
+      "advanced": false,
+      "hidden": false,
+      "kind": "leaf",
+      "widget": "button",
+      "type": "action",
+      "editable": false,
+      "deferred": false,
+      "style": "primary",
+      "submit": false
+     },
+     {
+      "name": "scene",
+      "path": "/widgets/scene",
+      "label": "Scene",
+      "advanced": false,
+      "hidden": false,
+      "kind": "leaf",
+      "widget": "button",
+      "type": "string",
+      "editable": false,
+      "deferred": false,
+      "submit": false,
+      "value": "sunset"
+     }
+    ],
+    "advancedItems": [],
+    "lazy": false,
+    "tabs": false,
+    "inline": false,
+    "collapsed": false,
+    "form": false
+   },
+   {
+    "name": "pinned",
+    "path": "/widgets/pinned",
+    "label": "Pinned",
+    "advanced": false,
+    "hidden": false,
+    "kind": "section",
+    "level": 1,
+    "items": [
+     {
+      "name": "note",
+      "path": "/widgets/pinned/note",
+      "label": "Note",
+      "advanced": false,
+      "hidden": false,
+      "kind": "leaf",
+      "widget": "readout",
+      "type": "string",
+      "editable": false
+     }
+    ],
+    "advancedItems": [],
+    "lazy": false,
+    "tabs": false,
+    "inline": false,
+    "collapsed": false,
+    "form": false
+   },
+   {
+    "name": "peers",
+    "path": "/peers",
+    "label": "Nodes",
+    "advanced": false,
+    "hidden": false,
+    "kind": "section",
+    "level": 1,
+    "items": [
+     {
+      "name": "heliostat-3",
+      "path": "/peers/heliostat-3",
+      "label": "heliostat-3",
+      "advanced": false,
+      "hidden": false,
+      "kind": "link",
+      "remote": true,
+      "online": true,
+      "schemaHash": "0d9576ba"
+     },
+     {
+      "name": "kitchen-lamp",
+      "path": "/peers/kitchen-lamp",
+      "label": "kitchen-lamp",
+      "advanced": false,
+      "hidden": false,
+      "kind": "link",
+      "remote": true,
+      "online": false,
+      "schemaHash": "99f0e1aa"
+     },
+     {
+      "name": "porch-lamp",
+      "path": "/peers/porch-lamp",
+      "label": "porch-lamp",
+      "advanced": false,
+      "hidden": false,
+      "kind": "link",
+      "remote": true,
+      "online": true,
+      "schemaHash": "6274f740"
+     }
+    ],
+    "advancedItems": [],
+    "lazy": false,
+    "tabs": false,
+    "inline": false,
+    "collapsed": false,
+    "form": false
+   }
+  ],
+  "columns": 3,
+  "depth": null,
+  "keys": "uptime,online,lamp,motor,sensors,settings,config,offset,channels,schedule,widgets,sky,blob,peers,_ui"
+ },
+ "views": [
+  {
+   "id": "overview",
+   "items": [
+    {
+     "kind": "row",
+     "items": [
+      {
+       "kind": "node",
+       "path": "/lamp/power",
+       "item": {
+        "name": "power",
+        "path": "/lamp/power",
+        "label": "Power",
+        "advanced": false,
+        "hidden": false,
+        "kind": "leaf",
+        "widget": "gauge",
+        "type": "number",
+        "editable": false,
+        "min": 0,
+        "max": 60,
+        "unit": "W"
+       }
+      },
+      {
+       "kind": "node",
+       "path": "/sensors/temperature",
+       "item": {
+        "name": "temperature",
+        "path": "/sensors/temperature",
+        "label": "Temperature",
+        "advanced": false,
+        "hidden": false,
+        "kind": "leaf",
+        "widget": "readout",
+        "type": "number",
+        "editable": false,
+        "unit": "°C",
+        "precision": 1
+       }
+      }
+     ]
+    },
+    {
+     "kind": "node",
+     "path": "/motor",
+     "item": {
+      "name": "motor",
+      "path": "/motor",
+      "label": "Motor",
+      "advanced": false,
+      "hidden": false,
+      "kind": "section",
+      "level": 1,
+      "items": [
+       {
+        "name": "speed",
+        "path": "/motor/speed",
+        "label": "Speed",
+        "advanced": false,
+        "hidden": false,
+        "kind": "leaf",
+        "widget": "knob",
+        "type": "number",
+        "editable": true,
+        "min": -1,
+        "max": 1,
+        "step": 0.01,
+        "precision": 2
+       },
+       {
+        "name": "duty",
+        "path": "/motor/duty",
+        "label": "Duty",
+        "advanced": false,
+        "hidden": false,
+        "kind": "leaf",
+        "widget": "stepper",
+        "type": "integer",
+        "editable": true,
+        "min": 0,
+        "max": 100,
+        "unit": "%",
+        "step": 1,
+        "precision": 0
+       },
+       {
+        "name": "position",
+        "path": "/motor/position",
+        "label": "Position",
+        "advanced": false,
+        "hidden": false,
+        "kind": "leaf",
+        "widget": "chart",
+        "type": "number",
+        "editable": false,
+        "unit": "°",
+        "history": 30
+       },
+       {
+        "name": "invert",
+        "path": "/motor/invert",
+        "label": "Invert",
+        "advanced": false,
+        "hidden": false,
+        "kind": "leaf",
+        "widget": "checkbox",
+        "type": "boolean",
+        "editable": true
+       },
+       {
+        "name": "jog",
+        "path": "/motor/jog",
+        "label": "Jog",
+        "advanced": false,
+        "hidden": false,
+        "kind": "leaf",
+        "widget": "hold",
+        "type": "boolean",
+        "editable": false,
+        "deferred": false,
+        "submit": false
+       },
+       {
+        "name": "moveTo",
+        "path": "/motor/moveTo",
+        "label": "Move to",
+        "advanced": false,
+        "hidden": false,
+        "kind": "leaf",
+        "widget": "button",
+        "type": "number",
+        "editable": true,
+        "min": 0,
+        "max": 360,
+        "unit": "°",
+        "confirm": "Move the mirror?",
+        "deferred": false,
+        "submit": false,
+        "field": "slider"
+       },
+       {
+        "name": "stop",
+        "path": "/motor/stop",
+        "label": "Stop",
+        "advanced": false,
+        "hidden": false,
+        "icon": "stop",
+        "kind": "leaf",
+        "widget": "button",
+        "type": "action",
+        "editable": false,
+        "deferred": false,
+        "style": "danger",
+        "submit": false
+       },
+       {
+        "name": "home",
+        "path": "/motor/home",
+        "label": "Home",
+        "advanced": false,
+        "hidden": false,
+        "kind": "leaf",
+        "widget": "button",
+        "type": "action",
+        "editable": false,
+        "deferred": true,
+        "submit": false
+       },
+       {
+        "name": "count",
+        "path": "/motor/count",
+        "label": "Count",
+        "advanced": false,
+        "hidden": false,
+        "kind": "leaf",
+        "widget": "button",
+        "type": "action",
+        "editable": false,
+        "deferred": false,
+        "returns": "integer",
+        "style": "quiet",
+        "submit": false
+       }
+      ],
+      "advancedItems": [
+       {
+        "name": "pid",
+        "path": "/motor/pid",
+        "label": "Pid",
+        "advanced": true,
+        "hidden": false,
+        "kind": "section",
+        "level": 2,
+        "items": [
+         {
+          "name": "kp",
+          "path": "/motor/pid/kp",
+          "label": "Kp",
+          "advanced": false,
+          "hidden": false,
+          "kind": "leaf",
+          "widget": "number",
+          "type": "number",
+          "editable": true
+         },
+         {
+          "name": "ki",
+          "path": "/motor/pid/ki",
+          "label": "Ki",
+          "advanced": false,
+          "hidden": false,
+          "kind": "leaf",
+          "widget": "number",
+          "type": "number",
+          "editable": true
+         },
+         {
+          "name": "kd",
+          "path": "/motor/pid/kd",
+          "label": "Kd",
+          "advanced": false,
+          "hidden": false,
+          "kind": "leaf",
+          "widget": "number",
+          "type": "number",
+          "editable": true
+         }
+        ],
+        "advancedItems": [],
+        "lazy": false,
+        "tabs": false,
+        "inline": false,
+        "collapsed": false,
+        "form": false
+       }
+      ],
+      "lazy": false,
+      "tabs": false,
+      "inline": false,
+      "collapsed": false,
+      "form": false
+     }
+    },
+    {
+     "kind": "text",
+     "text": "Live values from **every** node."
+    },
+    {
+     "kind": "node",
+     "path": "/peers/heliostat-3/lamp/on",
+     "item": null
+    },
+    {
+     "kind": "node",
+     "path": "/peers/kitchen-lamp/lamp/on",
+     "item": null
+    },
+    {
+     "kind": "node",
+     "path": "/peers/porch-lamp/lamp/on",
+     "item": null
+    }
+   ],
+   "missing": [
+    "/peers/heliostat-3/lamp/on",
+    "/peers/kitchen-lamp/lamp/on",
+    "/peers/porch-lamp/lamp/on"
+   ],
+   "specs": [
+    {
+     "path": "/",
+     "depth": 3
+    }
+   ]
+  },
+  {
+   "id": "sky",
+   "items": [
+    {
+     "kind": "node",
+     "path": "/sky",
+     "item": {
+      "name": "sky",
+      "path": "/sky",
+      "label": "Sky",
+      "advanced": false,
+      "hidden": false,
+      "kind": "leaf",
+      "widget": "x-sun-dial",
+      "type": "object",
+      "editable": false,
+      "script": "/ext/sun-dial.js"
+     }
+    }
+   ],
+   "missing": [],
+   "specs": [
+    {
+     "path": "/sky"
+    }
+   ]
+  }
+ ]
+}

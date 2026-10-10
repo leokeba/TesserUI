@@ -17,6 +17,21 @@ export interface Config {
   ws: string | null;
   transport: 'ws' | 'http' | 'serial';
   minVersion?: string;
+  // The page title until the node's label is known.
+  title?: string;
+  // Module scripts defining custom elements (DESIGN.md §9.8).
+  scripts?: string[];
+  // CSS variables without their "--": {"accent": "#d97706"}.
+  theme?: Record<string, string>;
+  // The interface's own text, by its English text (DESIGN.md §9.10).
+  strings?: Record<string, string>;
+  // The path the UI starts from and doesn't go above (embedding a subtree).
+  path?: string;
+  // The top bar: device label, view pages, connection state.
+  header?: boolean;
+  // 'hash' follows location.hash; 'memory' keeps the route to itself, for
+  // UIs embedded in a page that owns the URL.
+  routing?: 'hash' | 'memory';
 }
 
 const TOKEN_KEY = 'tesserui:token';
@@ -55,11 +70,19 @@ export class Session {
   constructor(readonly config: Config) {
     this.store = new Store(() => this.client);
     this.store.onUnauthorized = () => (this.needToken = true);
+    this.store.t = (text) => this.t(text);
     this.subs = new Subscriptions(() => this.client, this.store);
     this.subs.childNames = (path) => {
       const s = this.schemaAt(path);
       return Object.keys((s?.type === 'remote' ? s.tree : s)?.children ?? {});
     };
+  }
+
+  // The interface's text, translated by config.strings; {name} in the text
+  // is replaced by vars.name.
+  t(text: string, vars?: Record<string, string | number>): string {
+    const s = this.config.strings?.[text] ?? text;
+    return vars ? s.replace(/\{(\w+)\}/g, (m, k) => (k in vars ? String(vars[k]) : m)) : s;
   }
 
   get kind() {
@@ -93,6 +116,11 @@ export class Session {
       }
     });
     this.use(ws);
+  }
+
+  close() {
+    this.subs.stop();
+    this.client?.close();
   }
 
   // Web Serial: the port comes from a user gesture (navigator.serial.requestPort()).
@@ -309,7 +337,8 @@ export class Session {
   }
 
   showPage(page: Page) {
-    this.show(page.cards, [{ path: page.path, keys: page.keys, depth: page.depth }], page.path);
+    const depth = Number.isFinite(page.depth) ? page.depth : undefined;
+    this.show(page.cards, [{ path: page.path, keys: page.keys, depth }], page.path);
   }
 }
 

@@ -61,8 +61,8 @@ export function errorBody(r: Reply): ErrorBody {
   return b && typeof b === 'object' && typeof b.error === 'string' ? b : { error: r.status };
 }
 
-export function errorText(r: Reply): string {
+export function errorText(r: Reply, t: (text: string) => string = (x) => x): string {
   const b = errorBody(r);
   const text = b.message || b.error.replace(/_/g, ' ');
-  return b.partial ? `${text} (some changes were applied)` : text;
+  return b.partial ? `${text} (${t('some changes were applied')})` : text;
 }

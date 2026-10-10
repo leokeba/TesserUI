@@ -1,25 +1,51 @@
 <script lang="ts">
   import { untrack } from 'svelte';
-  import { app, compareVersions } from './shared.svelte';
+  import { compareVersions, provideSession } from './shared.svelte';
   import Icon from './Icon.svelte';
+  import { isUnder } from './model/schema';
   import Page from './Page.svelte';
+  import type { Session } from './store/session.svelte';
   import ViewPage from './ViewPage.svelte';
 
-  const session = app.session;
-  const store = session.store;
+  // full: the UI is the whole page (the node's own), not embedded.
+  let { session, full = false }: { session: Session; full?: boolean } = $props();
+  // svelte-ignore state_referenced_locally
+  provideSession(session);
+  // svelte-ignore state_referenced_locally
+  const { config, store } = session;
+  const t = (text: string, vars?: Record<string, string | number>) => session.t(text, vars);
 
   // Routes: #/<path> is the page of the node at that path (#/peers/<name>
   // for a peer behind a UI host), #/v/<id> a view page (DESIGN.md §7.6, §8).
-  let hash = $state(location.hash);
-  addEventListener('hashchange', () => (hash = location.hash));
+  // With memory routing, the route stays inside the UI and its links are
+  // intercepted; the page keeps its URL.
+  const memory = config.routing === 'memory';
+  const home = config.path ?? '/';
+  let hash = $state(memory ? '' : location.hash);
+  if (!memory) {
+    const changed = () => (hash = location.hash);
+    addEventListener('hashchange', changed);
+    $effect(() => () => removeEventListener('hashchange', changed));
+  }
+  function intercept(e: MouseEvent) {
+    const href = (e.target as Element).closest?.('a')?.getAttribute('href');
+    if (memory && href?.startsWith('#')) {
+      e.preventDefault();
+      hash = href;
+    }
+  }
+  const views = $derived(home === '/' ? session.views : null);
   const route = $derived.by(() => {
     const h = decodeURIComponent(hash.slice(1));
-    if (h.startsWith('/v/')) return { view: h.slice(3), path: '/' };
-    return { view: null as string | null, path: h.replace(/\/+$/, '') || '/' };
+    if (h.startsWith('/v/') && views) return { view: h.slice(3), path: home };
+    const path = h.replace(/\/+$/, '') || home;
+    return { view: null as string | null, path: isUnder(path, home) ? path : home };
   });
   // View pages come first: an empty route opens the first one.
   $effect(() => {
-    if (!hash && session.views?.length) location.replace(`#/v/${session.views[0].id}`);
+    if (hash || !views?.length) return;
+    if (memory) hash = `#/v/${views[0].id}`;
+    else location.replace(`#/v/${views[0].id}`);
   });
   // Errors are cleared by navigation (and only by it: untracked).
   $effect(() => {
@@ -29,20 +55,21 @@
 
   const deviceLabel = $derived.by(() => {
     void session.schemaVersion;
-    return session.root.label ?? 'TesserUI';
+    return session.root.label ?? config.title ?? 'TesserUI';
   });
   $effect(() => {
-    document.title = deviceLabel;
+    if (full) document.title = deviceLabel;
   });
+  const theme = Object.entries(config.theme ?? {})
+    .map(([k, v]) => `--${k}:${v}`)
+    .join(';');
 
   const stateText = $derived(
     session.state === 'open'
-      ? { ws: 'Live', http: 'Polling', serial: 'USB' }[session.kind ?? 'ws']
-      : session.state === 'connecting'
-        ? 'Connecting…'
-        : 'Disconnected',
+      ? t({ ws: 'Live', http: 'Polling', serial: 'USB' }[session.kind ?? 'ws'])
+      : t(session.state === 'connecting' ? 'Connecting…' : 'Disconnected'),
   );
-  const tooOld = $derived(!!session.config.minVersion && compareVersions(__VERSION__, session.config.minVersion) < 0);
+  const tooOld = $derived(!!config.minVersion && compareVersions(__VERSION__, config.minVersion) < 0);
 
   let token = $state('');
   let serialError = $state('');
@@ -57,78 +84,87 @@
   }
 </script>
 
-<header class="top">
-  <a class="brand" href="#/">{deviceLabel}</a>
-  {#if session.views?.length}
-    <nav aria-label="Pages">
-      {#each session.views as v (v.id)}
-        <a href="#/v/{v.id}" aria-current={route.view === v.id ? 'page' : undefined}>{v.label}</a>
-      {/each}
-      <a href="#/" aria-current={route.view === null ? 'page' : undefined}>Device</a>
-    </nav>
-  {/if}
-  <span class="state {session.state}" role="status"><i></i>{stateText}</span>
-</header>
-
-{#if tooOld}
-  <p class="banner warn">
-    <Icon name="alert" /> This node expects TesserUI {session.config.minVersion} or later; this interface is {__VERSION__}.
-  </p>
-{/if}
-
-<main>
-  {#if session.config.transport === 'serial' && !session.kind}
-    <section class="card connect">
-      <h2><Icon name="usb" /> Connect a node over USB</h2>
-      {#if hasSerial}
-        <p>Plug in a board running TesserAPI with a serial transport, then choose its port.</p>
-        <button class="primary" onclick={connectUsb}>Choose a port</button>
-        {#if serialError}<p class="error">{serialError}</p>{/if}
-      {:else}
-        <p>Web Serial needs a Chromium-based browser (Chrome, Edge, Opera).</p>
+<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+<div class="tesserui" class:full style={theme} onclick={intercept}>
+  {#if config.header !== false}
+    <header class="top">
+      <a class="brand" href="#{home}">{deviceLabel}</a>
+      {#if views?.length}
+        <nav aria-label={t('Pages')}>
+          {#each views as v (v.id)}
+            <a href="#/v/{v.id}" aria-current={route.view === v.id ? 'page' : undefined}>{v.label}</a>
+          {/each}
+          <a href="#/" aria-current={route.view === null ? 'page' : undefined}>{t('Device')}</a>
+        </nav>
       {/if}
-    </section>
-  {:else if !session.loaded || (!hash && session.views?.length)}
-    <p class="muted center">{session.state === 'open' ? 'Loading…' : stateText}</p>
-  {:else if route.view !== null}
-    {@const page = session.views?.find((v) => v.id === route.view)}
-    {#if page}
-      {#key page.id}<ViewPage {page} />{/key}
-    {:else}
-      <p class="muted center">No view page named “{route.view}”.</p>
-    {/if}
-  {:else}
-    {#key route.path}<Page path={route.path} />{/key}
+      <span class="state {session.state}" role="status"><i></i>{stateText}</span>
+    </header>
   {/if}
-</main>
 
-{#if session.needToken}
-  <dialog open aria-labelledby="token-title">
-    <form
-      method="dialog"
-      onsubmit={(e) => {
-        e.preventDefault();
-        session.setToken(token);
-      }}
-    >
-      <h2 id="token-title"><Icon name="lock" /> Authentication</h2>
-      <p>This node needs a token to make changes.</p>
-      <input type="password" bind:value={token} aria-label="Token" autocomplete="current-password" />
-      <div class="actions">
-        <button type="button" class="quiet" onclick={() => (session.needToken = false)}>Cancel</button>
-        <button class="primary">Save</button>
-      </div>
-    </form>
-  </dialog>
-{/if}
+  {#if tooOld}
+    <p class="banner warn">
+      <Icon name="alert" />
+      {t('This node expects TesserUI {min} or later; this interface is {version}.', { min: config.minVersion!, version: __VERSION__ })}
+    </p>
+  {/if}
+  {#if session.loaded && session.state !== 'open'}
+    <p class="banner warn" role="alert"><Icon name="alert" /> {t('The connection to the node is lost. Reconnecting…')}</p>
+  {/if}
 
-<div class="toasts" aria-live="polite">
-  {#each store.toasts as t (t.id)}<div class="toast">{t.text}</div>{/each}
+  <main>
+    {#if config.transport === 'serial' && !session.kind}
+      <section class="card connect">
+        <h2><Icon name="usb" /> {t('Connect a node over USB')}</h2>
+        {#if hasSerial}
+          <p>{t('Plug in a board running TesserAPI with a serial transport, then choose its port.')}</p>
+          <button class="primary" onclick={connectUsb}>{t('Choose a port')}</button>
+          {#if serialError}<p class="error">{serialError}</p>{/if}
+        {:else}
+          <p>{t('Web Serial needs a Chromium-based browser (Chrome, Edge, Opera).')}</p>
+        {/if}
+      </section>
+    {:else if !session.loaded || (!hash && views?.length)}
+      <p class="muted center">{session.state === 'open' ? t('Loading…') : stateText}</p>
+    {:else if route.view !== null}
+      {@const page = views?.find((v) => v.id === route.view)}
+      {#if page}
+        {#key page.id}<ViewPage {page} />{/key}
+      {:else}
+        <p class="muted center">{t('No view page named “{id}”.', { id: route.view })}</p>
+      {/if}
+    {:else}
+      {#key route.path}<Page path={route.path} {home} />{/key}
+    {/if}
+  </main>
+
+  {#if session.needToken}
+    <dialog open aria-labelledby="token-title">
+      <form
+        method="dialog"
+        onsubmit={(e) => {
+          e.preventDefault();
+          session.setToken(token);
+        }}
+      >
+        <h2 id="token-title"><Icon name="lock" /> {t('Authentication')}</h2>
+        <p>{t('This node needs a token to make changes.')}</p>
+        <input type="password" bind:value={token} aria-label={t('Token')} autocomplete="current-password" />
+        <div class="actions">
+          <button type="button" class="quiet" onclick={() => (session.needToken = false)}>{t('Cancel')}</button>
+          <button class="primary">{t('Save')}</button>
+        </div>
+      </form>
+    </dialog>
+  {/if}
+
+  <div class="toasts" aria-live="polite">
+    {#each store.toasts as toast (toast.id)}<div class="toast">{toast.text}</div>{/each}
+  </div>
 </div>
 
 <style>
   :global {
-    :root {
+    .tesserui {
       --bg: #f3f4f6;
       --surface: #fff;
       --surface-2: #eceef2;
@@ -146,7 +182,7 @@
       color-scheme: light;
     }
     @media (prefers-color-scheme: dark) {
-      :root {
+      .tesserui {
         --bg: #101318;
         --surface: #191d24;
         --surface-2: #232933;
@@ -162,15 +198,15 @@
       }
     }
     @media (max-width: 640px) {
-      :root {
+      .tesserui {
         --control: 44px;
       }
     }
-    * {
+    .tesserui,
+    .tesserui * {
       box-sizing: border-box;
     }
-    body {
-      margin: 0;
+    .tesserui {
       background: var(--bg);
       color: var(--text);
       font:
@@ -181,18 +217,21 @@
         sans-serif;
       -webkit-text-size-adjust: 100%;
     }
-    a {
+    .tesserui.full {
+      min-height: 100vh;
+    }
+    .tesserui a {
       color: var(--accent);
     }
-    h2,
-    h3 {
+    .tesserui h2,
+    .tesserui h3 {
       margin: 0;
       font-size: 1rem;
     }
-    input,
-    select,
-    textarea,
-    button {
+    .tesserui input,
+    .tesserui select,
+    .tesserui textarea,
+    .tesserui button {
       font: inherit;
       color: inherit;
       min-height: var(--control);
@@ -202,20 +241,20 @@
       padding: 0 10px;
       min-width: 0;
     }
-    textarea {
+    .tesserui textarea {
       padding: 8px 10px;
       width: 100%;
       resize: vertical;
     }
-    input:focus-visible,
-    select:focus-visible,
-    textarea:focus-visible,
-    button:focus-visible,
-    a:focus-visible {
+    .tesserui input:focus-visible,
+    .tesserui select:focus-visible,
+    .tesserui textarea:focus-visible,
+    .tesserui button:focus-visible,
+    .tesserui a:focus-visible {
       outline: 2px solid var(--accent);
       outline-offset: 1px;
     }
-    button {
+    .tesserui button {
       cursor: pointer;
       display: inline-flex;
       align-items: center;
@@ -224,42 +263,42 @@
       background: var(--surface);
       white-space: nowrap;
     }
-    button:hover:not(:disabled) {
+    .tesserui button:hover:not(:disabled) {
       border-color: var(--muted);
     }
-    button.primary {
+    .tesserui button.primary {
       background: var(--accent);
       border-color: var(--accent);
       color: var(--on-accent);
     }
-    button.danger {
+    .tesserui button.danger {
       background: var(--danger);
       border-color: var(--danger);
       color: #fff;
     }
-    button.quiet {
+    .tesserui button.quiet {
       background: none;
       border-color: transparent;
     }
-    :disabled {
+    .tesserui :disabled {
       opacity: 0.5;
       cursor: not-allowed;
     }
-    input[type='range'] {
+    .tesserui input[type='range'] {
       accent-color: var(--accent);
       padding: 0;
       border: 0;
       background: none;
     }
-    input[type='checkbox'],
-    input[type='radio'] {
+    .tesserui input[type='checkbox'],
+    .tesserui input[type='radio'] {
       accent-color: var(--accent);
       width: 20px;
       height: 20px;
       min-height: 0;
       margin: 0;
     }
-    input[role='switch'] {
+    .tesserui input[role='switch'] {
       appearance: none;
       width: 44px;
       height: 26px;
@@ -270,7 +309,7 @@
       cursor: pointer;
       transition: background 0.15s;
     }
-    input[role='switch']::before {
+    .tesserui input[role='switch']::before {
       content: '';
       position: absolute;
       inset: 3px auto 3px 3px;
@@ -280,32 +319,32 @@
       box-shadow: 0 1px 2px #0004;
       transition: transform 0.15s;
     }
-    input[role='switch']:checked {
+    .tesserui input[role='switch']:checked {
       background: var(--accent);
     }
-    input[role='switch']:checked::before {
+    .tesserui input[role='switch']:checked::before {
       transform: translateX(18px);
     }
-    .muted {
+    .tesserui .muted {
       color: var(--muted);
     }
-    .center {
+    .tesserui .center {
       text-align: center;
       padding: 48px 16px;
     }
-    .error {
+    .tesserui .error {
       color: var(--danger);
       font-size: 0.9em;
       margin: 4px 0 0;
     }
-    .card {
+    .tesserui .card {
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: var(--radius);
       padding: 14px 16px;
       min-width: 0;
     }
-    .banner {
+    .tesserui .banner {
       margin: 0;
       padding: 10px 16px;
       display: flex;
@@ -314,7 +353,7 @@
       background: var(--surface-2);
       border-bottom: 1px solid var(--border);
     }
-    .banner.warn {
+    .tesserui .banner.warn {
       color: var(--warn);
     }
   }

@@ -4,6 +4,7 @@
 // built bundle at /ui.js, the API at /api and WebSocket at /ws.
 //
 //   node scripts/device.mjs [demo|motors] [--port 8090] [--isolated]
+//   (/ext/<name>.js serves examples/elements/: the demo's custom elements)
 //   then open http://localhost:8090/            (the built bundle: pnpm build)
 //   or        http://localhost:5173/?api=http://localhost:8090/api   (pnpm dev)
 //
@@ -23,6 +24,8 @@ const port = Number(args[args.indexOf('--port') + 1]) || 8090;
 const isolated = args.includes('--isolated');
 const exe = new URL('../../build/tesserui_demo', import.meta.url).pathname;
 const dist = new URL('../dist/', import.meta.url);
+// Custom elements the demo tree uses (DESIGN.md §9.8), served at /ext/.
+const elements = new URL('../../examples/elements/', import.meta.url);
 const { version } = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
 
 function node(extra, onLine) {
@@ -70,6 +73,11 @@ const server = createServer((req, res) => {
     const gz = new URL('ui.js.gz', dist);
     if (!existsSync(gz)) return res.writeHead(404).end('no bundle: run pnpm build');
     return res.writeHead(200, { 'Content-Type': 'application/javascript', 'Content-Encoding': 'gzip', 'Cache-Control': 'no-cache' }).end(readFileSync(gz));
+  }
+  if (url.pathname.startsWith('/ext/')) {
+    const file = new URL(url.pathname.slice(5).replace(/[^\w.-]/g, ''), elements);
+    if (!existsSync(file)) return res.writeHead(404, cors).end();
+    return res.writeHead(200, { ...cors, 'Content-Type': 'text/javascript' }).end(readFileSync(file));
   }
   if (!url.pathname.startsWith('/api')) return res.writeHead(404, cors).end();
   let body = '';

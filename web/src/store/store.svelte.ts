@@ -38,6 +38,8 @@ export class Store {
   // Chart paths and their history length, in seconds.
   charts = new Map<string, number>();
   onUnauthorized: (() => void) | null = null;
+  // The interface's text (Session.t).
+  t: (text: string) => string = (x) => x;
 
   // The device's last value for each pending path: notifications for a
   // pending path land here instead of on screen.
@@ -100,6 +102,13 @@ export class Store {
     this.sample(path, value);
   }
 
+  // An optimistic value: an object is a patch, merged like a set body.
+  private put(path: string, value: unknown) {
+    if (!isObject(value)) return this.setLocal(path, value);
+    if (!isObject(this.get(path))) this.setLocal(path, {});
+    for (const [k, v] of Object.entries(value)) this.put(path === '/' ? `/${k}` : `${path}/${k}`, v);
+  }
+
   private sample(path: string, value: unknown) {
     const seconds = this.charts.get(path);
     if (seconds === undefined || (typeof value !== 'number' && typeof value !== 'bigint')) return;
@@ -139,7 +148,7 @@ export class Store {
   async write(path: string, value: unknown): Promise<Reply> {
     this.hold(path);
     delete this.errors[path];
-    this.setLocal(path, value);
+    this.put(path, value);
     const r = await this.client().request({ op: 'set', path, body: value });
     if (r.status === 'ok') this.confirmed.set(path, r.body);
     else this.fail(path, r);
@@ -190,7 +199,7 @@ export class Store {
 
   fail(path: string, r: Reply) {
     if (r.status === 'unauthorized') this.onUnauthorized?.();
-    this.errors[this.nearestVisible(errorBody(r).path ?? path)] = errorText(r);
+    this.errors[this.nearestVisible(errorBody(r).path ?? path)] = errorText(r, this.t);
   }
 
   nearestVisible(path: string): string {

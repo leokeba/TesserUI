@@ -2,7 +2,9 @@
   // A remote node (a peer behind a UI host) or a sub-page.
   import Icon from '../Icon.svelte';
   import type { LinkItem } from '../model/model';
+  import { useSession } from '../shared.svelte';
   let { link }: { link: LinkItem } = $props();
+  const session = useSession();
 </script>
 
 <a class="link" href="#{link.path}" title={link.description}>
@@ -12,7 +14,7 @@
     {#if link.remote && link.label !== link.name}<small>{link.name}</small>{/if}
   </span>
   {#if link.remote}
-    <span class="dot" class:off={!link.online}></span><span class="status">{link.online ? 'online' : 'offline'}</span>
+    <span class="dot" class:off={!link.online}></span><span class="status">{session.t(link.online ? 'online' : 'offline')}</span>
   {/if}
   <Icon name="right" />
 </a>

@@ -1,25 +1,19 @@
 <script lang="ts">
   // Actions (DESIGN.md §4): a button; a typed argument's input and a button;
   // raw JSON and a button; or a hold button (true on press, false on release).
-  import { app } from '../shared.svelte';
+  import { useSession } from '../shared.svelte';
   import { parse } from '../client/json';
   import { DEFERRED_TIMEOUT_MS } from '../client/types';
   import Icon from '../Icon.svelte';
   import { formatValue } from '../model/format';
-  import Bool from './Bool.svelte';
-  import Choice from './Choice.svelte';
-  import Color from './Color.svelte';
-  import Knob from './Knob.svelte';
-  import Num from './Num.svelte';
-  import Range from './Range.svelte';
-  import Text from './Text.svelte';
+  import { fieldOf } from './registry';
   import type { WidgetProps } from './types';
 
   let { leaf, disabled, id }: WidgetProps = $props();
-  const store = app.session.store;
+  const session = useSession();
+  const store = session.store;
 
-  const FIELDS = { toggle: Bool, checkbox: Bool, slider: Range, knob: Knob, number: Num, stepper: Num, segmented: Choice, select: Choice, radio: Choice, text: Text, password: Text, textarea: Text, color: Color };
-  const Field = $derived(leaf.field && leaf.field !== 'json' ? FIELDS[leaf.field as keyof typeof FIELDS] : null) as unknown as import('svelte').Component<WidgetProps> | null;
+  const Field = $derived(fieldOf(leaf.field));
   // svelte-ignore state_referenced_locally
   let arg: unknown = $state(leaf.type === 'boolean' ? false : leaf.type === 'string' ? (leaf.options?.[0]?.value ?? '') : (leaf.min ?? 0));
   let json = $state('null');
@@ -41,7 +35,7 @@
       jsonError = '';
       run(parse(json));
     } catch {
-      jsonError = 'Not valid JSON';
+      jsonError = session.t('Not valid JSON');
     }
   }
 
@@ -78,7 +72,7 @@
     {#if Field}
       <Field leaf={{ ...leaf, widget: leaf.field! }} value={arg} set={(v) => (arg = v)} {disabled} {id} />
     {:else if leaf.field === 'json'}
-      <textarea {id} rows="2" bind:value={json} {disabled} spellcheck="false" aria-label="{leaf.label} argument (JSON)"></textarea>
+      <textarea {id} rows="2" bind:value={json} {disabled} spellcheck="false" aria-label={session.t('{label} argument (JSON)', { label: leaf.label })}></textarea>
     {/if}
     <button
       type="button"
@@ -89,7 +83,7 @@
       onclick={() => (leaf.field === 'json' ? runJson() : run(leaf.field ? arg : (leaf.value ?? null)))}
     >
       {#if leaf.icon}<Icon name={leaf.icon} />{/if}
-      {leaf.field ? 'Run' : leaf.label}{busy ? '…' : ''}
+      {leaf.field ? session.t('Run') : leaf.label}{busy ? '…' : ''}
     </button>
     {#if result !== null}<output>→ {result}</output>{/if}
   </div>
