@@ -82,6 +82,25 @@ struct Channel {
     bool mute = false;
 };
 
+// A named direction (helionext's sources), also an object argument.
+struct Source {
+    std::string name = "New";
+    double azimuth = 180;
+    double elevation = 30;
+};
+
+// A keyframe of a sequence (helionext's axis sequencers).
+struct Frame {
+    uint32_t t = 0;  // ms
+    double value = 0;
+};
+
+// The argument of the login action.
+struct Credentials {
+    std::string name;
+    std::string password;
+};
+
 struct Demo {
     tesser::Api api;
     // Two live peers behind an in-memory link standing in for NowTP:
@@ -151,9 +170,19 @@ struct Demo {
     bool armed = false;
     int conditional = 5;
     std::string scene = "none";
-    // sky: drawn by a custom element (<x-sun-dial>)
+    // sky: drawn by custom elements (<x-sun-dial>, <x-sky>)
     double sunAz = 135, sunEl = 40;
     double targetAz = 180, targetEl = 45;
+    std::vector<Source> sources{{"Tower", 200, 10}, {"Pool", 150, 5}};
+    // system: TesserKIT-like settings, for admins
+    int days = 0x1f;  // Monday to Friday
+    std::string tz = "<+01>-1<+02>,M3.5.0,M10.5.0/3";
+    int64_t clockSetMs = 0;
+    // sequence: keyframes (<x-keyframes>)
+    std::vector<Frame> frames{{0, 0}, {2000, 30}, {5000, -20}, {8000, 0}};
+    bool loop = true;
+    uint32_t sequenceStartMs = 0;  // 0: stopped
+    uint32_t sequencePosition = 0;
 
     // The links, after the trees they serve (destroyed first).
     tesser::DatagramEndpoint link;           // this node's side

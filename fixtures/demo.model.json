@@ -111,6 +111,18 @@
       "script": "/ext/sun-dial.js"
      },
      {
+      "name": "sequence",
+      "path": "/sequence",
+      "label": "Sequence",
+      "advanced": false,
+      "hidden": false,
+      "kind": "leaf",
+      "widget": "x-keyframes",
+      "type": "object",
+      "editable": false,
+      "script": "/ext/keyframes.js"
+     },
+     {
       "name": "blob",
       "path": "/blob",
       "label": "Blob",
@@ -642,7 +654,8 @@
       "kind": "leaf",
       "widget": "password",
       "type": "string",
-      "editable": true
+      "editable": true,
+      "secret": true
      },
      {
       "name": "notes",
@@ -1321,6 +1334,163 @@
     "form": false
    },
    {
+    "name": "system",
+    "path": "/system",
+    "label": "System",
+    "advanced": false,
+    "hidden": false,
+    "access": "admin",
+    "kind": "section",
+    "level": 1,
+    "items": [
+     {
+      "name": "days",
+      "path": "/system/days",
+      "label": "Timer days",
+      "advanced": false,
+      "hidden": false,
+      "access": "admin",
+      "kind": "leaf",
+      "widget": "flags",
+      "type": "integer",
+      "editable": true,
+      "step": 1,
+      "precision": 0
+     },
+     {
+      "name": "tz",
+      "path": "/system/tz",
+      "label": "Time zone",
+      "advanced": false,
+      "hidden": false,
+      "access": "admin",
+      "kind": "leaf",
+      "widget": "timezone",
+      "type": "string",
+      "editable": true
+     },
+     {
+      "name": "clockSet",
+      "path": "/system/clockSet",
+      "label": "Clock set to",
+      "advanced": false,
+      "hidden": false,
+      "access": "admin",
+      "kind": "leaf",
+      "widget": "readout",
+      "type": "integer",
+      "editable": false,
+      "unit": "ms",
+      "step": 1,
+      "precision": 0
+     },
+     {
+      "name": "setClock",
+      "path": "/system/setClock",
+      "label": "Set from this device",
+      "advanced": false,
+      "hidden": false,
+      "access": "admin",
+      "kind": "leaf",
+      "widget": "button",
+      "type": "integer",
+      "editable": false,
+      "deferred": false,
+      "submit": false,
+      "value": "$now"
+     },
+     {
+      "name": "scan",
+      "path": "/system/scan",
+      "label": "Scan",
+      "advanced": false,
+      "hidden": false,
+      "access": "admin",
+      "kind": "leaf",
+      "widget": "button",
+      "type": "string",
+      "editable": true,
+      "deferred": true,
+      "submit": false,
+      "field": "text"
+     }
+    ],
+    "advancedItems": [],
+    "lazy": false,
+    "tabs": false,
+    "inline": false,
+    "collapsed": false,
+    "form": false
+   },
+   {
+    "name": "account",
+    "path": "/account",
+    "label": "Account",
+    "advanced": false,
+    "hidden": false,
+    "kind": "section",
+    "level": 1,
+    "items": [
+     {
+      "name": "login",
+      "path": "/account/login",
+      "label": "Login",
+      "advanced": false,
+      "hidden": false,
+      "kind": "leaf",
+      "widget": "button",
+      "type": "object",
+      "editable": true,
+      "deferred": true,
+      "submit": false,
+      "params": [
+       {
+        "name": "name",
+        "path": "name",
+        "label": "Name",
+        "advanced": false,
+        "hidden": false,
+        "kind": "leaf",
+        "widget": "text",
+        "type": "string",
+        "editable": true
+       },
+       {
+        "name": "password",
+        "path": "password",
+        "label": "Password",
+        "advanced": false,
+        "hidden": false,
+        "kind": "leaf",
+        "widget": "password",
+        "type": "string",
+        "editable": true,
+        "secret": true
+       }
+      ]
+     },
+     {
+      "name": "whoami",
+      "path": "/account/whoami",
+      "label": "Whoami",
+      "advanced": false,
+      "hidden": true,
+      "kind": "leaf",
+      "widget": "button",
+      "type": "action",
+      "editable": false,
+      "deferred": true,
+      "submit": false
+     }
+    ],
+    "advancedItems": [],
+    "lazy": false,
+    "tabs": false,
+    "inline": false,
+    "collapsed": false,
+    "form": false
+   },
+   {
     "name": "peers",
     "path": "/peers",
     "label": "Nodes",
@@ -1373,7 +1543,7 @@
   ],
   "columns": 3,
   "depth": null,
-  "keys": "uptime,online,lamp,motor,sensors,settings,config,offset,channels,schedule,widgets,sky,blob,peers,_ui"
+  "keys": "uptime,online,lamp,motor,sensors,settings,config,offset,channels,schedule,widgets,sky,sequence,system,account,blob,peers,_ui"
  },
  "views": [
   {
@@ -1669,6 +1839,33 @@
       "type": "object",
       "editable": false,
       "script": "/ext/sun-dial.js"
+     }
+    }
+   ],
+   "missing": [],
+   "specs": [
+    {
+     "path": "/sky"
+    }
+   ]
+  },
+  {
+   "id": "mirror",
+   "items": [
+    {
+     "kind": "node",
+     "path": "/sky",
+     "item": {
+      "name": "sky",
+      "path": "/sky",
+      "label": "Sky",
+      "advanced": false,
+      "hidden": false,
+      "kind": "leaf",
+      "widget": "x-sky",
+      "type": "object",
+      "editable": false,
+      "script": "/ext/sky.js"
      }
     }
    ],

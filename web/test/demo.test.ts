@@ -1,7 +1,7 @@
 // The demo and motors fixtures, generated through real TesserAPI by
 // test/fixtures_main.cpp: every widget and hint of DESIGN §4 and §5.
 import { describe, expect, it } from 'vitest';
-import { buildPage, type Item, type Leaf, type LinkItem, type Section } from '../src/model/model';
+import { buildLeaf, buildPage, type Item, type Leaf, type LinkItem, type Section } from '../src/model/model';
 import { mergeSchema, type Schema } from '../src/model/schema';
 import { buildView, viewModelItems, type ViewPage } from '../src/model/views';
 import { fixture } from './fixtures';
@@ -82,7 +82,7 @@ describe('demo: widgets', () => {
   });
   it('lays out sections (DESIGN §6.1)', () => {
     expect(page.columns).toBe(3);
-    expect(page.cards[0]).toMatchObject({ label: '', items: [{ name: 'uptime' }, { name: 'online' }, { name: 'schedule' }, { name: 'info', kind: 'link' }, { name: 'sky', kind: 'leaf', widget: 'x-sun-dial', script: '/ext/sun-dial.js' }, { name: 'blob' }, { name: '_ui', hidden: true }] });
+    expect(page.cards[0]).toMatchObject({ label: '', items: [{ name: 'uptime' }, { name: 'online' }, { name: 'schedule' }, { name: 'info', kind: 'link' }, { name: 'sky', kind: 'leaf', widget: 'x-sun-dial', script: '/ext/sun-dial.js' }, { name: 'sequence', kind: 'leaf', widget: 'x-keyframes' }, { name: 'blob' }, { name: '_ui', hidden: true }] });
     expect(sec('/config/network')).toMatchObject({ level: 2, collapsed: true });
     // Depth 3 from the root: the 4th level is fetched on opening.
     expect(sec('/config/network/deep')).toMatchObject({ level: 3, lazy: false });
@@ -101,6 +101,22 @@ describe('demo: widgets', () => {
     expect(leaf('/schedule').columns?.map((c) => c.name)).toEqual(['hour', 'enabled', 'label']);
     expect(page.keys?.split(',')).not.toContain('info');
     expect(page.keys?.split(',')).toContain('peers');
+  });
+  it('renders what TesserKIT services declare', () => {
+    expect(leaf('/settings/password')).toMatchObject({ widget: 'password', secret: true });
+    expect(sec('/system').access).toBe('admin');
+    expect(leaf('/system/days')).toMatchObject({ widget: 'flags', access: 'admin' });
+    expect(leaf('/system/tz').widget).toBe('timezone');
+    expect(leaf('/system/setClock')).toMatchObject({ widget: 'button', value: '$now' });
+    expect(leaf('/system/scan')).toMatchObject({ field: 'text', deferred: true });
+    expect(leaf('/account/login').params?.map((p) => [p.name, p.widget])).toEqual([
+      ['name', 'text'],
+      ['password', 'password'],
+    ]);
+    expect(find('/account/whoami')?.hidden).toBe(true);
+    // Drawn by its element, the sky's action has no row: built on its own.
+    const add = buildLeaf('addSource', '/sky/addSource', demo.schema.children!.sky.children!.addSource, '/sky', '/');
+    expect(add.params?.map((p) => p.name)).toEqual(['name', 'azimuth', 'elevation']);
   });
 });
 

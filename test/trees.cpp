@@ -98,6 +98,22 @@ void describe(tesser::Object& o, Channel& c) {
     o.value("mute", c.mute);
 }
 
+void describe(tesser::Object& o, Source& s) {
+    o.value("name", s.name);
+    o.value("azimuth", s.azimuth).range(0, 360).unit("°");
+    o.value("elevation", s.elevation).range(0, 90).unit("°");
+}
+
+void describe(tesser::Object& o, Frame& f) {
+    o.value("t", f.t).unit("ms");
+    o.value("value", f.value).range(-90, 90).unit("°");
+}
+
+void describe(tesser::Object& o, Credentials& c) {
+    o.value("name", c.name);
+    o.value("password", c.password).secret();
+}
+
 Demo::Demo()
     : link(&api, tesser::TransportKind::NowTP,
            [this](const tesser::PeerAddress& to, const std::string& m, tesser::Delivery) {
@@ -198,7 +214,7 @@ Demo::Demo()
 
     auto& settings = api.object("settings").label("Settings").ui("form").persist();
     settings.value("ssid", ssid);
-    settings.value("password", password).ui("widget", "password");
+    settings.value("password", password).secret();
     settings.value("notes", notes).ui("widget", "textarea");
     settings.action("apply", [] {}).ui("submit");
 
@@ -259,6 +275,48 @@ Demo::Demo()
     sky.value("sunEl", [this] { return sunEl; }).unit("°").watch();
     sky.value("targetAz", targetAz).range(0, 360).unit("°").watch();
     sky.value("targetEl", targetEl).range(0, 90).unit("°").watch();
+    sky.list("sources", sources).maxSize(8);
+    // An object argument: one field per value of Source.
+    sky.action("addSource", [this](const Source& s) { sources.push_back(s); }).label("Add source");
+
+    // A keyframe sequence, drawn and edited by <x-keyframes>.
+    auto& seq = api.object("sequence").label("Sequence").ui("widget", "x-keyframes").ui("script", "/ext/keyframes.js");
+    seq.list("frames", frames).maxSize(16).label("Azimuth");
+    seq.value("loop", loop);
+    seq.value("running", [this] { return sequenceStartMs != 0; }).watch();
+    seq.value("position", [this] { return sequencePosition; }).unit("ms").watch();
+    seq.action("start", [this] { sequenceStartMs = clockMs(); });
+    seq.action("stop", [this] { sequenceStartMs = 0; });
+    seq.action("clear", [this] { frames.clear(); });
+
+    // What TesserKIT's services declare: admin-only settings, secrets,
+    // flags, a time zone, the browser's clock, sign-in.
+    auto& system = api.object("system").label("System").writeAccess(tesser::Access::Admin);
+    system.value("days", days).label("Timer days").ui("widget", "flags").ui("labels", "Mon,Tue,Wed,Thu,Fri,Sat,Sun");
+    system.value("tz", tz).label("Time zone").ui("widget", "timezone");
+    system.value("clockSet", [this] { return clockSetMs; }).unit("ms").label("Clock set to").watch();
+    system.action("setClock", [this](int64_t ms) { clockSetMs = ms; }).label("Set from this device").ui("value", "$now");
+    // A typed deferred action: its argument, then a reply later.
+    system.action("scan", [](std::string prefix, tesser::Call& call) {
+        tesser::Pending p = call.defer();
+        p.reply(std::string(prefix) + "-net");
+    });
+    // Public: a node requires its ancestors' levels, so sign-in can't live
+    // below the admins' object.
+    auto& auth = api.object("account").label("Account");
+    auth.action("login", [](const Credentials& c, tesser::Call& call) {
+            if (c.name != "admin" || c.password != "admin") return call.fail(tesser::Status::Unauthorized, "wrong name or password");
+            call.replyWith([](tesser::JsonWriter& w) {
+                w.beginObject();
+                w.key("token");
+                w.string("demo-token");
+                w.key("access");
+                w.string("admin");
+                w.endObject();
+            });
+        })
+        .ui("auth", "login");
+    auth.action("whoami", [](tesser::Call& call) { call.reply(tesser::toString(call.client().level())); }).ui("auth", "whoami").ui("hidden");
 
     api.custom("blob", [](tesser::JsonWriter& w) { w.raw("{\"a\":1,\"b\":[1,2]}"); });
 
@@ -281,6 +339,7 @@ Demo::Demo()
     overview.each("/peers", "$/lamp/on");
     // A view whose only item is a custom element: a custom page.
     views.page("sky", "Sky").widget("x-sun-dial", "/sky");
+    views.page("mirror", "Mirror").widget("x-sky", "/sky").hint("script", "/ext/sky.js");
 }
 
 void Demo::tick(uint32_t nowMs) {
@@ -323,6 +382,17 @@ void Demo::tick(uint32_t nowMs) {
         speed = 0;
         homing.reply(position);
         homing = tesser::Pending();
+    }
+
+    if (sequenceStartMs) {
+        uint32_t end = frames.empty() ? 0 : frames.back().t;
+        uint32_t t = nowMs - sequenceStartMs;
+        if (end && loop) t %= end;
+        if (end && !loop && t >= end) {
+            t = end;
+            sequenceStartMs = 0;
+        }
+        sequencePosition = t;
     }
 
     if (reached(nowMs, lastPressMs_ + 5000)) {

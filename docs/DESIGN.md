@@ -80,7 +80,7 @@ Without any hint, each schema node maps to one semantic widget. The table is nor
 | `action`, `arg: "object"` | `button` with its `params` as fields | One input per value of the argument's object (nested objects flattened), each inferred by the rules above, then the button with the action's label. Untouched fields are left out of the argument, so the device uses its defaults. |
 | `action`, `arg: "any"` | `json` + `button` | Raw JSON entry, shown only under "Advanced"; hidden on LCD. |
 | `action`, `deferred` | as above, with a busy state until the reply | A deferred action taking `tesser::Call&` alone reports `arg: "any"`: it is a plain button, no JSON entry. Typed deferred actions (`(T, Call&)`) get their input. Their reply may take up to TesserAPI's `deferTimeoutMs`: the request timeout is 15 s. |
-| `action`, `returns` | as above; the result is shown next to the button | |
+| `action`, `returns` | as above; the result is shown next to the button | Any reply other than `null` is shown, since a deferred action's reply has no declared type. |
 | `event` | `events` | The last occurrences with their payloads (web), or a toast (LCD). |
 | `list` | `table` | Columns are the leaves of `items`. Rows can be edited, added (up to `maxSize`) and removed: each edit writes the whole array (TesserAPI §4.4), without the `secret` fields it couldn't read. A keyed list (`key`) is matched by key on the device, so those survive; its rows are named by their key column instead of an index. |
 | `array` | `table` | One column of `items`' type. Read-only arrays aren't editable, and fixed-length ones (`fixed`) have no add and remove. With `ui.widget: "chart"`, a numeric array is plotted by index instead (a calibration table). |
@@ -230,7 +230,7 @@ Notifications are merge patches: apply them to `values` exactly as TesserAPI app
   - The reply is the value read back: it replaces the optimistic one and clears `pending`.
   - While a path is pending, notifications for it are held back, so the control doesn't jitter, and applied when the reply arrives.
 - **Errors:** an error reply restores the last confirmed value and shows the message on the widget at the error's `path`. If that path isn't visible, on its nearest visible ancestor. `"partial": true` adds "some changes were applied".
-- **Actions:** `set <path> <arg>`. `confirm` asks first. A button is disabled while its call is in flight. `returns` shows the result, and errors appear as for values.
+- **Actions:** `set <path> <arg>`. `confirm` asks first. A button is disabled while its call is in flight. A reply other than `null` is shown next to the button, and errors appear as for values. The login action (`ui.auth: "login"`), wherever it is drawn, signs the UI in like the sign-in dialog.
 - **Forms** (`ui.form` objects): edits stay in a local draft, shown as modified. Submit sends one patch to the object with the edited values and the submit action, either `ui.submit` or the first action: `{"az": 120, "el": 30, "go": null}`. TesserAPI validates every value before applying any and runs the action after the values (TesserAPI §6.3), so the form is atomic up to the action. Success clears the draft; errors highlight fields by `path`. Reset discards the draft.
 - **Authentication:** an `unauthorized` reply opens a sign-in dialog (web). The token it yields is kept in `localStorage` and sent as `?token=` on the WebSocket handshake and as `Authorization: Bearer` with HTTP requests.
   - **Login action:** when the tree has an action with `ui.auth: "login"` (TesserKIT's `/sys/auth/login`), the dialog shows its argument's string fields (`secret` ones as passwords) and calls it. The reply is the token, as a string or as `{"token": ..., "access": ...}`. The header offers "Sign in" and, once signed in, "Sign out".
@@ -404,6 +404,7 @@ sky.value("sunAz", sunAz).watch();  sky.value("targetAz", targetAz).range(0, 360
 views.page("sky", "Sky").widget("x-sun-dial", "/sky");   // the same element as a whole page (§8)
 ```
 
+- **Examples** (`examples/elements/`, served at `/ext/` by the host demo node): `sun-dial.js` (the sky and a target), `sky.js` (a heliostat's sky: sun, target, the mirror normal between them, named sources), `keyframes.js` (a keyframe editor over lists of `{t, value}`, with a playhead and the object's `start`, `stop` and `clear` actions). They are not part of the bundle.
 - **Naming:** `ui.widget` with a hyphen, the HTML rule for custom element names. It fits any node: a value, an action, a list, a custom node, or an object, which the element then draws whole (its subscription has no depth limit).
 - **Script:** a module script defining the element, from `ui.script` on the node (resolved against the node's API, so a UI host serves it for its peers) or from the page's `scripts` (resolved against the page). Each URL loads once per page. A node can serve it from flash with `WebUi::asset()`.
 - **Properties** TesserUI sets, and updates as they change:

@@ -29,9 +29,17 @@
     if (leaf.confirm && !confirm(leaf.confirm)) return;
     busy = true;
     result = null;
+    // The login action signs this UI in, as the sign-in dialog does.
+    if (leaf.schema.ui?.auth === 'login') {
+      const error = await session.signIn(value as Record<string, unknown>);
+      busy = false;
+      if (error) store.errors[leaf.path] = error;
+      return;
+    }
     const r = await store.call(leaf.path, value, leaf.deferred ? DEFERRED_TIMEOUT_MS : undefined);
     busy = false;
-    if (r.status === 'ok' && (leaf.returns || leaf.field === 'json')) result = formatValue(r.body, { type: leaf.returns ?? '' });
+    // Deferred actions reply values their schema can't declare: show any.
+    if (r.status === 'ok' && r.body != null) result = formatValue(r.body, { type: leaf.returns ?? '' });
   }
 
   function paramsValue() {
