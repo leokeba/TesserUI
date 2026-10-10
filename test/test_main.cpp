@@ -344,4 +344,20 @@ TEST(page_escapes) {
     CHECK_EQ(page.find("</script>\""), std::string::npos);
 }
 
+TEST(page_options) {
+    tesserui::PageOptions o;
+    o.title = "Héliostat <3>";
+    o.script = "/ui/ui.js";
+    o.scripts = {"/ext/sun-dial.js", "https://cdn.example/x.js"};
+    o.theme = {{"accent", "#d97706"}, {"radius", "4px"}};
+    o.strings = {{"Advanced", "Avancé"}, {"Run \"it\"", "Lancer"}};
+    std::string page = tesserui::renderPage(o);
+    CHECK(page.find("<title>Héliostat &lt;3&gt;</title>") != std::string::npos);
+    CHECK(page.find("window.TESSER={api:\"/api\",ws:\"/ws\",title:\"Héliostat \\u003c3>\","
+                    "scripts:[\"/ext/sun-dial.js\",\"https://cdn.example/x.js\"],"
+                    "theme:{\"accent\":\"#d97706\",\"radius\":\"4px\"},"
+                    "strings:{\"Advanced\":\"Avancé\",\"Run \\\"it\\\"\":\"Lancer\"}}</script>") != std::string::npos);
+    CHECK(page.find("<script src=\"/ui/ui.js\">") != std::string::npos);
+}
+
 int main(int argc, char** argv) { return check::run(argc > 1 ? argv[1] : nullptr) ? 1 : 0; }

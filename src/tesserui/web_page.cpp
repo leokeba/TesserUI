@@ -33,6 +33,26 @@ void appendHtml(std::string& out, const char* s) {
     }
 }
 
+void appendString(std::string& out, const char* s) {
+    out += '"';
+    appendJs(out, s ? s : "");
+    out += '"';
+}
+
+void appendObject(std::string& out, const char* key, const Pairs& pairs) {
+    if (pairs.empty()) return;
+    out += ',';
+    out += key;
+    out += ":{";
+    for (size_t i = 0; i < pairs.size(); i++) {
+        if (i) out += ',';
+        appendString(out, pairs[i].first);
+        out += ':';
+        appendString(out, pairs[i].second);
+    }
+    out += '}';
+}
+
 }  // namespace
 
 std::string renderPage(const PageOptions& o) {
@@ -45,7 +65,9 @@ std::string renderPage(const PageOptions& o) {
     out.reserve(320 + strlen(script) * 3);
     out += "<!doctype html><html><head><meta charset=\"utf-8\">"
            "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
-           "<title>TesserUI</title><link rel=\"icon\" href=\"data:,\"><script>window.TESSER={api:\"";
+           "<title>";
+    appendHtml(out, o.title ? o.title : "TesserUI");
+    out += "</title><link rel=\"icon\" href=\"data:,\"><script>window.TESSER={api:\"";
     appendJs(out, api.c_str());
     out += "\",ws:";
     if (o.ws) {
@@ -56,10 +78,23 @@ std::string renderPage(const PageOptions& o) {
         out += "null";
     }
     if (o.minVersion) {
-        out += ",minVersion:\"";
-        appendJs(out, o.minVersion);
-        out += '"';
+        out += ",minVersion:";
+        appendString(out, o.minVersion);
     }
+    if (o.title) {
+        out += ",title:";
+        appendString(out, o.title);
+    }
+    if (!o.scripts.empty()) {
+        out += ",scripts:[";
+        for (size_t i = 0; i < o.scripts.size(); i++) {
+            if (i) out += ',';
+            appendString(out, o.scripts[i]);
+        }
+        out += ']';
+    }
+    appendObject(out, "theme", o.theme);
+    appendObject(out, "strings", o.strings);
     out += "}</script></head><body><script src=\"";
     appendHtml(out, script);
     out += '"';
