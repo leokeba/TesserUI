@@ -15,7 +15,15 @@
   let failed = $state(false);
   const hint = (k: string) => (typeof leaf.schema.ui?.[k] === 'string' ? (leaf.schema.ui[k] as string) : undefined);
   const extensions: Record<string, string> = { 'application/json': '.json', 'text/plain': '.txt', 'text/csv': '.csv' };
-  const accept = $derived(hint('accept') ?? (leaf.contentType !== 'application/octet-stream' ? leaf.contentType : undefined));
+  const accept = $derived(
+    leaf.schema.accept ?? hint('accept') ?? (leaf.contentType !== 'application/octet-stream' ? leaf.contentType : undefined),
+  );
+  // The name the device gives the download (Content-Disposition), else one
+  // from the hints or the node's name.
+  function filename(x: XMLHttpRequest) {
+    const m = /filename="?([^";]+)"?/.exec(x.getResponseHeader('Content-Disposition') ?? '');
+    return m?.[1] ?? hint('filename') ?? leaf.name + (extensions[leaf.contentType ?? ''] ?? '.bin');
+  }
 
   function done(ok: boolean, text: string) {
     progress = null;
@@ -50,7 +58,7 @@
       }
       const a = document.createElement('a');
       a.href = URL.createObjectURL(x.response as Blob);
-      a.download = hint('filename') ?? leaf.name + (extensions[leaf.contentType ?? ''] ?? '.bin');
+      a.download = filename(x);
       a.click();
       setTimeout(() => URL.revokeObjectURL(a.href), 1000);
       done(true, '');

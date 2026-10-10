@@ -55,6 +55,7 @@ export interface Schema {
   // Files
   readable?: boolean;
   contentType?: string;
+  accept?: string; // the upload's file chooser filter (".bin")
   // Remote stubs
   mirror?: boolean;
   online?: boolean;
