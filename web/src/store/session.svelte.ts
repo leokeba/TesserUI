@@ -157,15 +157,29 @@ export class Session {
     if (this.config.transport === 'serial') return; // waits for useSerial()
     if (this.config.transport === 'http' || !this.config.ws) return this.use(this.httpClient());
     const ws = new EnvelopeClient('ws', () => webSocketLink(this.wsUrl()));
-    // A node without enableWebSocket(): fall back to HTTP for good.
+    // A node without enableWebSocket(), or one that wasn't reachable yet
+    // (restarting): fall back to HTTP, and switch back once a WebSocket opens.
     ws.onState((s) => {
       if (s === 'down' && ws.opened === 0 && this.client === ws) {
         // Switch first: closing emits 'down' again.
         this.use(this.httpClient());
         ws.close();
+        this.probe(5000);
       }
     });
     this.use(ws);
+  }
+
+  private probe(delay: number) {
+    setTimeout(() => {
+      if (this.client?.kind !== 'http') return;
+      const p = new WebSocket(this.wsUrl());
+      p.onopen = () => {
+        p.close();
+        if (this.client?.kind === 'http') this.start();
+      };
+      p.onerror = () => this.probe(Math.min(delay * 2, 60000));
+    }, delay);
   }
 
   close() {
