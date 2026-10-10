@@ -1,6 +1,6 @@
 <script lang="ts">
   // A time series of the value, kept by the renderer for ui.history seconds
-  // (DESIGN.md §7.7), drawn on a canvas.
+  // (DESIGN.md §7.7), or an array's values by index, drawn on a canvas.
   import { useSession } from '../shared.svelte';
   import { formatValue } from '../model/format';
   import type { WidgetProps } from './types';
@@ -18,7 +18,8 @@
   $effect(() => {
     void store.historyTick;
     const span = (leaf.history ?? 60) * 1000;
-    const points = store.historyOf(leaf.path);
+    const array = Array.isArray(value) ? value.map((v, i): [number, number] => [i, Number(v)]) : null;
+    const points = array ?? store.historyOf(leaf.path);
     const c = canvas;
     if (!c) return;
     const w = (c.width = c.clientWidth * devicePixelRatio);
@@ -31,7 +32,7 @@
     let hi = leaf.max ?? Math.max(...points.map((p) => p[1]));
     if (hi === lo) (hi += 1), (lo -= 1);
     const pad = 6 * devicePixelRatio;
-    const x = (t: number) => w - ((now - t) / span) * w;
+    const x = array ? (i: number) => (i / Math.max(1, array.length - 1)) * w : (t: number) => w - ((now - t) / span) * w;
     const y = (v: number) => pad + (1 - (v - lo) / (hi - lo)) * (h - 2 * pad);
     g.strokeStyle = css.getPropertyValue('--border');
     g.lineWidth = devicePixelRatio;
@@ -44,7 +45,7 @@
     g.lineJoin = 'round';
     g.beginPath();
     points.forEach(([t, v], i) => (i ? g.lineTo(x(t), y(v)) : g.moveTo(x(t), y(v))));
-    g.lineTo(w, y(points[points.length - 1][1]));
+    if (!array) g.lineTo(w, y(points[points.length - 1][1]));
     g.stroke();
     g.fillStyle = css.getPropertyValue('--muted');
     g.font = `${11 * devicePixelRatio}px system-ui`;
@@ -53,8 +54,8 @@
   });
 </script>
 
-<div class="chart" role="img" aria-label={session.t('{label}, last {n} s', { label: leaf.label, n: leaf.history ?? 60 })}>
-  <output>{formatValue(value, leaf)}</output>
+<div class="chart" role="img" aria-label={Array.isArray(value) ? leaf.label : session.t('{label}, last {n} s', { label: leaf.label, n: leaf.history ?? 60 })}>
+  {#if !Array.isArray(value)}<output>{formatValue(value, leaf)}</output>{/if}
   <canvas bind:this={canvas}></canvas>
 </div>
 

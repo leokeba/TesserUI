@@ -82,7 +82,9 @@ Without any hint, each schema node maps to one semantic widget. The table is nor
 | `action`, `deferred` | as above, with a busy state until the reply | A deferred action taking `tesser::Call&` alone reports `arg: "any"`: it is a plain button, no JSON entry. Typed deferred actions (`(T, Call&)`) get their input. Their reply may take up to TesserAPI's `deferTimeoutMs`: the request timeout is 15 s. |
 | `action`, `returns` | as above; the result is shown next to the button | |
 | `event` | `events` | The last occurrences with their payloads (web), or a toast (LCD). |
-| `list` | `table` | Columns are the leaves of `items`. Rows can be edited, added (up to `maxSize`) and removed: each edit writes the whole array (TesserAPI §4.4). |
+| `list` | `table` | Columns are the leaves of `items`. Rows can be edited, added (up to `maxSize`) and removed: each edit writes the whole array (TesserAPI §4.4), without the `secret` fields it couldn't read. A keyed list (`key`) is matched by key on the device, so those survive; its rows are named by their key column instead of an index. |
+| `array` | `table` | One column of `items`' type. Read-only arrays aren't editable, and fixed-length ones (`fixed`) have no add and remove. With `ui.widget: "chart"`, a numeric array is plotted by index instead (a calibration table). |
+| `file` | `file` | A download button when `readable`, a file input and an upload button when `writable`, with a progress bar. Files go over HTTP (`GET`, and `PUT` with the raw file as body), whatever the transport; over USB they aren't available. `maxSize` is checked before sending, `ui.confirm` asked first. The download's name is `ui.filename`, else the node's name with an extension from `contentType`; `ui.accept` filters the file chooser. Files have no value: pages don't read or subscribe to them. |
 | `custom` | `json` | Read-only JSON, or a JSON editor when writable; hidden on LCD. |
 | `object` | `section` | Children in declaration order (§6). |
 | `remote` | `link` | The peer's name, label and online state; opens the peer's own UI (§7.6). |
@@ -116,8 +118,10 @@ m.object("pid").ui("advanced");
 | `select`, `segmented`, `radio` | enum | |
 | `text`, `password`, `textarea` | string | |
 | `color` | string `#rrggbb` or integer `0xRRGGBB` | Color picker. |
+| `flags` | integer | One checkbox per bit, labelled by `ui.labels`, bit 0 first: `.ui("widget", "flags").ui("labels", "Mon,Tue,Wed,Thu,Fri,Sat,Sun")`. |
+| `timezone` | string | The IANA time zones the browser knows; choosing one writes its POSIX TZ string (`<+01>-1<+02>,M3.5.0,M10.5.0/3`), derived from the zone's offsets over the current year, which is what `tzset()` reads on the device. |
 | `readout`, `bar`, `gauge` | number | `bar` and `gauge` need `min`/`max`, which a read-only value may declare with `.range()`. |
-| `chart` | number | A time series of the value, kept by the renderer (§7.7). |
+| `chart` | number, numeric array | A time series of the value, kept by the renderer (§7.7); for an array, its values by index. |
 | `hold` | action with a boolean `arg` | Called with `true` on press and `false` on release: jog buttons. |
 | `button` | action | Explicitly a button (e.g. a typed action whose argument comes from `ui.value`). |
 | any name with a hyphen (`x-sun-dial`) | any node, objects included | A custom element (§9.8), web only. Other renderers use the tier 0 widget; on an object, its section. |
@@ -126,7 +130,8 @@ m.object("pid").ui("advanced");
 
 | Key | Type | Applies to | Meaning |
 |---|---|---|---|
-| `labels` | string | enum | Display labels in enum order, comma-separated: `"Off,Automatic,Manual"`. |
+| `labels` | string | enum, flags | Display labels in enum order, comma-separated: `"Off,Automatic,Manual"`; for `flags`, one per bit. |
+| `filename`, `accept` | string | file | The download's file name; the upload's file chooser filter (`".bin"`). |
 | `precision` | number | number | Decimals shown. |
 | `format` | string | readout | `"%.1f"`-style formatting, printf subset: `%d %i %u %f %.Nf %e %g %s %%`. |
 | `placeholder` | string | text, number | Input placeholder. |

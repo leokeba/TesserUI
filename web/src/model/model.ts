@@ -24,11 +24,14 @@ export type Widget =
   | 'password'
   | 'textarea'
   | 'color'
+  | 'flags'
+  | 'timezone'
   | 'button'
   | 'hold'
   | 'json'
   | 'events'
   | 'table'
+  | 'file'
   | 'link'
   // A custom element (DESIGN.md §9.8): any name with a hyphen.
   | `${string}-${string}`;
@@ -92,6 +95,13 @@ export interface Leaf extends Base {
   toast?: boolean;
   columns?: Leaf[];
   maxSize?: number;
+  // Tables: rows can't be added or removed (fixed-length arrays).
+  fixed?: boolean;
+  // Keyed lists: the field naming each row.
+  key?: string;
+  // Files: downloadable, and the type of what they hold.
+  readable?: boolean;
+  contentType?: string;
 }
 
 export interface Section extends Base {
@@ -130,6 +140,8 @@ export interface Page {
 }
 
 const ui = (s: Schema, key: string): Hint | undefined => s.ui?.[key];
+// Nodes with a value: actions, events and files have none (TesserAPI §6.1).
+const valued = (s: Schema) => s.type !== 'action' && s.type !== 'event' && s.type !== 'file';
 const uiStr = (s: Schema, key: string) => (typeof s.ui?.[key] === 'string' ? (s.ui[key] as string) : undefined);
 const uiNum = (s: Schema, key: string) => (typeof s.ui?.[key] === 'number' ? (s.ui[key] as number) : undefined);
 const isNumeric = (t: string | undefined) => t === 'integer' || t === 'number';
@@ -189,6 +201,10 @@ function fits(w: string, s: Schema, type: string, editable: boolean, hasRange: b
       return type === 'string' && !s.enum && editable;
     case 'color':
       return (type === 'string' || type === 'integer') && editable;
+    case 'flags':
+      return type === 'integer';
+    case 'timezone':
+      return type === 'string' && !s.enum && editable;
     default:
       return false;
   }
@@ -266,10 +282,36 @@ export function buildLeaf(name: string, path: string, s: Schema, parent: string,
       leaf.editable = true;
       leaf.maxSize = s.maxSize;
       leaf.columns = s.items ? columns(s.items, '') : [];
+      if (s.key) leaf.key = s.key;
       return leaf;
+    case 'array': {
+      // Scalars: one column, or a plot of the whole array.
+      const items: Schema = { type: 'number', ...s.items, writable: !!s.writable };
+      leaf.editable = !!s.writable;
+      leaf.maxSize = s.maxSize;
+      leaf.fixed = !!s.fixed;
+      leaf.columns = columns(items, '');
+      leaf.widget = uiStr(s, 'widget') === 'chart' && isNumeric(items.type) ? 'chart' : 'table';
+      if (leaf.widget === 'chart') {
+        // Its axis and formatting are the items'.
+        leaf.type = items.type;
+        if (items.min !== undefined) leaf.min = items.min;
+        if (items.max !== undefined) leaf.max = items.max;
+        if (items.unit) leaf.unit = items.unit;
+        number(leaf, items);
+      }
+      return leaf;
+    }
     case 'custom':
       leaf.widget = 'json';
       leaf.editable = !!s.writable;
+      return leaf;
+    case 'file':
+      leaf.widget = 'file';
+      leaf.editable = !!s.writable;
+      leaf.readable = !!s.readable;
+      leaf.maxSize = s.maxSize;
+      if (s.contentType) leaf.contentType = s.contentType;
       return leaf;
     case 'remote':
       return leaf; // links are built by sections
@@ -339,7 +381,7 @@ function columns(items: Schema, prefix: string): Leaf[] {
   for (const [name, c] of Object.entries(items.children ?? {})) {
     const rel = prefix ? `${prefix}/${name}` : name;
     if (c.type === 'object') out.push(...columns(c, rel));
-    else if (c.type !== 'action' && c.type !== 'event' && ui(c, 'hidden') !== true) out.push(buildLeaf(name, rel, c, ''));
+    else if (valued(c) && ui(c, 'hidden') !== true) out.push(buildLeaf(name, rel, c, ''));
   }
   return out;
 }
@@ -351,7 +393,7 @@ function fields(params: Schema, prefix: string): Leaf[] {
   for (const [name, c] of Object.entries(params.children ?? {})) {
     const rel = prefix ? `${prefix}/${name}` : name;
     if (c.type === 'object') out.push(...fields(c, rel));
-    else if (c.type !== 'action' && c.type !== 'event' && ui(c, 'hidden') !== true) out.push(buildLeaf(name, rel, c, ''));
+    else if (valued(c) && ui(c, 'hidden') !== true) out.push(buildLeaf(name, rel, c, ''));
   }
   return out;
 }
@@ -461,9 +503,9 @@ export function buildPage(s: Schema, path: string, root = '/', t: (text: string)
   // would come along, and sub-pages, which subscribe themselves.
   const children = Object.entries(s.children ?? {});
   const keep = children.filter(([, c]) => !(c.type === 'remote' && c.mirror) && !(c.type === 'object' && ui(c, 'page') === true));
-  const valued = keep.filter(([, c]) => c.type !== 'action' && c.type !== 'event');
-  if (valued.length < children.filter(([, c]) => c.type !== 'action' && c.type !== 'event').length) {
-    page.keys = valued.map(([n]) => n).join(',');
+  const read = keep.filter(([, c]) => valued(c));
+  if (read.length < children.filter(([, c]) => valued(c)).length) {
+    page.keys = read.map(([n]) => n).join(',');
   }
   return page;
 }

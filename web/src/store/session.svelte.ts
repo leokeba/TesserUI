@@ -174,8 +174,14 @@ export class Session {
     this.use(new EnvelopeClient('serial', () => serialLink(port)));
   }
 
+  // The URL of a path of the API over HTTP: files go there whatever the
+  // transport (DESIGN.md §4).
+  apiUrl(path = '') {
+    return new URL(this.config.api, location.href).href.replace(/\/$/, '') + path;
+  }
+
   private httpClient() {
-    return new HttpClient(new URL(this.config.api, location.href).href.replace(/\/$/, ''), () => this.token());
+    return new HttpClient(this.apiUrl(), () => this.token());
   }
 
   private wsUrl(): string {

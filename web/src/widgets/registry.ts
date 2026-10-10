@@ -11,6 +11,8 @@ import Choice from './Choice.svelte';
 import Color from './Color.svelte';
 import Element from './Element.svelte';
 import Events from './Events.svelte';
+import File from './File.svelte';
+import Flags from './Flags.svelte';
 import Gauge from './Gauge.svelte';
 import JsonView from './JsonView.svelte';
 import Knob from './Knob.svelte';
@@ -19,6 +21,7 @@ import Range from './Range.svelte';
 import Readout from './Readout.svelte';
 import Table from './Table.svelte';
 import Text from './Text.svelte';
+import Timezone from './Timezone.svelte';
 import type { WidgetProps } from './types';
 
 // pair: label, then control; wide: label above, control the card's width;
@@ -53,11 +56,14 @@ export const WIDGETS: Record<string, Def> = {
   password: { component: c(Text), field: true },
   textarea: { component: c(Text), layout: 'wide', field: true },
   color: { component: c(Color), field: true },
+  flags: { component: c(Flags), field: true },
+  timezone: { component: c(Timezone), field: true },
   button: { component: c(Action), layout: 'bare' },
   hold: { component: c(Action), layout: 'bare' },
   json: { component: c(JsonView), layout: 'wide' },
   events: { component: c(Events), layout: 'wide' },
   table: { component: c(Table), layout: 'wide' },
+  file: { component: c(File), layout: 'wide' },
 };
 
 export function widgetOf(leaf: Leaf): { component: Component<WidgetProps>; layout: Layout } {

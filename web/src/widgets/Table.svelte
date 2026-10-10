@@ -1,6 +1,7 @@
 <script lang="ts">
-  // Lists (DESIGN.md §4): one row per element, one column per leaf. Every
-  // edit writes the whole array, as TesserAPI replaces lists (§4.4 there).
+  // Lists and arrays (DESIGN.md §4): one row per element, one column per
+  // leaf. Every edit writes the whole array, as TesserAPI replaces lists
+  // (§4.4 there); keyed lists match rows by key, so unread secrets survive.
   import { isObject, parse, stringify } from '../client/json';
   import Icon from '../Icon.svelte';
   import { formatValue } from '../model/format';
@@ -14,6 +15,8 @@
   const rows = $derived(Array.isArray(value) ? value : []);
   const cols = $derived(leaf.columns ?? []);
   const full = $derived(leaf.maxSize !== undefined && rows.length >= leaf.maxSize);
+  // Rows can be added and removed: not for read-only or fixed-length arrays.
+  const resizable = $derived(leaf.editable && !leaf.fixed);
 
   const copy = () => parse(stringify(rows)) as unknown[];
   // Secrets read as null: left out of the rows written, the device keeps them.
@@ -57,15 +60,15 @@
   <table>
     <thead>
       <tr>
-        <th scope="col">#</th>
+        {#if !leaf.key}<th scope="col">#</th>{/if}
         {#each cols as c (c.path)}<th scope="col">{c.label}</th>{/each}
-        <th><span class="sr">{t('Remove')}</span></th>
+        {#if resizable}<th><span class="sr">{t('Remove')}</span></th>{/if}
       </tr>
     </thead>
     <tbody>
       {#each rows as row, i (i)}
         <tr>
-          <td class="muted">{i}</td>
+          {#if !leaf.key}<td class="muted">{i}</td>{/if}
           {#each cols as c (c.path)}
             {@const v = cell(row, c)}
             <td>
@@ -104,14 +107,18 @@
               {/if}
             </td>
           {/each}
-          <td><button type="button" class="quiet" {disabled} aria-label={t('Remove row {i}', { i })} onclick={() => remove(i)}><Icon name="trash" /></button></td>
+          {#if resizable}
+            <td><button type="button" class="quiet" {disabled} aria-label={t('Remove row {i}', { i })} onclick={() => remove(i)}><Icon name="trash" /></button></td>
+          {/if}
         </tr>
       {:else}
         <tr><td colspan={cols.length + 2} class="muted">{t('Empty')}</td></tr>
       {/each}
     </tbody>
   </table>
-  <button type="button" disabled={disabled || full} onclick={add}><Icon name="plus" /> {full ? t('Add (max {n})', { n: leaf.maxSize! }) : t('Add')}</button>
+  {#if resizable}
+    <button type="button" disabled={disabled || full} onclick={add}><Icon name="plus" /> {full ? t('Add (max {n})', { n: leaf.maxSize! }) : t('Add')}</button>
+  {/if}
 </div>
 
 <style>
