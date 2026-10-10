@@ -37,6 +37,10 @@ export class Store {
   toastLabels = new Map<string, string>();
   // Chart paths and their history length, in seconds.
   charts = new Map<string, number>();
+  // Keyed lists (TesserAPI §4.4), by path: their key field. A path goes
+  // through such a list by key (/sys/timers/morning/time), through other
+  // arrays by index.
+  keys = new Map<string, string>();
   onUnauthorized: (() => void) | null = null;
   // The interface's text (Session.t).
   t: (text: string) => string = (x) => x;
@@ -55,11 +59,19 @@ export class Store {
 
   get(path: string): unknown {
     let v: unknown = this.values;
+    let at = '';
     for (const s of segments(path)) {
       if (typeof v !== 'object' || v === null) return undefined;
-      v = (v as Record<string, unknown>)[s];
+      v = (v as Record<string, unknown>)[this.slot(v, at, s)];
+      at += '/' + s;
     }
     return v;
+  }
+
+  // The property of `v` (at path `at`) that segment `s` names.
+  private slot(v: object, at: string, s: string): string | number {
+    const key = Array.isArray(v) && this.keys.get(at || '/');
+    return key ? v.findIndex((e) => isObject(e) && e[key] === s) : s;
   }
 
   // Applies a snapshot, a notification or a read-back rooted at `path`, as
@@ -90,15 +102,21 @@ export class Store {
       return;
     }
     let parent: Tree = this.values;
+    let at = '';
     for (const s of segs.slice(0, -1)) {
-      let next = (parent as Record<string, unknown>)[s];
+      const slot = this.slot(parent, at, s);
+      if (slot === -1) return;  // no element with that key (yet)
+      let next = (parent as Record<string, unknown>)[slot];
       if (typeof next !== 'object' || next === null) {
         next = {};
-        (parent as Record<string, unknown>)[s] = next;
+        (parent as Record<string, unknown>)[slot] = next;
       }
       parent = next as Tree;
+      at += '/' + s;
     }
-    (parent as Record<string, unknown>)[segs[segs.length - 1]] = value;
+    const last = this.slot(parent, at, segs[segs.length - 1]);
+    if (last === -1) return;
+    (parent as Record<string, unknown>)[last] = value;
     this.sample(path, value);
   }
 

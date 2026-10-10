@@ -82,13 +82,16 @@ describe('demo: widgets', () => {
   });
   it('lays out sections (DESIGN §6.1)', () => {
     expect(page.columns).toBe(3);
-    expect(page.cards[0]).toMatchObject({ label: '', items: [{ name: 'uptime' }, { name: 'online' }, { name: 'schedule' }, { name: 'info', kind: 'link' }, { name: 'sky', kind: 'leaf', widget: 'x-sun-dial', script: '/ext/sun-dial.js' }, { name: 'sequence', kind: 'leaf', widget: 'x-keyframes' }, { name: 'blob' }, { name: '_ui', hidden: true }] });
+    expect(page.cards[0]).toMatchObject({ label: '', items: [{ name: 'uptime' }, { name: 'online' }, { name: 'info', kind: 'link' }, { name: 'sky', kind: 'leaf', widget: 'x-sun-dial', script: '/ext/sun-dial.js' }, { name: 'sequence', kind: 'leaf', widget: 'x-keyframes' }, { name: 'blob' }, { name: '_ui', hidden: true }] });
     expect(sec('/config/network')).toMatchObject({ level: 2, collapsed: true });
     // Depth 3 from the root: the 4th level is fetched on opening.
     expect(sec('/config/network/deep')).toMatchObject({ level: 3, lazy: false });
     expect(sec('/config/network/deep/deeper')).toMatchObject({ level: 4 });
     expect(sec('/offset').inline).toBe(true);
     expect(sec('/channels').tabs).toBe(true);
+    // A list directly under the page is a card of its own; one of more than
+    // three columns opens element by element.
+    expect(page.cards.find((c) => c.path === '/schedule')).toMatchObject({ label: 'Schedule', items: [{ name: 'schedule', widget: 'list', label: '' }] });
     const labels = page.cards.map((c) => c.label);
     expect(labels.indexOf('Pinned')).toBe(labels.indexOf('Widget overrides') + 1);
     const peers = sec('/peers');

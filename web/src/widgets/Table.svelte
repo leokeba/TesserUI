@@ -1,11 +1,14 @@
 <script lang="ts">
-  // Lists and arrays (DESIGN.md §4): one row per element, one column per
-  // leaf. Every edit writes the whole array, as TesserAPI replaces lists
-  // (§4.4 there); keyed lists match rows by key, so unread secrets survive.
+  // Lists and arrays (DESIGN.md §4). A table: one row per element, one column
+  // per leaf; every edit writes the whole array, as TesserAPI replaces lists
+  // (§4.4 there), and keyed lists match rows by key, so unread secrets
+  // survive. A list (widget "list"): one line per element, which opens into
+  // the element's own controls, each writing its own path.
   import { isObject, parse, stringify } from '../client/json';
   import Icon from '../Icon.svelte';
+  import Section from '../Section.svelte';
   import { formatValue } from '../model/format';
-  import type { Leaf } from '../model/model';
+  import { buildSection, type Leaf } from '../model/model';
   import { useSession } from '../shared.svelte';
   import { parseNumber, type WidgetProps } from './types';
   let { leaf, value, set, disabled }: WidgetProps = $props();
@@ -53,10 +56,81 @@
     }
     send(next);
   }
-  // New elements start from their defaults: an empty patch.
-  const add = () => send([...copy(), cols.length === 1 && !cols[0].path ? null : {}]);
+  // New elements start from their defaults: an empty patch, or, in a keyed
+  // list, one naming its key.
+  let newKey = $state('');
+  function add() {
+    send([...copy(), leaf.key ? { [leaf.key]: newKey } : cols.length === 1 && !cols[0].path ? null : {}]);
+    if (leaf.key) open = newKey;
+    newKey = '';
+  }
   const remove = (i: number) => send(copy().filter((_, j) => j !== i));
+
+  // List lines: the element's name (its key, else its first value), up to
+  // three short values, and its first boolean as a switch.
+  // svelte-ignore state_referenced_locally
+  const key = leaf.key;
+  // svelte-ignore state_referenced_locally
+  if (key) session.store.keys.set(leaf.path, key);
+  const id = (row: unknown, i: number) => String(key && isObject(row) ? row[key] : i);
+  let open: string | null = $state(null);
+  const top = $derived(cols.filter((c) => !c.path.includes('/') && c.path !== key && !c.secret));
+  const flag = $derived(top.find((c) => c.type === 'boolean' && c.editable));
+  const shown = $derived(top.filter((c) => c !== flag && c.type !== 'boolean').slice(0, 3));
+  function text(v: unknown, c: Leaf): string {
+    if (v === '' || v === undefined || v === null) return '';
+    if (c.widget === 'flags') {
+      const labels = (c.schema.ui?.labels as string | undefined)?.split(',') ?? [];
+      return labels.filter((_, b) => (Number(v) >> b) & 1).join(' ');
+    }
+    return c.options?.find((o) => o.value === v)?.label ?? formatValue(v, c);
+  }
+  // The element's controls, built when it opens.
+  const detail = (path: string) => ({
+    ...buildSection(path, leaf.schema.items!, 2, session.nodeRoot(leaf.path), leaf.access),
+    label: '',
+  });
 </script>
+
+<!-- Adding: a keyed list's new element needs its key first. -->
+{#snippet adder()}
+  {#if resizable}
+    <form class="add" onsubmit={(e) => (e.preventDefault(), add())}>
+      {#if key}<input bind:value={newKey} required placeholder={cols.find((c) => c.path === key)?.label ?? key} aria-label={t('New')} {disabled} />{/if}
+      <button disabled={disabled || full}><Icon name="plus" /> {full ? t('Add (max {n})', { n: leaf.maxSize! }) : t('Add')}</button>
+    </form>
+  {/if}
+{/snippet}
+
+{#if leaf.widget === 'list'}
+<div class="lv">
+  <div class="list">
+    {#each rows as row, i (id(row, i))}
+      {@const k = id(row, i)}
+      {@const path = `${leaf.path}/${k}`}
+      <div class="item" class:open={open === k}>
+        <div class="line">
+          <button type="button" class="quiet head" aria-expanded={open === k} onclick={() => (open = open === k ? null : k)}>
+            <span class="name">{key ? k : (text(cell(row, cols[0]), cols[0]) || `#${i + 1}`)}</span>
+            <span class="muted sum">{shown.map((c) => text(cell(row, c), c)).filter(Boolean).join(' · ')}</span>
+            <Icon name="down" />
+          </button>
+          {#if flag}
+            <input type="checkbox" role="switch" checked={cell(row, flag) === true} {disabled} aria-label="{flag.label} {k}" onchange={(e) => session.store.write(`${path}/${flag.path}`, e.currentTarget.checked)} />
+          {/if}
+          {#if resizable}
+            <button type="button" class="quiet" {disabled} aria-label={t('Remove row {i}', { i: k })} onclick={() => remove(i)}><Icon name="trash" /></button>
+          {/if}
+        </div>
+        {#if open === k}<div class="detail"><Section sec={detail(path)} /></div>{/if}
+      </div>
+    {:else}
+      <p class="muted">{t('Empty')}</p>
+    {/each}
+  </div>
+  {@render adder()}
+</div>
+{:else}
 
 <div class="table">
   <table>
@@ -119,9 +193,10 @@
     </tbody>
   </table>
   {#if resizable}
-    <button type="button" disabled={disabled || full} onclick={add}><Icon name="plus" /> {full ? t('Add (max {n})', { n: leaf.maxSize! }) : t('Add')}</button>
+    {@render adder()}
   {/if}
 </div>
+{/if}
 
 <style>
   .table {
@@ -149,6 +224,81 @@
   td input[type='text'] {
     width: 100%;
     min-width: 4em;
+  }
+  .lv {
+    display: grid;
+    gap: 8px;
+  }
+  .list {
+    display: grid;
+    border: 1px solid var(--border);
+    border-radius: calc(var(--radius) - 2px);
+    overflow: hidden;
+  }
+  .list > p {
+    margin: 0;
+    padding: 10px 12px;
+  }
+  .item {
+    min-width: 0;
+  }
+  .item + .item {
+    border-top: 1px solid var(--border);
+  }
+  .item.open {
+    background: var(--surface-2);
+  }
+  .line {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding-right: 6px;
+  }
+  .line > :global(input) {
+    flex: none;
+  }
+  .head {
+    flex: 1;
+    justify-content: flex-start;
+    min-width: 0;
+    padding: 0 12px;
+    border-radius: 0;
+    text-align: left;
+  }
+  .name {
+    font-weight: 550;
+    flex: none;
+  }
+  .sum {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 0.9em;
+  }
+  .head :global(.icon) {
+    margin-left: auto;
+    flex: none;
+    color: var(--muted);
+    transition: transform 0.15s;
+  }
+  .open .head :global(.icon) {
+    transform: rotate(180deg);
+  }
+  .detail {
+    padding: 0 12px 10px;
+  }
+  .detail > :global(fieldset) {
+    margin: 0;
+    padding: 0;
+    border: 0;
+  }
+  .add {
+    display: flex;
+    gap: 8px;
+  }
+  .add input {
+    flex: 1;
+    max-width: 14em;
   }
   .sr {
     position: absolute;

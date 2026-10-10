@@ -83,10 +83,10 @@
   .warning label :global(.icon) {
     color: var(--warn);
   }
-  .warning .control {
+  .warning > .control {
     justify-content: flex-start;
   }
-  .warning .control :global(output) {
+  .warning > .control :global(output) {
     text-align: left;
   }
   .row.modified label {
@@ -109,18 +109,19 @@
   }
   .control {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 8px;
     min-width: 0;
     justify-content: flex-end;
     position: relative;
   }
-  .wide .control,
-  .bare .control {
+  .wide > .control,
+  .bare > .control {
     justify-content: flex-start;
   }
-  .wide .control > :global(*:first-child),
-  .bare .control > :global(div:first-child) {
+  .wide > .control > :global(*:first-child),
+  .bare > .control > :global(div:first-child) {
     flex: 1;
   }
   .error {

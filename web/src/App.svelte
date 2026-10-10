@@ -299,6 +299,10 @@
       color: var(--on-accent);
     }
     .tesserui button.danger {
+      color: var(--danger);
+      border-color: color-mix(in srgb, var(--danger) 45%, transparent);
+    }
+    .tesserui button.danger:hover:not(:disabled) {
       background: var(--danger);
       border-color: var(--danger);
       color: #fff;

@@ -3,7 +3,7 @@
 // way a self-hosted node serves it (TesserUI's WebUi): the page at /, the
 // built bundle at /ui.js, the API at /api and WebSocket at /ws.
 //
-//   node scripts/device.mjs [demo|motors] [--port 8090] [--isolated]
+//   node scripts/device.mjs [demo|motors] [--port 8090] [--isolated] [--exe path/to/node]
 //   (/ext/<name>.js serves examples/elements/: the demo's custom elements)
 //   then open http://localhost:8090/            (the built bundle: pnpm build)
 //   or        http://localhost:5173/?api=http://localhost:8090/api   (pnpm dev)
@@ -19,10 +19,13 @@ import { createInterface } from 'node:readline';
 import { WebSocketServer } from 'ws';
 
 const args = process.argv.slice(2);
-const tree = args.find((a, i) => !a.startsWith('--') && args[i - 1] !== '--port') ?? 'demo';
+const tree = args.find((a, i) => !a.startsWith('--') && args[i - 1] !== '--port' && args[i - 1] !== '--exe') ?? 'demo';
 const port = Number(args[args.indexOf('--port') + 1]) || 8090;
 const isolated = args.includes('--isolated');
-const exe = new URL('../../build/tesserui_demo', import.meta.url).pathname;
+// --exe: another node speaking the same protocol (TesserKIT's tesserkit_demo).
+const exe = args.includes('--exe')
+  ? new URL(args[args.indexOf('--exe') + 1], `file://${process.cwd()}/`).pathname
+  : new URL('../../build/tesserui_demo', import.meta.url).pathname;
 const dist = new URL('../dist/', import.meta.url);
 // Custom elements the demo tree uses (DESIGN.md §9.8), served at /ext/.
 const elements = new URL('../../examples/elements/', import.meta.url);

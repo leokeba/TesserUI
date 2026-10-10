@@ -3,7 +3,7 @@
   // an object argument's inputs and a button; raw JSON and a button; or a
   // hold button (true on press, false on release).
   import { useSession } from '../shared.svelte';
-  import { parse } from '../client/json';
+  import { isObject, parse } from '../client/json';
   import { DEFERRED_TIMEOUT_MS } from '../client/types';
   import Icon from '../Icon.svelte';
   import { formatValue } from '../model/format';
@@ -23,12 +23,14 @@
   let params: Record<string, unknown> = $state({});
   let busy = $state(false);
   let result: string | null = $state(null);
+  // A reply that is a list of objects (a scan's networks) is shown as a table.
+  let rows: Record<string, unknown>[] | null = $state(null);
   let jsonError = $state('');
 
   async function run(value: unknown) {
     if (leaf.confirm && !confirm(leaf.confirm)) return;
     busy = true;
-    result = null;
+    result = rows = null;
     // The login action signs this UI in, as the sign-in dialog does.
     if (leaf.schema.ui?.auth === 'login') {
       const error = await session.signIn(value as Record<string, unknown>);
@@ -39,7 +41,8 @@
     const r = await store.call(leaf.path, value, leaf.deferred ? DEFERRED_TIMEOUT_MS : undefined);
     busy = false;
     // Deferred actions reply values their schema can't declare: show any.
-    if (r.status === 'ok' && r.body != null) result = formatValue(r.body, { type: leaf.returns ?? '' });
+    if (r.status === 'ok' && Array.isArray(r.body) && r.body.length && r.body.every(isObject)) rows = r.body;
+    else if (r.status === 'ok' && r.body != null) result = formatValue(r.body, { type: leaf.returns ?? '' });
   }
 
   function paramsValue() {
@@ -122,6 +125,16 @@
     </button>
     {#if result !== null}<output>→ {result}</output>{/if}
   </div>
+  {#if rows}
+    <div class="rows">
+      <table>
+        <thead><tr>{#each Object.keys(rows[0]) as k (k)}<th>{k}</th>{/each}</tr></thead>
+        <tbody>
+          {#each rows as r, i (i)}<tr>{#each Object.keys(rows[0]) as k (k)}<td>{formatValue(r[k], { type: '' })}</td>{/each}</tr>{/each}
+        </tbody>
+      </table>
+    </div>
+  {/if}
   {#if jsonError}<p class="error">{jsonError}</p>{/if}
 {/if}
 
@@ -152,6 +165,27 @@
     grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
     align-items: center;
     gap: 6px 12px;
+  }
+  .rows {
+    flex-basis: 100%;
+    max-height: 16em;
+    overflow: auto;
+    margin-top: 6px;
+    font-size: 0.9em;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  th {
+    text-align: left;
+    color: var(--muted);
+    font-weight: 500;
+  }
+  th,
+  td {
+    padding: 3px 8px 3px 0;
+    white-space: nowrap;
   }
   output {
     color: var(--muted);

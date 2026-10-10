@@ -3,6 +3,8 @@
   // a PUT's raw body, with progress. Over HTTP only, whatever the transport.
   import { parse } from '../client/json';
   import { errorText } from '../client/types';
+  import Icon from '../Icon.svelte';
+  import { bytes } from '../model/format';
   import { useSession } from '../shared.svelte';
   import type { WidgetProps } from './types';
   let { leaf, disabled, id }: WidgetProps = $props();
@@ -82,11 +84,16 @@
     <span class="muted">{t('Files need a network connection')}</span>
   {:else}
     {#if leaf.readable}
-      <button type="button" disabled={disabled || progress !== null} onclick={() => transfer('GET')}>{t('Download')}</button>
+      <button type="button" disabled={disabled || progress !== null} onclick={() => transfer('GET')}><Icon name="download" /> {t('Download')}</button>
     {/if}
     {#if leaf.editable}
-      <input {id} type="file" {accept} disabled={disabled || progress !== null} onchange={(e) => (file = e.currentTarget.files?.[0] ?? null)} />
-      <button type="button" class={leaf.style ?? 'primary'} disabled={disabled || !file || progress !== null} onclick={upload}>{t('Upload')}</button>
+      <!-- The input is hidden; its label is the button. -->
+      <input class="sr" {id} type="file" {accept} disabled={disabled || progress !== null} onchange={(e) => (file = e.currentTarget.files?.[0] ?? null)} />
+      <label for={id} class="pick" class:off={disabled || progress !== null}>{file ? t('Change…') : t('Choose a file…')}</label>
+      {#if file}
+        <span class="name" title={file.name}>{file.name} <span class="muted">{bytes(file.size)}</span></span>
+        <button type="button" class={leaf.style ?? 'primary'} disabled={disabled || progress !== null} onclick={upload}>{t('Upload')}</button>
+      {/if}
     {/if}
     {#if progress !== null}<progress max="100" value={progress}></progress>{/if}
     {#if message}<output class:error={failed} role={failed ? 'alert' : undefined}>{message}</output>{/if}
@@ -100,9 +107,42 @@
     align-items: center;
     gap: 8px;
   }
-  input {
+  .sr {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+  }
+  .pick {
+    display: inline-flex;
+    align-items: center;
+    min-height: var(--control);
+    padding: 0 12px;
+    border: 1px dashed var(--muted);
+    border-radius: calc(var(--radius) - 4px);
+    cursor: pointer;
+  }
+  .pick:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  .sr:focus-visible + .pick {
+    outline: 2px solid var(--accent);
+  }
+  .pick.off {
+    opacity: 0.5;
+    pointer-events: none;
+  }
+  .name {
     flex: 1;
     min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  progress {
+    accent-color: var(--accent);
+    height: 6px;
   }
   progress,
   output {

@@ -17,9 +17,10 @@
   const visible = $derived(!sec.visibleWhen || holds(sec.visibleWhen, (p) => store.get(p)));
   const enabled = $derived(!sec.enabledWhen || holds(sec.enabledWhen, (p) => store.get(p)));
   const foldable = $derived(sec.collapsed || sec.level >= 3);
-  // Groups whose schema isn't loaded yet start closed and load on opening.
+  // Groups start open unless collapsed; one whose schema isn't loaded yet
+  // (the page's depth cut it) loads when open.
   // svelte-ignore state_referenced_locally
-  let open = $state(!(sec.collapsed || (sec.level >= 3 && sec.lazy)));
+  let open = $state(!sec.collapsed);
   $effect(() => {
     if (open && sec.lazy) session.ensure(sec.path, 2);
   });

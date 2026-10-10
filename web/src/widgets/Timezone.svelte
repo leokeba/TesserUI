@@ -8,10 +8,15 @@
   const session = useSession();
   const zones: string[] = (Intl as unknown as { supportedValuesOf?: (k: string) => string[] }).supportedValuesOf?.('timeZone') ?? [];
   const here = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  // The device's string, named when it is this browser's zone.
+  // Compared without the zones' names (CET or <+01>): offsets and rules.
+  const rules = (tz: string) => tz.replace(/<[^>]*>|[A-Za-z]{3,}/g, '');
+  const hereTz = here ? rules(posixTz(here)) : '';
+  const shown = $derived(typeof value === 'string' && value ? (rules(value) === hereTz ? here.replace(/_/g, ' ') : value) : session.t('Not set'));
 </script>
 
 <select {id} {disabled} onchange={(e) => e.currentTarget.value && set(posixTz(e.currentTarget.value))}>
-  <option value="" selected>{typeof value === 'string' && value ? value : session.t('Not set')}</option>
+  <option value="" selected>{shown}</option>
   {#if here}<option value={here}>{session.t('This device: {zone}', { zone: here })}</option>{/if}
   {#each zones as z (z)}<option value={z}>{z.replace(/_/g, ' ')}</option>{/each}
 </select>

@@ -750,6 +750,7 @@
     "form": false
    }
   ],
+  "actions": [],
   "columns": 3,
   "depth": 3,
   "keys": "lamp,sensors,config,system,demo,settings,secure,net,peers"

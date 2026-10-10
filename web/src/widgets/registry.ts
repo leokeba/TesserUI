@@ -63,6 +63,7 @@ export const WIDGETS: Record<string, Def> = {
   json: { component: c(JsonView), layout: 'wide' },
   events: { component: c(Events), layout: 'wide' },
   table: { component: c(Table), layout: 'wide' },
+  list: { component: c(Table), layout: 'wide' },
   file: { component: c(File), layout: 'wide' },
 };
 

@@ -31,6 +31,7 @@ export type Widget =
   | 'json'
   | 'events'
   | 'table'
+  | 'list'
   | 'file'
   | 'link'
   // A custom element (DESIGN.md §9.8): any name with a hyphen.
@@ -133,6 +134,8 @@ export interface Page {
   label: string;
   description?: string;
   cards: Section[];
+  // Buttons directly under the page, shown by its title.
+  actions: Leaf[];
   columns: number;
   // Subscription parameters for the page (DESIGN.md §7.3).
   keys?: string;
@@ -277,13 +280,18 @@ export function buildLeaf(name: string, path: string, s: Schema, parent: string,
       leaf.widget = 'events';
       leaf.toast = ui(s, 'toast') === true;
       return leaf;
-    case 'list':
-      leaf.widget = 'table';
+    case 'list': {
       leaf.editable = true;
       leaf.maxSize = s.maxSize;
-      leaf.columns = s.items ? columns(s.items, '') : [];
+      const cols = (leaf.columns = s.items ? columns(s.items, '') : []);
       if (s.key) leaf.key = s.key;
+      // A row of a few short fields fits a table; anything more (nested
+      // objects, conditions, wider widgets) is one line per element that
+      // opens into the element's own controls.
+      const compact = cols.length <= 3 && cols.every((c) => !c.path.includes('/') && !c.visibleWhen && TABLE_CELLS.includes(c.widget));
+      leaf.widget = uiStr(s, 'widget') === 'list' || (!compact && uiStr(s, 'widget') !== 'table') ? 'list' : 'table';
       return leaf;
+    }
     case 'array': {
       // Scalars: one column, or a plot of the whole array.
       const items: Schema = { type: 'number', ...s.items, writable: !!s.writable };
@@ -326,6 +334,9 @@ export function buildLeaf(name: string, path: string, s: Schema, parent: string,
   if (leaf.widget === 'chart') leaf.history = uiNum(s, 'history') ?? 60;
   return leaf;
 }
+
+// What a table cell can edit.
+const TABLE_CELLS: Widget[] = ['text', 'password', 'number', 'slider', 'select', 'segmented', 'toggle', 'readout', 'led'];
 
 function number(leaf: Leaf, s: Schema) {
   if (!isNumeric(leaf.type)) return;
@@ -467,6 +478,7 @@ export function buildPage(s: Schema, path: string, root = '/', t: (text: string)
     path,
     label: s.label ?? (path === '/' ? t('Device') : root === path ? path.slice(path.lastIndexOf('/') + 1) : humanize(path.slice(path.lastIndexOf('/') + 1))),
     cards: [],
+    actions: [],
     columns: uiNum(s, 'columns') ?? 3,
     depth: depthOf(s),
   };
@@ -492,13 +504,21 @@ export function buildPage(s: Schema, path: string, root = '/', t: (text: string)
       page.cards.push(item, ...promoted.filter((p) => isUnder(p.path, item.path)));
     } else if (item.kind === 'link' && item.remote) {
       nodes.items.push(item);
+    } else if (item.kind === 'leaf' && (item.widget === 'list' || item.widget === 'table') && !item.advanced) {
+      // A list is a card of its own, titled by it.
+      page.cards.push({ ...first, path: item.path, label: item.label, description: item.description, items: [{ ...item, label: '' }], advancedItems: [] });
+    } else if (item.kind === 'leaf' && item.widget === 'button' && !item.value && !item.advanced && !item.hidden && !item.visibleWhen) {
+      page.actions.push(item);
     } else {
       (item.advanced ? first.advancedItems : first.items).push(item);
     }
   }
   // Hidden values are read (they're in the subscription), never shown: a card
   // of hidden values only would be empty.
-  if ([...first.items, ...first.advancedItems].some((i) => !i.hidden)) page.cards.unshift(first);
+  // Only advanced values left: a collapsed card of them, last.
+  if (!first.items.some((i) => !i.hidden) && first.advancedItems.length) {
+    page.cards.push({ ...first, label: t('Advanced'), collapsed: true, items: first.advancedItems, advancedItems: [] });
+  } else if ([...first.items, ...first.advancedItems].some((i) => !i.hidden)) page.cards.unshift(first);
   if (nodes.items.length) page.cards.push(nodes);
 
   // Subscribe to everything shown except mirrored remote nodes, whose copies

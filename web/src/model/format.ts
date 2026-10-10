@@ -34,6 +34,9 @@ export function formatValue(v: unknown, f: NumberFormat): string {
   if (v === null) return 'null';
   if (f.format) return printf(f.format, v);
   let text: string;
+  if (typeof v === 'number' && Number.isInteger(v) && (f.unit === 'B' || f.unit === 's')) {
+    return f.unit === 'B' ? bytes(v) : duration(v);
+  }
   if (typeof v === 'number') {
     if (f.precision !== undefined) text = v.toFixed(f.precision);
     else if (f.type === 'integer' || Number.isInteger(v)) text = String(v);
@@ -44,6 +47,23 @@ export function formatValue(v: unknown, f: NumberFormat): string {
     text = JSON.stringify(v);
   }
   return f.unit ? `${text} ${f.unit}` : text;
+}
+
+// 1536 → "1.5 KB", 2031616 → "1.94 MB".
+export function bytes(n: number): string {
+  if (Math.abs(n) < 1024) return `${n} B`;
+  return Math.abs(n) < 1048576 ? `${(n / 1024).toFixed(1)} KB` : `${(n / 1048576).toFixed(2)} MB`;
+}
+
+// 59 → "59 s", 3725 → "1 h 2 min", 90061 → "1 d 1 h".
+export function duration(n: number): string {
+  const units: [number, string][] = [[86400, 'd'], [3600, 'h'], [60, 'min'], [1, 's']];
+  const i = units.findIndex(([u]) => Math.abs(n) >= u);
+  if (i < 0 || i === 3) return `${n} s`;
+  const [u, name] = units[i];
+  const [u2, name2] = units[i + 1];
+  const rest = Math.floor((n % u) / u2);
+  return `${Math.floor(n / u)} ${name}` + (rest ? ` ${rest} ${name2}` : '');
 }
 
 // printf subset: %d %i %u %f %.Nf %e %g %s %% (with an optional precision).

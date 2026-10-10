@@ -49,8 +49,10 @@
     g.stroke();
     g.fillStyle = css.getPropertyValue('--muted');
     g.font = `${11 * devicePixelRatio}px system-ui`;
-    g.fillText(formatValue(hi, { ...leaf, unit: undefined }), 2, 12 * devicePixelRatio);
-    g.fillText(formatValue(lo, { ...leaf, unit: undefined }), 2, h - 3 * devicePixelRatio);
+    // Bytes keep their unit: it scales them (KB, MB).
+    const f = { ...leaf, unit: leaf.unit === 'B' ? 'B' : undefined };
+    g.fillText(formatValue(hi, f), 2, 12 * devicePixelRatio);
+    g.fillText(formatValue(lo, f), 2, h - 3 * devicePixelRatio);
   });
 </script>
 

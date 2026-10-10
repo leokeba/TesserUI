@@ -25,6 +25,7 @@ export const ICONS: Record<string, string> = {
   left: 'M15 5l-7 7 7 7',
   right: 'M9 5l7 7-7 7',
   down: 'M5 9l7 7 7-7',
+  download: 'M12 4v11M7 10l5 5 5-5M5 20h14',
   alert: 'M12 3L2 20h20zM12 10v4M12 17h.01',
   info: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 11v6M12 7.5h.01',
   lock: 'M6 11h12v10H6zM8.5 11V7.5a3.5 3.5 0 0 1 7 0V11',

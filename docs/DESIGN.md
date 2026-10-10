@@ -82,7 +82,8 @@ Without any hint, each schema node maps to one semantic widget. The table is nor
 | `action`, `deferred` | as above, with a busy state until the reply | A deferred action taking `tesser::Call&` alone reports `arg: "any"`: it is a plain button, no JSON entry. Typed deferred actions (`(T, Call&)`) get their input. Their reply may take up to TesserAPI's `deferTimeoutMs`: the request timeout is 15 s. |
 | `action`, `returns` | as above; the result is shown next to the button | Any reply other than `null` is shown, since a deferred action's reply has no declared type. |
 | `event` | `events` | The last occurrences with their payloads (web), or a toast (LCD). |
-| `list` | `table` | Columns are the leaves of `items`. Rows can be edited, added (up to `maxSize`) and removed: each edit writes the whole array (TesserAPI §4.4), without its read-only fields, which the device would refuse, and the `secret` fields it couldn't read. Each item patches its element, keeping the fields it leaves out; a keyed list (`key`) is matched by key, not index, so those survive removals and reordering; its rows are named by their key column instead of an index. |
+| `list` of at most 3 short fields | `table` | Fields are short when they are top-level values drawn as `text`, `password`, `number`, `slider`, `select`, `segmented`, `toggle`, `readout` or `led`, without conditions. Columns are the leaves of `items`. Rows can be edited, added (up to `maxSize`) and removed: each edit writes the whole array (TesserAPI §4.4), without its read-only fields, which the device would refuse, and the `secret` fields it couldn't read. Each item patches its element, keeping the fields it leaves out; a keyed list (`key`) is matched by key, not index, so those survive removals and reordering; its rows are named by their key column instead of an index. |
+| any other `list` | `list` | One line per element: its name (the key, else its first value), up to three short values (flags by their labels), its first writable boolean as a switch, and a remove button. A line opens into the element's own controls, built like a section at the element's path (`/sys/timers/morning`), so every widget, nested object and condition works, and each control writes its own path; a keyed list's paths go through it by key. Adding to a keyed list asks for the new element's key first, and sends only the keys, which keeps the other elements whole (TesserAPI §4.4). `ui.widget` `table` or `list` chooses. |
 | `array` | `table` | One column of `items`' type. Read-only arrays aren't editable, and fixed-length ones (`fixed`) have no add and remove. With `ui.widget: "chart"`, a numeric array is plotted by index instead (a calibration table). |
 | `file` | `file` | A download button when `readable`, a file input and an upload button when `writable`, with a progress bar. Files go over HTTP (`GET`, and `PUT` with the raw file as body), whatever the transport; over USB they aren't available. `maxSize` is checked before sending, `ui.confirm` asked first. The download's name is the device's (`Content-Disposition`), else `ui.filename`, else the node's name with an extension from `contentType`; the schema's `accept` (TesserAPI's `.accept()`), else `ui.accept`, filters the file chooser. Files have no value: pages don't read or subscribe to them. |
 | `custom` | `json` | Read-only JSON, or a JSON editor when writable; hidden on LCD. |
@@ -91,7 +92,7 @@ Without any hint, each schema node maps to one semantic widget. The table is nor
 
 - **Label:** `label` from the schema, else the node's name humanized: `brightnessMax` → "Brightness max", `pid_kp` → "Pid kp".
 - **Description:** `description` is shown as help text (a tooltip on the web, hidden on small screens).
-- **Units:** `unit` follows the value: "42 %", "12.5 °C".
+- **Units:** `unit` follows the value: "42 %", "12.5 °C". Integers in `B` and `s` are scaled: "178.4 KB", "1.94 MB", "6 min 39 s", "2 d 3 h".
 - **Precision:** `ui.precision` decimals, else as many as `step` has, else up to 3 significant decimals for `number`.
 
 ## 5. Hints (tier 1)
@@ -172,8 +173,8 @@ Layout follows the tree. Children render in declaration order, which is TesserAP
 ### 6.1 Rules (both renderers)
 
 1. A **page** is the root of a node, an object with `ui.page`, or a view page (§8).
-2. On a page, each child **object** is a **card**. Values directly under the page's root form a first, untitled card.
-3. Inside a card, values and actions are **rows**: label, then control. A nested object is a **sub-section** with a heading, and a third level is a collapsible group. `ui.card` promotes a nested object to its own card; `ui.page` makes it a link to its own page.
+2. On a page, each child **object** is a **card**, and so is each list (titled by it). Actions without an argument directly under the page are buttons beside its title. Other values directly under the page's root form a first, untitled card; when only `advanced` ones are left, they form a collapsed card titled "Advanced", last.
+3. Inside a card, values and actions are **rows**: label, then control. A nested object is a **sub-section** with a heading, and a third level is a collapsible group, open unless `ui.collapsed`; one whose schema the page's depth cut is fetched when open. `ui.card` promotes a nested object to its own card; `ui.page` makes it a link to its own page.
 4. `advanced` children of a section go into one collapsed "Advanced" group at its end. On a page, an `advanced` object is a card that starts collapsed; `advanced` values go to the first card's group.
 6. A card promoted with `ui.card` follows the card it comes from.
 5. `remote` children render as links (§7.6), in a card of their own when their parent is the root (the `/peers` object of a UI host, for instance).

@@ -3,6 +3,7 @@
   import Icon from './Icon.svelte';
   import { buildPage } from './model/model';
   import { accessAt, parentPath } from './model/schema';
+  import Item from './Item.svelte';
   import Section from './Section.svelte';
 
   // home: where the UI starts; back doesn't go above it.
@@ -52,13 +53,14 @@
   });
 </script>
 
-{#if path !== '/'}
+{#if path !== '/' || page?.actions.length}
   <div class="head">
     {#if back !== null}<a class="back" href="#{back}" aria-label={t('Back')}><Icon name="left" /></a>{/if}
-    <h1>{page?.label ?? path.slice(path.lastIndexOf('/') + 1)}</h1>
+    {#if path !== '/'}<h1>{page?.label ?? path.slice(path.lastIndexOf('/') + 1)}</h1>{/if}
     {#if nodeRoot === path && nodeRoot !== '/'}
       <span class="dot" class:off={offline}></span><span class="muted">{t(offline ? 'Offline' : 'Online')}</span>
     {/if}
+    {#if page?.actions.length}<div class="actions">{#each page.actions as a (a.path)}<Item item={a} />{/each}</div>{/if}
   </div>
 {/if}
 {#if page?.description}<p class="muted desc">{page.description}</p>{/if}
@@ -92,6 +94,11 @@
   h1 {
     font-size: 1.25rem;
     margin: 0;
+  }
+  .actions {
+    margin-left: auto;
+    display: flex;
+    gap: 8px;
   }
   .back {
     display: inline-flex;

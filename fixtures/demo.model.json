@@ -38,70 +38,6 @@
       "editable": false
      },
      {
-      "name": "schedule",
-      "path": "/schedule",
-      "label": "Schedule",
-      "advanced": false,
-      "hidden": false,
-      "kind": "leaf",
-      "widget": "table",
-      "type": "list",
-      "editable": true,
-      "maxSize": 8,
-      "columns": [
-       {
-        "name": "hour",
-        "path": "hour",
-        "label": "Hour",
-        "advanced": false,
-        "hidden": false,
-        "kind": "leaf",
-        "widget": "slider",
-        "type": "integer",
-        "editable": true,
-        "min": 0,
-        "max": 23,
-        "step": 1,
-        "precision": 0
-       },
-       {
-        "name": "enabled",
-        "path": "enabled",
-        "label": "Enabled",
-        "advanced": false,
-        "hidden": false,
-        "kind": "leaf",
-        "widget": "toggle",
-        "type": "boolean",
-        "editable": true
-       },
-       {
-        "name": "label",
-        "path": "label",
-        "label": "Label",
-        "advanced": false,
-        "hidden": false,
-        "kind": "leaf",
-        "widget": "text",
-        "type": "string",
-        "editable": true
-       },
-       {
-        "name": "runs",
-        "path": "runs",
-        "label": "Runs",
-        "advanced": false,
-        "hidden": false,
-        "kind": "leaf",
-        "widget": "readout",
-        "type": "integer",
-        "editable": false,
-        "step": 1,
-        "precision": 0
-       }
-      ]
-     },
-     {
       "name": "info",
       "path": "/info",
       "label": "Device info",
@@ -1081,6 +1017,88 @@
     "form": false
    },
    {
+    "name": "",
+    "path": "/schedule",
+    "label": "Schedule",
+    "advanced": false,
+    "hidden": false,
+    "kind": "section",
+    "level": 1,
+    "items": [
+     {
+      "name": "schedule",
+      "path": "/schedule",
+      "label": "",
+      "advanced": false,
+      "hidden": false,
+      "kind": "leaf",
+      "widget": "list",
+      "type": "list",
+      "editable": true,
+      "maxSize": 8,
+      "columns": [
+       {
+        "name": "hour",
+        "path": "hour",
+        "label": "Hour",
+        "advanced": false,
+        "hidden": false,
+        "kind": "leaf",
+        "widget": "slider",
+        "type": "integer",
+        "editable": true,
+        "min": 0,
+        "max": 23,
+        "step": 1,
+        "precision": 0
+       },
+       {
+        "name": "enabled",
+        "path": "enabled",
+        "label": "Enabled",
+        "advanced": false,
+        "hidden": false,
+        "kind": "leaf",
+        "widget": "toggle",
+        "type": "boolean",
+        "editable": true
+       },
+       {
+        "name": "label",
+        "path": "label",
+        "label": "Label",
+        "advanced": false,
+        "hidden": false,
+        "kind": "leaf",
+        "widget": "text",
+        "type": "string",
+        "editable": true
+       },
+       {
+        "name": "runs",
+        "path": "runs",
+        "label": "Runs",
+        "advanced": false,
+        "hidden": false,
+        "kind": "leaf",
+        "widget": "readout",
+        "type": "integer",
+        "editable": false,
+        "step": 1,
+        "precision": 0
+       }
+      ]
+     }
+    ],
+    "advancedItems": [],
+    "lazy": false,
+    "tabs": false,
+    "inline": false,
+    "collapsed": false,
+    "form": false,
+    "columns": 3
+   },
+   {
     "name": "widgets",
     "path": "/widgets",
     "label": "Widget overrides",
@@ -1647,6 +1665,7 @@
     "form": false
    }
   ],
+  "actions": [],
   "columns": 3,
   "depth": null,
   "keys": "uptime,online,lamp,motor,sensors,settings,config,offset,channels,schedule,widgets,sky,sequence,tables,system,account,blob,peers,_ui"
