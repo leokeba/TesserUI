@@ -87,8 +87,9 @@ export class Session {
     // A node without enableWebSocket(): fall back to HTTP for good.
     ws.onState((s) => {
       if (s === 'down' && ws.opened === 0 && this.client === ws) {
-        ws.close();
+        // Switch first: closing emits 'down' again.
         this.use(this.httpClient());
+        ws.close();
       }
     });
     this.use(ws);

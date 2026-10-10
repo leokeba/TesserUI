@@ -152,3 +152,33 @@ describe('subscriptions (DESIGN §7.3)', () => {
     expect(commonAncestor(['/a', '/b'])).toBe('/');
   });
 });
+
+describe('session: transport fallback', () => {
+  it('falls back to HTTP once when the WebSocket never opens', async () => {
+    const { Session } = await import('../src/store/session.svelte');
+    const sockets: { onclose?: () => void }[] = [];
+    class FailingSocket {
+      onopen?: () => void;
+      onclose?: () => void;
+      onerror?: () => void;
+      onmessage?: () => void;
+      constructor() {
+        sockets.push(this);
+        setTimeout(() => this.onclose?.(), 0);
+      }
+      close() {}
+      send() {}
+    }
+    vi.stubGlobal('WebSocket', FailingSocket);
+    vi.stubGlobal('location', new URL('http://node.local/'));
+    const fetched: string[] = [];
+    vi.stubGlobal('fetch', (url: string) => (fetched.push(url), Promise.reject(new Error('offline'))));
+    const s = new Session({ api: '/api', ws: '/ws', transport: 'ws' });
+    s.start();
+    await new Promise((r) => setTimeout(r, 20));
+    expect(sockets.length).toBe(1);
+    expect(s.kind).toBe('http');
+    expect(fetched[0]).toBe('http://node.local/api/?depth=0');
+    vi.unstubAllGlobals();
+  });
+});
