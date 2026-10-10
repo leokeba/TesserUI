@@ -109,6 +109,14 @@ export function accessAt(root: Schema, path: string): Level | undefined {
 
 // Merges a fetched schema into the tree at `path`. Deeper fetches add
 // children; a shallower one doesn't erase what is already known below.
+// Whether depth cut part of `s`: an object without children, or a list
+// without items (TesserAPI renders them so beyond the limit).
+export function isCut(s: Schema): boolean {
+  if (s.type === 'object') return !s.children || Object.values(s.children).some(isCut);
+  if (s.type === 'list' || s.type === 'array') return !s.items || isCut(s.items);
+  return false;
+}
+
 export function mergeSchema(root: Schema, path: string, fetched: Schema): Schema {
   const names = segments(path);
   if (!names.length) {
@@ -158,6 +166,8 @@ function mergeNode(old: Schema, fresh: Schema): Schema {
       for (const [k, v] of Object.entries(fresh.children)) if (!(k in out.children)) out.children[k] = v;
     }
   }
+  // A list's or an array's items, like children, are cut by depth.
+  if (old.items) out.items = fresh.items ? mergeNode(old.items, fresh.items) : old.items;
   return out;
 }
 

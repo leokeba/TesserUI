@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildLeaf, buildPage, depthOf, inferWidget, visiblePaths, type Leaf, type Section } from '../src/model/model';
-import { mergeSchema, remoteOf, schemaAt, type Schema } from '../src/model/schema';
+import { isCut, mergeSchema, remoteOf, schemaAt, type Schema } from '../src/model/schema';
 import { fixture } from './fixtures';
 
 const leaf = (s: Schema, name = 'x') => buildLeaf(name, `/${name}`, s, '/');
@@ -96,6 +96,20 @@ describe('layout of the test firmware (DESIGN §6.1)', () => {
     const p = buildPage({ type: 'object', children: { a: { type: 'object', children: { b: { type: 'object' } } } } }, '/');
     expect((p.cards[0].items[0] as Section).lazy).toBe(true);
     expect(depthOf(fw.schema)).toBe(3);
+  });
+  it("reads lists' elements in full", () => {
+    // TesserKIT's /sys/network: a read stopping at the list gets [].
+    const networks: Schema = {
+      type: 'list',
+      key: 'ssid',
+      items: { type: 'object', children: { ssid: { type: 'string', writable: true }, static: { type: 'object', children: { ip: { type: 'string' } } } } },
+    };
+    expect(depthOf(networks)).toBe(2);
+    expect(depthOf({ type: 'object', children: { wifi: { type: 'object', children: { networks } } } })).toBe(4);
+    expect(depthOf({ type: 'array', items: { type: 'integer' } })).toBe(0);
+    expect(isCut(networks)).toBe(false);
+    expect(isCut({ ...networks, items: undefined })).toBe(true);
+    expect(isCut({ ...networks, items: { type: 'object', children: { static: { type: 'object' } } } })).toBe(true);
   });
   it('shows a custom node as JSON', () => {
     const net = page.cards[7];

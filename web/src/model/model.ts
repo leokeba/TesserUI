@@ -524,10 +524,11 @@ export function buildSection(path: string, s: Schema, level: number, root = '/',
 }
 
 // Object levels below `s` that its schema expands (the `depth` that reads
-// all of it).
+// all of it). A list's elements are objects one level below it.
 export function depthOf(s: Schema): number {
   // A custom element may read anything below its object.
   if (s.type === 'object' && isElement(s.ui?.widget)) return Infinity;
+  if ((s.type === 'list' || s.type === 'array') && s.items) return depthOf(s.items);
   if (s.type !== 'object' || !s.children) return 0;
   let d = 0;
   for (const c of Object.values(s.children)) d = Math.max(d, depthOf(c));

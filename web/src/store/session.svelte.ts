@@ -7,7 +7,7 @@ import { isObject } from '../client/json';
 import { errorText, type Client, type ConnState, type Notification, type Reply, type Request } from '../client/types';
 import type { Condition } from '../model/conditions';
 import { visiblePaths, type Item, type Leaf, type Page, type Section } from '../model/model';
-import { isUnder, joinPath, mergeSchema, parentPath, rank, remoteOf, schemaAt, segments, type Level, type Schema } from '../model/schema';
+import { isCut, isUnder, joinPath, mergeSchema, parentPath, rank, remoteOf, schemaAt, segments, type Level, type Schema } from '../model/schema';
 import type { ViewPage } from '../model/views';
 import { Store } from './store.svelte';
 import { commonAncestor, Subscriptions, type SubSpec } from './subs';
@@ -313,13 +313,14 @@ export class Session {
     this.schemaVersion++;
   }
 
-  // Makes sure the schema at `path` is known `depth` levels down.
+  // Makes sure the schema at `path` is known `depth` levels down, with the
+  // lists there in full.
   async ensure(path: string, depth = 3): Promise<boolean> {
     const known = this.schemaAt(path);
     if (known && known.type !== 'object' && known.type !== 'remote') return true;
     if (this.pageSchema(path)) {
       const s = this.schemaAt(path)!;
-      if (!hasLazyChildren(s.type === 'remote' ? s.tree! : s, depth)) return true;
+      if (!hasLazyChildren(s.type === 'remote' ? s.tree! : s, depth)) return this.completeLists(path, depth);
     }
     if (!this.root.children && path !== '/') await this.fetchSchema('/', 1);
     // Each level on the way must be known, to cross remote nodes.
@@ -332,7 +333,25 @@ export class Session {
         if (!(await this.fetchSchema(p, 1))) return false;
       }
     }
-    return this.fetchSchema(path, depth);
+    return (await this.fetchSchema(path, depth)) && this.completeLists(path, depth);
+  }
+
+  // A table needs its list's whole element schema, which depth may have cut
+  // (a list at the limit has no items): such lists are fetched on their own.
+  private async completeLists(path: string, depth: number): Promise<boolean> {
+    const cut: string[] = [];
+    const find = (s: Schema | undefined, p: string, left: number) => {
+      if (!s) return;
+      if (s.type === 'list' || s.type === 'array') {
+        if (isCut(s)) cut.push(p);
+      } else if (s.type === 'object' && left > 0) {
+        for (const [name, c] of Object.entries(s.children ?? {})) find(c, joinPath(p, name), left - 1);
+      }
+    };
+    const s = this.schemaAt(path);
+    find(s?.type === 'remote' ? s.tree : s, path, depth);
+    for (const p of cut) await this.fetchSchema(p, 16);
+    return true;
   }
 
   // A gateway forwards at most maxPending requests at once (TesserAPI's

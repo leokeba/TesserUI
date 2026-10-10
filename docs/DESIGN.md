@@ -205,7 +205,7 @@ Widgets bind to paths and re-render when their value changes (Svelte runes on th
 
 ### 7.2 Schemas
 
-- **Fetching:** `get <page path>?view=schema` with `depth` 3 for a page, deeper on demand when the user opens a sub-page or collapsible group. Over NowTP, responses are capped at 16 KB; on `too_large`, retry with `depth` 1 and fetch the children one by one (`keys`).
+- **Fetching:** `get <page path>?view=schema` with `depth` 3 for a page, deeper on demand when the user opens a sub-page or collapsible group. A table needs its list's whole element schema, which `depth` cuts like an object's children (a list at the limit has no `items`): lists left incomplete are fetched on their own, without a depth limit that matters (16). Over NowTP, responses are capped at 16 KB; on `too_large`, retry with `depth` 1 and fetch the children one by one (`keys`).
 - **Caching (web):** in `localStorage`, keyed by origin, schema hash, path within the node and depth.
   - For a peer behind a UI host, the hash is the `schema` key of its stub in the parent's schema (TesserAPI §14.1).
   - For the node reached directly, it is the node's `view=hash` of `/` (TesserAPI §7), read once per load: one small request instead of the schema. It is the hash of the schema this client may read, so clients with different access levels don't share entries. A node that doesn't support it (`bad_request`) is read whole on every load.
@@ -215,7 +215,7 @@ Widgets bind to paths and re-render when their value changes (Svelte runes on th
 
 TesserAPI allows 4 subscriptions per client (default `maxSubscriptionsPerClient`). The renderer uses at most 3:
 
-1. **The page:** `sub <page path>` with `keys` = the visible children and `depth` = the visible depth, `interval` 100 ms. Navigating unsubscribes the old page before subscribing the new one. The snapshot fills the store. On `too_large`, subscribe with `snapshot: false` and read the visible cards with one get each.
+1. **The page:** `sub <page path>` with `keys` = the visible children and `depth` = the visible depth (a list's element objects count, a level below the list), `interval` 100 ms. Navigating unsubscribes the old page before subscribing the new one. The snapshot fills the store. On `too_large`, subscribe with `snapshot: false` and read the visible cards with one get each.
 2. **The peer's stub,** while the page is a peer's (`/peers/<name>/...`): `sub /peers` with `keys` = the peer and `depth` 1, for its online state. A page showing links needs nothing extra: unmirrored remote nodes are part of its subscription and read as `null`. A notification carrying `{"<name>": null}` means that peer changed (mounted, online state, schema hash): re-read its stub with `/peers?view=schema&depth=1&keys=<name>`.
 3. **Condition paths** outside the page, when there are any.
 

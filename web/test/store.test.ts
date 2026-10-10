@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Store } from '../src/store/store.svelte';
 import { Subscriptions, commonAncestor } from '../src/store/subs';
+import type { Schema } from '../src/model/schema';
 import { FakeClient, tick } from './fake';
 
 function setup() {
@@ -193,5 +194,50 @@ describe('session: transport fallback', () => {
     expect(fetched[0]).toBe('http://node.local/api/?depth=0');
     s.close();
     vi.unstubAllGlobals();
+  });
+});
+
+describe('session: lists cut by depth', () => {
+  // TesserKIT's /sys/network/wifi/networks, three levels down.
+  const networks: Schema = {
+    type: 'list',
+    key: 'ssid',
+    items: { type: 'object', children: { ssid: { type: 'string', writable: true }, static: { type: 'object', children: { ip: { type: 'string', writable: true } } } } },
+  };
+  const tree: Schema = { type: 'object', children: { network: { type: 'object', children: { wifi: { type: 'object', children: { networks } } } } } };
+  // As TesserAPI renders a schema: an object or a list at the limit loses its
+  // children or its items.
+  const cut = (s: Schema, left: number): Schema => {
+    if (s.type === 'object' && s.children) {
+      if (left <= 0) return { ...s, children: undefined };
+      return { ...s, children: Object.fromEntries(Object.entries(s.children).map(([k, c]) => [k, cut(c, left - 1)])) };
+    }
+    if (s.type === 'list' && s.items) {
+      if (left <= 0) return { ...s, items: undefined };
+      return { ...s, items: cut(s.items, left) };
+    }
+    return s;
+  };
+
+  it('fetches a list whose items depth cut, and keeps them', async () => {
+    const { Session } = await import('../src/store/session.svelte');
+    const { schemaAt } = await import('../src/model/schema');
+    const client = new FakeClient();
+    client.answer = (r) => {
+      if (r.view !== 'schema') return { status: 'ok', body: {} };
+      const s = r.path === '/' ? tree : schemaAt(tree, r.path)!;
+      return { status: 'ok', body: cut(s, r.depth ?? 99) };
+    };
+    const s = new Session({ api: '/api', ws: '/ws', transport: 'ws' });
+    (s as unknown as { use(c: FakeClient): void }).use(client);
+    expect(await s.ensure('/', 3)).toBe(true);
+    expect(client.sent.filter((r) => r.view === 'schema').map((r) => [r.path, r.depth])).toEqual([
+      ['/', 3],
+      ['/network/wifi/networks', 16],
+    ]);
+    expect(s.schemaAt('/network/wifi/networks')).toEqual(networks);
+    // A shallower read of a parent keeps them.
+    await s.fetchSchema('/network/wifi', 1);
+    expect(s.schemaAt('/network/wifi/networks')).toEqual(networks);
   });
 });
