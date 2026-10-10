@@ -221,9 +221,10 @@
     padding: 3px 6px 3px 0;
   }
   td input[type='number'],
-  td input[type='text'] {
+  td input[type='text'],
+  td input[type='password'] {
     width: 100%;
-    min-width: 4em;
+    min-width: 6em;
   }
   .lv {
     display: grid;

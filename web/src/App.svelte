@@ -158,12 +158,15 @@
   </main>
 
   {#if session.needToken}
+    <div class="scrim"></div>
     <dialog open aria-labelledby="token-title">
       <form method="dialog" onsubmit={authenticate}>
         <h2 id="token-title"><Icon name="lock" /> {t('Authentication')}</h2>
         {#if session.login}
-          {#each loginFields as f (f.name)}
+          {#each loginFields as f, i (f.name)}
+            <!-- svelte-ignore a11y_autofocus -->
             <input
+              autofocus={i === 0}
               type={f.secret ? 'password' : 'text'}
               bind:value={creds[f.name]}
               placeholder={f.label}
@@ -459,6 +462,13 @@
   .connect p {
     margin: 0;
   }
+  .scrim {
+    position: fixed;
+    inset: 0;
+    z-index: 5;
+    background: #0008;
+    backdrop-filter: blur(2px);
+  }
   dialog {
     border: 1px solid var(--border);
     border-radius: var(--radius);
@@ -469,7 +479,7 @@
     inset: 0;
     margin: auto;
     box-shadow: 0 10px 40px #0005;
-    z-index: 5;
+    z-index: 6;
   }
   dialog form {
     display: grid;

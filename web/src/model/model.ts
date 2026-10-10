@@ -495,7 +495,8 @@ export function buildPage(s: Schema, path: string, root = '/', t: (text: string)
   // of their own.
   const promoted: Section[] = [];
   const top = section('', path, { ...s, ui: { ...s.ui, form: false, tabs: false, inline: false } }, 0, path, promoted);
-  const first: Section = { ...top, level: 1, label: '', items: [], advancedItems: [] };
+  // The page's icon and description are the page's, not its cards'.
+  const first: Section = { ...top, level: 1, label: '', icon: undefined, description: undefined, items: [], advancedItems: [] };
   const nodes: Section = { ...first, label: t('Nodes'), items: [], advancedItems: [] };
   for (const item of [...top.items, ...top.advancedItems]) {
     if (item.kind === 'section') {

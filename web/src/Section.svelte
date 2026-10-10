@@ -90,7 +90,12 @@
       {/if}
     {/if}
   {/if}
-  {#if sec.advancedItems.length}
+  {#if sec.advancedItems.length && !plain.length && !tabs.length}
+    <!-- Nothing else to show (or nothing else this client may read): no fold. -->
+    <div class="items">
+      {#each sec.advancedItems as item (item.path)}<Item {item} />{/each}
+    </div>
+  {:else if sec.advancedItems.length}
     <details class="adv">
       <summary>{t('Advanced')}</summary>
       <div class="items">

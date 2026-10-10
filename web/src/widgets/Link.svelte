@@ -12,6 +12,7 @@
   <span class="name">
     {link.label}
     {#if link.remote && link.label !== link.name}<small>{link.name}</small>{/if}
+    {#if link.description}<small class="desc">{link.description}</small>{/if}
   </span>
   {#if link.remote}
     <span class="dot" class:off={!link.online}></span><span class="status">{session.t(link.online ? 'online' : 'offline')}</span>
@@ -42,6 +43,11 @@
   small {
     color: var(--muted);
     margin-left: 4px;
+  }
+  .desc {
+    display: block;
+    margin: 0;
+    font-size: 0.85em;
   }
   .dot {
     width: 8px;
