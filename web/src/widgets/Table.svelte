@@ -8,7 +8,7 @@
   import Icon from '../Icon.svelte';
   import Section from '../Section.svelte';
   import { formatValue } from '../model/format';
-  import { buildSection, type Leaf } from '../model/model';
+  import { buildSection, visiblePaths, type Leaf } from '../model/model';
   import { useSession } from '../shared.svelte';
   import { parseNumber, type WidgetProps } from './types';
   let { leaf, value, set, disabled }: WidgetProps = $props();
@@ -85,11 +85,13 @@
     }
     return c.options?.find((o) => o.value === v)?.label ?? formatValue(v, c);
   }
-  // The element's controls, built when it opens.
-  const detail = (path: string) => ({
-    ...buildSection(path, leaf.schema.items!, 2, session.nodeRoot(leaf.path), leaf.access),
-    label: '',
-  });
+  // The element's controls, built when it opens; its paths are on screen,
+  // so errors show on its fields.
+  function detail(path: string) {
+    const sec = { ...buildSection(path, leaf.schema.items!, 2, session.nodeRoot(leaf.path), leaf.access), label: '' };
+    for (const p of visiblePaths({ cards: [sec] })) session.store.visible.add(p);
+    return sec;
+  }
 </script>
 
 <!-- Adding: a keyed list's new element needs its key first. -->
