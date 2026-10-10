@@ -1,0 +1,18 @@
+version: "0.1.0"
+description: "User interfaces for TesserAPI nodes, rendered from their schema: self-hosted web UI, stub pages and views"
+url: "https://github.com/leokeba/TesserUI"
+license: "MIT"
+# TesserAPI is required but not listed: add it to the project (EXTRA_COMPONENT_DIRS
+# or a dependency of your main component). CMakeLists.txt finds it under any
+# component name ending in "tesserapi".
+dependencies:
+  idf:
+    version: ">=5.1"
+files:
+  exclude:
+    - "test/**/*"
+    - "build/**/*"
+    - ".github/**/*"
+    - "fixtures/**/*"
+    - "web/**/*"
+    - "docs/**/*"

@@ -1,0 +1,332 @@
+#include "trees.h"
+
+#include <math.h>
+
+#include <chrono>
+
+namespace trees {
+
+uint32_t clockMs() {
+    using namespace std::chrono;
+    static const steady_clock::time_point start = steady_clock::now();
+    return static_cast<uint32_t>(duration_cast<milliseconds>(steady_clock::now() - start).count()) + 1;
+}
+
+namespace {
+
+// Addresses on the in-memory link (NowTP MACs).
+const uint8_t kHostMac[6] = {0x24, 0x6f, 0x28, 0x00, 0x00, 0x01};
+const uint8_t kHeliostatMac[6] = {0x24, 0x6f, 0x28, 0x01, 0x02, 0x03};
+const uint8_t kKitchenMac[6] = {0x24, 0x6f, 0x28, 0x04, 0x05, 0x06};
+const uint8_t kPorchMac[6] = {0x24, 0x6f, 0x28, 0x07, 0x08, 0x09};
+
+tesser::PeerAddress mac(const uint8_t* bytes) { return tesser::PeerAddress::fromBytes(bytes, 6); }
+
+// True once `due` (a clockMs() time) has passed.
+bool reached(uint32_t now, uint32_t due) { return static_cast<int32_t>(now - due) >= 0; }
+
+}  // namespace
+
+// ---- motors ----------------------------------------------------------------
+
+void Motor::setSpeed(double s) {
+    direction = s < 0;
+    double a = s < 0 ? -s : s;
+    double d = a < 0.001 ? 0.0 : minVal + (1.0 - minVal) * pow(a, shape);
+    duty = static_cast<int>(d * 100.0 + 0.5);
+    speed = s;
+}
+
+void describe(tesser::Object& o, Motor& m) {
+    auto& c = o.object("control");
+    c.value("speed", [&m] { return m.speed; }, [&m](double v) { m.setSpeed(v); })
+        .range(-1, 1)
+        .step(0.01)
+        .label("Speed")
+        .watch();
+    c.value("duty", [&m] { return m.duty; }, [&m](int d) { m.duty = d; })
+        .range(0, 100)
+        .unit("%")
+        .label("Duty cycle")
+        .watch();
+    c.value("direction", [&m] { return m.direction; }, [&m](bool d) { m.direction = d; }).watch();
+    auto& cfg = o.object("config").label("Settings").ui("collapsed").persist();
+    cfg.value("invert", m.invert).label("Invert direction");
+    cfg.value("shape", m.shape).range(0, 1).step(0.01);
+    cfg.value("minVal", m.minVal).range(0, 1).step(0.01).label("Min value");
+    o.action("stop", [&m] { m.setSpeed(0); }).ui("style", "danger").ui("icon", "stop");
+}
+
+Motors::Motors() {
+    azimuth.setSpeed(0.3);
+    api.label("Heliostat");
+    api.mount("azimuth", azimuth).label("Azimuth motor");
+    api.mount("elevation", elevation).label("Elevation motor");
+    // A form: both targets are sent with "go" in one patch.
+    auto& cal = api.object("calibration").label("Calibration").ui("form");
+    cal.value("az", calib.az).range(0, 360).step(0.1).unit("°").label("Azimuth target");
+    cal.value("el", calib.el).range(0, 90).step(0.1).unit("°").label("Elevation target");
+    cal.action("go", [this] { calib.moving = true; }).label("Go").ui("style", "primary");
+}
+
+// ---- porch lamp --------------------------------------------------------------
+
+PorchLamp::PorchLamp() {
+    api.label("Porch lamp");
+    auto& l = api.object("lamp").label("Lamp").ui("icon", "bulb");
+    l.value("on", on).watch();
+    l.value("brightness", brightness).range(0, 255).step(5);
+    l.action("toggle", [this] { on = !on; });
+    auto& s = api.object("sensors");
+    s.value("temperature", [this] { return temperature; }).unit("°C").ui("precision", 1).watch();
+}
+
+void PorchLamp::tick(uint32_t nowMs) {
+    temperature = 14.0f + 2.0f * static_cast<float>(sin(nowMs / 30000.0));
+}
+
+// ---- demo ----------------------------------------------------------------------
+
+void describe(tesser::Object& o, Slot& s) {
+    o.value("hour", s.hour).range(0, 23);
+    o.value("enabled", s.enabled);
+    o.value("label", s.label);
+}
+
+void describe(tesser::Object& o, Channel& c) {
+    o.value("gain", c.gain).range(0, 2).step(0.1);
+    o.value("mute", c.mute);
+}
+
+Demo::Demo()
+    : link(&api, tesser::TransportKind::NowTP,
+           [this](const tesser::PeerAddress& to, const std::string& m, tesser::Delivery) {
+               if (to == mac(kHeliostatMac)) {
+                   heliostatLink.receive(mac(kHostMac), m.data(), m.size(), true);
+               } else if (to == mac(kPorchMac)) {
+                   porchLink.receive(mac(kHostMac), m.data(), m.size(), true);
+               } else {
+                   return false;  // kitchen-lamp: gone
+               }
+               return true;
+           },
+           &clockMs),
+      heliostatLink(&heliostat.api, tesser::TransportKind::NowTP,
+                    [this](const tesser::PeerAddress&, const std::string& m, tesser::Delivery) {
+                        link.receive(mac(kHeliostatMac), m.data(), m.size(), true);
+                        return true;
+                    },
+                    &clockMs),
+      porchLink(&porch.api, tesser::TransportKind::NowTP,
+                [this](const tesser::PeerAddress&, const std::string& m, tesser::Delivery) {
+                    link.receive(mac(kPorchMac), m.data(), m.size(), true);
+                    return true;
+                },
+                &clockMs) {
+    api.label("TesserUI demo").ui("columns", 3);
+    api.value("uptime", [this] { return uptime; }).unit("s").watch();
+    api.value("online", online);
+
+    auto& lamp = api.object("lamp").label("Lamp").ui("icon", "bulb");
+    lamp.value("on", on).watch();
+    lamp.value("brightness", brightness).range(0, 255).step(5).watch();
+    lamp.value("color", color).ui("widget", "color");
+    lamp.value("mode", mode, {"off", "auto", "manual"}).ui("labels", "Off,Automatic,Manual");
+    lamp.value("effect", effect, {"none", "rainbow", "breathe", "strobe", "candle", "fire"});
+    lamp.value("level", level);
+    lamp.value("power", [this] { return on ? static_cast<float>(brightness) * 0.2f : 0.0f; })
+        .range(0, 60)
+        .unit("W")
+        .ui("widget", "gauge")
+        .watch();
+    lamp.value("name", name).ui("placeholder", "Lamp name");
+    lamp.action("toggle", [this] { on = !on; });
+    lamp.action("preset", [this](int n) { brightness = n * 50; })
+        .label("Preset 3")
+        .ui("widget", "button")
+        .ui("value", 3);
+
+    auto& motor = api.object("motor").label("Motor");
+    motor.value("speed", speed).range(-1, 1).step(0.01).ui("widget", "knob").watch();
+    motor.value("duty", duty).range(0, 100).unit("%").ui("widget", "stepper");
+    motor.value("position", [this] { return position; })
+        .unit("°")
+        .ui("widget", "chart")
+        .ui("history", 30)
+        .watch();
+    motor.value("invert", invert).ui("widget", "checkbox");
+    motor.action("jog", [this](bool down) { jogging = down; }).ui("widget", "hold");
+    motor.action("moveTo", [this](float deg) { target = deg; })
+        .range(0, 360)
+        .unit("°")
+        .ui("confirm", "Move the mirror?");
+    motor.action("stop", [this] {
+             speed = 0;
+             jogging = false;
+             target = position;
+         })
+        .ui("style", "danger")
+        .ui("icon", "stop");
+    // Deferred: replied to by tick() once homing completes, 2 s later, as
+    // real firmware would from a timer or another task.
+    motor.action("home", [this](tesser::Call& call) {
+        homing = call.defer();
+        if (homing) homeDueMs = clockMs() + 2000;
+    });
+    motor.action("count", [this] { return ++count; }).ui("style", "quiet");
+    auto& pid = motor.object("pid").ui("advanced");
+    pid.value("kp", kp);
+    pid.value("ki", ki);
+    pid.value("kd", kd);
+
+    auto& sensors = api.object("sensors");
+    sensors.value("temperature", [this] { return temperature; }).unit("°C").ui("precision", 1).watch();
+    sensors.value("humidity", [this] { return humidity; }).range(0, 100).unit("%").ui("widget", "bar").watch();
+    sensors.value("pressure", [this] { return pressure; }).ui("format", "%.0f hPa").watch();
+    sensors.value("status", [this] {
+               return std::string(homeDueMs ? "homing" : target != position ? "moving" : "ok");
+           })
+        .watch();
+    pressed = &sensors.event("pressed").ui("toast");
+    sensors.custom(
+        "raw", [this](tesser::JsonWriter& w) { w.raw(raw); },
+        [this](JsonVariantConst v) {
+            raw.clear();
+            serializeJson(v, raw);
+            return tesser::Status::Ok;
+        });
+
+    auto& settings = api.object("settings").label("Settings").ui("form").persist();
+    settings.value("ssid", ssid);
+    settings.value("password", password).ui("widget", "password");
+    settings.value("notes", notes).ui("widget", "textarea");
+    settings.action("apply", [] {}).ui("submit");
+
+    auto& config = api.object("config");
+    config.value("mode", configMode, {"auto", "manual"});
+    config.value("manualSpeed", manualSpeed).range(0, 1).ui("visibleWhen", "mode=manual");
+    config.value("enabled", enabled);
+    config.value("threshold", threshold).ui("enabledWhen", "enabled=true");
+    config.value("token", token).ui("hidden");
+    config.value("readonlyLevel", readonlyLevel).ui("readonly");
+    auto& network = config.object("network").ui("collapsed");
+    network.value("dhcp", dhcp);
+    network.value("ip", ip).ui("visibleWhen", "dhcp=false");
+    // A fourth level below the root page, for lazy schema fetches.
+    network.object("deep").object("deeper").value("leaf", leaf);
+
+    auto& offset = api.object("offset").ui("inline");
+    offset.value("x", x);
+    offset.value("y", y);
+    offset.value("z", z);
+
+    auto& channels = api.object("channels").ui("tabs");
+    channels.mount("ch1", ch1);
+    channels.mount("ch2", ch2);
+
+    api.list("schedule", schedule).maxSize(8);
+
+    auto& info = api.object("info").ui("page").label("Device info");
+    info.value("version", "1.2.0");
+    info.value("build", "2026-10-10 a1b2c3d");
+    info.action("restart", [] {}).ui("confirm", "Restart the device?").ui("style", "danger");
+
+    // Hints with no tier 0 equivalent: every explicit widget, a color as an
+    // integer, confirm on a value, a string button value, a description,
+    // compound conditions, and a nested object promoted to a card.
+    auto& widgets = api.object("widgets").label("Widget overrides");
+    widgets.value("switch", sw).ui("widget", "toggle");
+    widgets.value("indicator", indicator).ui("widget", "led");
+    widgets.value("linear", linear).range(0, 10).ui("widget", "slider");
+    widgets.value("entry", entry).range(0, 1).step(0.001).ui("widget", "number");
+    widgets.value("picker", picker, {"low", "mid", "high"}).ui("widget", "select");
+    widgets.value("segments", segments, {"xs", "s", "m", "l", "xl"}).ui("widget", "segmented");
+    widgets.value("choice", choice, {"red", "green", "blue"}).ui("widget", "radio");
+    widgets.value("line", line).ui("widget", "text").doc("A description, shown as help text.");
+    widgets.value("display", display).ui("widget", "readout");
+    widgets.value("hue", hue).range(0, 0xffffff).ui("widget", "color");
+    widgets.value("armed", armed).ui("confirm", "Really change it?");
+    widgets.value("conditional", conditional).ui("visibleWhen", "/config/enabled=true&../config/mode!=auto");
+    widgets.action("go", [] {}).ui("style", "primary");
+    widgets.action("scene", [this](std::string s) { scene = s; }).ui("widget", "button").ui("value", "sunset");
+    widgets.object("pinned").ui("card").value("note", "A nested object shown as its own card.");
+
+    api.custom("blob", [](tesser::JsonWriter& w) { w.raw("{\"a\":1,\"b\":[1,2]}"); });
+
+    // Discovered peers, as a UI host shows them: two live ones, advertising
+    // their real schema hash, and one lost.
+    auto& peers = api.object("peers").label("Nodes");
+    link.mountPeers(peers);
+    link.peerSeen(mac(kHeliostatMac), "heliostat-3", heliostat.api.schemaHash());
+    link.peerSeen(mac(kKitchenMac), "kitchen-lamp", 0x99f0e1aa);
+    link.peerSeen(mac(kPorchMac), "porch-lamp", porch.api.schemaHash());
+    link.process();
+    link.forgetPeer(mac(kKitchenMac));
+    link.process();
+
+    tesserui::Views views(api);
+    auto& overview = views.page("overview", "Overview");
+    overview.row().widget("gauge", "/lamp/power").widget("readout", "/sensors/temperature");
+    overview.card("Motor").node("/motor");
+    overview.text("Live values from **every** node.");
+    overview.each("/peers", "$/lamp/on");
+}
+
+void Demo::tick(uint32_t nowMs) {
+    if (!startMs_) startMs_ = lastMs_ = lastPressMs_ = nowMs;
+    double dt = (nowMs - lastMs_) / 1000.0;
+    double t = (nowMs - startMs_) / 1000.0;
+    lastMs_ = nowMs;
+
+    uptime = 3600 + (nowMs - startMs_) / 1000;
+    temperature = 21.5f + 1.5f * static_cast<float>(sin(t / 20.0));
+    humidity = 48.25f + 6.0f * static_cast<float>(sin(t / 33.0));
+    pressure = 1013.25f + 3.0f * static_cast<float>(sin(t / 61.0));
+
+    // The motor: toward the moveTo target at 90 °/s, else by jog (30 °/s)
+    // and speed (60 °/s at full speed). Values in [0, 360).
+    if (target != position) {
+        double step = 90.0 * dt;
+        double d = target - position;
+        if (d > step) {
+            position += step;
+        } else if (d < -step) {
+            position -= step;
+        } else {
+            position = target;
+        }
+    } else {
+        position += (jogging ? 30.0 : 0.0) * dt + speed * 60.0 * dt;
+        position = fmod(position, 360.0);
+        if (position < 0) position += 360.0;
+        target = position;
+    }
+
+    if (homeDueMs && reached(nowMs, homeDueMs)) {
+        homeDueMs = 0;
+        position = target = 0;
+        speed = 0;
+        homing.reply(position);
+        homing = tesser::Pending();
+    }
+
+    if (reached(nowMs, lastPressMs_ + 5000)) {
+        lastPressMs_ = nowMs;
+        pressed->emit(++presses);
+    }
+
+    porch.tick(nowMs);
+}
+
+void Demo::pump(uint32_t nowMs) {
+    for (int i = 0; i < 16; i++) {
+        bool any = link.process();
+        any = heliostatLink.process() || any;
+        any = porchLink.process() || any;
+        if (!any) break;
+    }
+    heliostat.api.poll(nowMs);
+    porch.api.poll(nowMs);
+}
+
+}  // namespace trees

@@ -1,0 +1,26 @@
+{
+  "name": "TesserUI",
+  "version": "0.1.0",
+  "description": "User interfaces for TesserAPI nodes, rendered from their schema: a self-hosted web UI, stub pages and view declarations. Arduino and ESP-IDF.",
+  "keywords": ["ui", "web", "dashboard", "schema", "esp32", "esp-now", "espnow", "tesserapi"],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/leokeba/TesserUI.git"
+  },
+  "authors": [{ "name": "Leo Baque", "maintainer": true }],
+  "license": "MIT",
+  "frameworks": ["arduino", "espidf"],
+  "platforms": ["espressif32"],
+  "headers": ["TesserUI.h"],
+  "dependencies": [
+    { "name": "TesserAPI", "version": "https://github.com/leokeba/TesserAPI.git" }
+  ],
+  "build": {
+    "srcDir": "src",
+    "includeDir": "src",
+    "flags": ["-std=gnu++17"]
+  },
+  "export": {
+    "exclude": ["test", "build", ".github", "fixtures", "web/node_modules", "web/dist"]
+  }
+}
