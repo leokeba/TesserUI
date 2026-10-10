@@ -80,11 +80,20 @@ test('lists are edited as a whole', async ({ page }) => {
   await open(page);
   const schedule = row(page, 'Schedule');
   await expect(schedule.locator('tbody tr')).toHaveCount(2);
+  // Runs is read-only: the rows written leave it out, or the device refuses them.
+  await expect(schedule.locator('tbody tr').first().locator('td').nth(4)).toHaveText('12');
   await schedule.getByRole('button', { name: /Add/ }).click();
   await expect(schedule.locator('tbody tr')).toHaveCount(3);
   await schedule.getByRole('button', { name: 'Remove row 0' }).click();
   await expect(schedule.locator('tbody tr')).toHaveCount(2);
   await expect(schedule.locator('tbody tr').first().locator('input[type=text]')).toHaveValue('Evening');
+  const label = schedule.getByRole('textbox', { name: 'Label 0' });
+  await label.fill('Dusk');
+  await label.press('Enter');
+  await schedule.getByRole('button', { name: /Add/ }).click();
+  await expect(schedule.locator('tbody tr')).toHaveCount(3);
+  await expect(label).toHaveValue('Dusk');
+  await expect(schedule.locator('.error')).toHaveCount(0);
 });
 
 test('views come first and combine peers', async ({ page }) => {

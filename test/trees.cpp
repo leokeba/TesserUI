@@ -91,6 +91,7 @@ void describe(tesser::Object& o, Slot& s) {
     o.value("hour", s.hour).range(0, 23);
     o.value("enabled", s.enabled);
     o.value("label", s.label);
+    o.value("runs", s.runs).readOnly();
 }
 
 void describe(tesser::Object& o, Channel& c) {

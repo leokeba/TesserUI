@@ -98,7 +98,12 @@ describe('demo: widgets', () => {
       { kind: 'link', name: 'porch-lamp', online: true },
     ]);
     expect((find('/info') as LinkItem).remote).toBe(false);
-    expect(leaf('/schedule').columns?.map((c) => c.name)).toEqual(['hour', 'enabled', 'label']);
+    expect(leaf('/schedule').columns?.map((c) => [c.name, c.editable])).toEqual([
+      ['hour', true],
+      ['enabled', true],
+      ['label', true],
+      ['runs', false],
+    ]);
     expect(page.keys?.split(',')).not.toContain('info');
     expect(page.keys?.split(',')).toContain('peers');
   });

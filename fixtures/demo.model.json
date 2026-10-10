@@ -85,6 +85,19 @@
         "widget": "text",
         "type": "string",
         "editable": true
+       },
+       {
+        "name": "runs",
+        "path": "runs",
+        "label": "Runs",
+        "advanced": false,
+        "hidden": false,
+        "kind": "leaf",
+        "widget": "readout",
+        "type": "integer",
+        "editable": false,
+        "step": 1,
+        "precision": 0
        }
       ]
      },

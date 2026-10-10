@@ -75,6 +75,7 @@ struct Slot {
     int hour = 0;
     bool enabled = false;
     std::string label;
+    int runs = 0;  // read-only: a list element field the client must not write back
 };
 
 struct Channel {
@@ -154,7 +155,7 @@ struct Demo {
     double x = 0.1, y = -0.2, z = 1.5;
     Channel ch1;
     Channel ch2{0.5, true};
-    std::vector<Slot> schedule{{7, true, "Morning"}, {19, false, "Evening"}};
+    std::vector<Slot> schedule{{7, true, "Morning", 12}, {19, false, "Evening", 0}};
     std::string raw = "{\"curve\":[0,10,40,100]}";
     // widgets: overrides reachable only through hints
     bool sw = true;

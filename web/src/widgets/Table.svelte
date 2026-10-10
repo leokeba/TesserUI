@@ -19,16 +19,18 @@
   const resizable = $derived(leaf.editable && !leaf.fixed);
 
   const copy = () => parse(stringify(rows)) as unknown[];
-  // Secrets read as null: left out of the rows written, the device keeps them.
-  const secrets = $derived(cols.filter((c) => c.secret && c.path));
+  // Left out of the rows written, the device keeps them (each row patches its
+  // element): read-only fields, which it would refuse, and secrets, which read
+  // as null. The key stays, as rows are matched by it.
+  const omitted = $derived(cols.filter((c) => c.path && c.path !== leaf.key && (!c.editable || c.secret)));
   function send(next: unknown[]) {
     for (const row of next) {
-      for (const c of secrets) {
+      for (const c of omitted) {
         const names = c.path.split('/');
         let o: unknown = row;
         for (const n of names.slice(0, -1)) o = isObject(o) ? o[n] : undefined;
         const last = names[names.length - 1];
-        if (isObject(o) && o[last] === null) delete o[last];
+        if (isObject(o) && (!c.editable || o[last] === null)) delete o[last];
       }
     }
     set(next);
