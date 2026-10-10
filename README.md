@@ -1,0 +1,93 @@
+# TesserUI
+
+User interfaces for [TesserAPI](https://github.com/leokeba/TesserAPI) nodes, rendered from their **schema**. Declare your firmware's tree once in C++, and get a web UI without writing any UI code. A node that can't spare flash for HTML or JavaScript is still usable: another node, or a CDN, provides the renderer.
+
+> **Status: early development.** The design is in [docs/DESIGN.md](docs/DESIGN.md). The web renderer, self-hosted serving, UI hosts with peer pages over ESP-NOW, stub pages, Web Serial, views, charts, forms and conditions are implemented. The LVGL touchscreen renderer is not started yet. The API will change before 1.0.
+
+```cpp
+#include <TesserAPI.h>
+#include <TesserUI.h>
+
+tesser::Api api;
+tesser::HttpServer http(api);
+tesserui::WebUi web;
+
+void setup() {
+    auto& m = api.object("motor").label("Motor");
+    m.value("speed", speed).range(0, 100).unit("%").step(5).ui("widget", "knob");
+    m.value("invert", invert);
+    m.action("stop", [] { motor.stop(); }).ui("style", "danger");
+    m.object("pid").ui("advanced");
+
+    http.enableWebSocket("/ws");
+    http.begin(80, "/api");
+    web.serve(http.handle());   // GET / and GET /ui.js: the whole UI, about 41 KB of flash
+    api.startTask();
+}
+```
+
+Open `http://<node>/`: a card for the motor with a knob, a switch and a danger button, live through a WebSocket subscription.
+
+## From schema to screen
+
+Without any hint, every node gets a widget from its schema: writable booleans are switches, numbers with a range are sliders, enums are segmented controls or selects, actions are buttons (with an input when they take an argument), events are logs, lists are editable tables, objects are cards and sections in declaration order. Hints on the same line refine it:
+
+| Hint | Effect |
+|---|---|
+| `.label("Speed")`, `.unit("%")`, `.step(5)` | Label, unit, input granularity |
+| `.ui("widget", "knob")` | `toggle`, `checkbox`, `led`, `slider`, `knob`, `number`, `stepper`, `select`, `segmented`, `radio`, `text`, `password`, `textarea`, `color`, `readout`, `bar`, `gauge`, `chart`, `hold`, `button` |
+| `.ui("confirm", "Move the mirror?")` | Ask before a write or a call |
+| `.ui("advanced")`, `.ui("hidden")`, `.ui("readonly")` | Visibility |
+| `.ui("visibleWhen", "mode=manual")`, `.ui("enabledWhen", "enabled=true")` | Conditions |
+| `.ui("page")`, `.ui("card")`, `.ui("tabs")`, `.ui("inline")`, `.ui("collapsed")` | Layout |
+| `.ui("form")` | Edits stay local until submitted as one atomic patch |
+
+The full vocabulary is in [DESIGN.md §5](docs/DESIGN.md#5-hints-tier-1).
+
+## Deployments
+
+| Mode | Who stores the bundle | How |
+|---|---|---|
+| Self-hosted | The node (~41 KB of flash) | `web.serve(http.handle())` |
+| UI host | One ESP with spare flash, also a NowTP gateway | `nowApi.mountPeers(api.object("peers"))`: every nearby node gets a page at `#/peers/<name>`, forwarded over ESP-NOW |
+| Stub | A CDN or the UI host | `web.serveStub(http.handle(), "https://cdn.jsdelivr.net/npm/tesserui@0.1.0/dist/ui.js")`: a 300-byte page |
+| USB | GitHub Pages | Web Serial to the node's serial transport (Chromium browsers) |
+
+A NowTP-only node with no Wi-Fi needs nothing but its tree and `nowApi.advertise()`: the UI host renders it.
+
+## Views
+
+Pages that combine values from several nodes are declared on the node that serves the UI:
+
+```cpp
+tesserui::Views views(api);
+auto& field = views.page("field", "Field");
+field.row().widget("gauge", "/sensors/wind").widget("readout", "/sensors/sun/elevation");
+field.each("/peers", "$/heliostat/status");       // one entry per mounted peer
+field.card("Calibration").node("/calib");
+```
+
+## Examples
+
+- [examples/arduino/SelfHosted](examples/arduino/SelfHosted): HTTP, WebSocket and the UI on one node.
+- [examples/arduino/UiHost](examples/arduino/UiHost) and [examples/arduino/NowTpNode](examples/arduino/NowTpNode): a UI host and the NowTP-only nodes it renders.
+- [examples/arduino/Stub](examples/arduino/Stub): the UI loaded from a CDN.
+- [examples/idf/self_hosted](examples/idf/self_hosted): ESP-IDF.
+
+## Development
+
+```sh
+cd web && pnpm install && pnpm test && pnpm build    # web renderer; regenerates src/tesserui/bundle/tesserui_bundle.h
+pnpm dev                                              # then http://localhost:5173/?api=http://<node-ip>/api
+cmake -S . -B build && cmake --build build -j && ctest --test-dir build   # C++ (TesserAPI from ../TesserAPI or GitHub)
+node web/scripts/device.mjs demo                      # the demo node on the host: http://localhost:8090/
+```
+
+## Requirements
+
+- TesserAPI (same requirements: ESP-IDF ≥ 5.1 or Arduino-ESP32 ≥ 3.0, C++17, ArduinoJson 7)
+- Evergreen browsers; Web Serial needs a Chromium-based browser
+
+## License
+
+MIT

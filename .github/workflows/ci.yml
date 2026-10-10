@@ -1,0 +1,108 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  host-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/checkout@v5
+        with:
+          repository: leokeba/TesserAPI
+          path: TesserAPI
+      - name: Build and run tests (ASan + UBSan)
+        run: |
+          cmake -S . -B build -DTESSERAPI_DIR="$PWD/TesserAPI"
+          cmake --build build -j
+          ctest --test-dir build --output-on-failure
+      - name: Fixtures are up to date
+        run: |
+          ./build/tesserui_fixtures fixtures
+          git diff --exit-code -- fixtures
+
+  esp-idf:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        idf: [release-v5.1, release-v5.4, release-v5.5, latest]
+        target: [esp32, esp32c3]
+    steps:
+      - uses: actions/checkout@v5
+      # Inside the workspace, so the build container sees it.
+      - uses: actions/checkout@v5
+        with:
+          repository: leokeba/TesserAPI
+          path: TesserAPI
+      - name: Build self-hosted example
+        uses: espressif/esp-idf-ci-action@v1
+        with:
+          esp_idf_version: ${{ matrix.idf }}
+          target: ${{ matrix.target }}
+          path: examples/idf/self_hosted
+          # Relative to the example directory.
+          command: TESSERAPI_PATH=../../../TesserAPI idf.py build
+
+  arduino:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        core: ["3.3.7"]
+        fqbn: ["esp32:esp32:esp32", "esp32:esp32:esp32c3"]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: arduino/compile-sketches@v1
+        with:
+          fqbn: ${{ matrix.fqbn }}
+          platforms: |
+            - name: esp32:esp32
+              source-url: https://espressif.github.io/arduino-esp32/package_esp32_index.json
+              version: ${{ matrix.core }}
+          sketch-paths: examples/arduino
+          libraries: |
+            - source-path: ./
+            - source-url: https://github.com/leokeba/TesserAPI.git
+            - source-url: https://github.com/leokeba/NowTP.git
+            - name: ArduinoJson
+
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/checkout@v5
+        with:
+          repository: leokeba/TesserAPI
+          path: TesserAPI
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: web/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - name: Types and accessibility
+        run: pnpm check
+      - name: Model and store tests
+        run: pnpm test
+      - name: Bundle within budget (50 KB gzipped)
+        run: pnpm build
+      - name: Committed bundle header is up to date
+        run: git diff --exit-code -- ../src/tesserui/bundle/tesserui_bundle.h
+      - name: Host demo device
+        working-directory: .
+        run: |
+          cmake -S . -B build -DTESSERAPI_DIR="$PWD/TesserAPI"
+          cmake --build build -j --target tesserui_demo
+      - name: End-to-end tests against the demo device
+        run: |
+          npx playwright install --with-deps chromium
+          pnpm e2e

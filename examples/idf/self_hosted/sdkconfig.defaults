@@ -1,0 +1,6 @@
+CONFIG_EXAMPLE_CONNECT_WIFI=y
+CONFIG_EXAMPLE_CONNECT_ETHERNET=n
+# TesserAPI's WebSocket transport, for live values in the interface.
+CONFIG_HTTPD_WS_SUPPORT=y
+# Wi-Fi, HTTP and the web bundle outgrow the default 1 MB app partition.
+CONFIG_PARTITION_TABLE_SINGLE_APP_LARGE=y
