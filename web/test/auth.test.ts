@@ -163,3 +163,34 @@ describe('sign-in (DESIGN §7.4)', () => {
     expect(s.can('admin')).toBe(true);
   });
 });
+
+describe('schema cache (DESIGN §7.2)', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('reuses a node schema while its view=hash holds', async () => {
+    const saved = new Map<string, string>();
+    vi.stubGlobal('localStorage', {
+      getItem: (k: string) => saved.get(k) ?? null,
+      setItem: (k: string, v: string) => void saved.set(k, v),
+      removeItem: (k: string) => void saved.delete(k),
+    });
+    vi.stubGlobal('location', new URL('http://node.local/'));
+    let hash = '1a2b3c4d';
+    const tree: Schema = { type: 'object', label: 'Lamp', children: { on: { type: 'boolean', writable: true } } };
+    const open = async () => {
+      const client = new FakeClient();
+      client.answer = (r: Request) => (r.view === 'hash' ? { status: 'ok', body: hash } : r.view === 'schema' ? { status: 'ok', body: tree } : undefined);
+      const s = new Session({ api: '/api', ws: '/ws', transport: 'ws' });
+      const internals = s as unknown as { use(c: FakeClient): void; load(): Promise<void> };
+      internals.use(client);
+      await internals.load();
+      return { s, schemaReads: client.sent.filter((r) => r.view === 'schema').length };
+    };
+    expect((await open()).schemaReads).toBe(1);
+    const again = await open();
+    expect(again.schemaReads).toBe(0);
+    expect(again.s.root.label).toBe('Lamp');
+    hash = '99999999';
+    expect((await open()).schemaReads).toBe(1);
+  });
+});

@@ -8,7 +8,7 @@ export interface Request {
   depth?: number;
   keys?: string;
   exclude?: string;
-  view?: 'value' | 'schema';
+  view?: 'value' | 'schema' | 'hash';
   remotes?: boolean;
   interval?: number;
   events?: boolean;

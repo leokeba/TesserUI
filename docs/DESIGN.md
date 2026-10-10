@@ -206,8 +206,10 @@ Widgets bind to paths and re-render when their value changes (Svelte runes on th
 ### 7.2 Schemas
 
 - **Fetching:** `get <page path>?view=schema` with `depth` 3 for a page, deeper on demand when the user opens a sub-page or collapsible group. Over NowTP, responses are capped at 16 KB; on `too_large`, retry with `depth` 1 and fetch the children one by one (`keys`).
-- **Caching (web):** in `localStorage`, keyed by origin, schema hash, path within the peer and depth. For a peer behind a UI host, the hash is the `schema` key of its stub in the parent's schema (TesserAPI §14.1). For a node reached directly, there is no hash to key on yet (§13), so its schema is fetched on every load.
-- **Gateways:** a gateway's own schema contains remote stubs, whose `online` keys change its hash. Cache the schema of each remote subtree separately, under its peer's hash, and always read stubs live.
+- **Caching (web):** in `localStorage`, keyed by origin, schema hash, path within the node and depth.
+  - For a peer behind a UI host, the hash is the `schema` key of its stub in the parent's schema (TesserAPI §14.1).
+  - For the node reached directly, it is the node's `view=hash` of `/` (TesserAPI §7), read once per load: one small request instead of the schema. It is the hash of the schema this client may read, so clients with different access levels don't share entries. A node that doesn't support it (`bad_request`) is read whole on every load.
+- **Gateways:** a gateway's own schema contains remote stubs, whose `online` keys change its hash. Cache the schema of each remote subtree separately, under its peer's hash. When a stub changes during a session (§7.3), the node's hash is dropped until the next load, so nothing is cached under a hash that no longer holds.
 
 ### 7.3 Subscriptions
 
@@ -528,8 +530,6 @@ None blocks the first release; each has a workaround above.
 
 | Item | Why | Workaround until then |
 |---|---|---|
-| Expose `schemaHash()` over the API (for instance `view=hash`) | Cache the schema of nodes reached directly (§7.2). | Fetch the schema on every load. |
-| Re-advertise automatically when the tree changes (`mountPeers` mounts change a gateway's schema) | The advertised hash goes stale on gateways, and stale caches would show the wrong schema. | Gateways call `advertise()` again after mounting; renderers don't cache gateways' own schemas (§7.2). |
 | Coalescing per forwarded subscriber (`interval` is the first subscriber's) | Slow clients behind a UI host. | Pages ask for 100 ms everywhere. |
 | A BLE transport | Web Bluetooth, phones without Wi-Fi access to the node. | USB or a UI host. |
 | Deferred actions without an argument shouldn't report `arg: "any"` | Tell a deferred action that takes no argument from one taking raw JSON. | Deferred `arg: "any"` actions are buttons (§4); typed deferred actions report their type. |

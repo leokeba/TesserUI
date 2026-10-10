@@ -71,7 +71,11 @@ export class Session {
   // replies with a token; "whoami" replies with the client's level
   // (DESIGN.md §7.4).
   login: { path: string; schema: Schema } | null = $state(null);
-  private whoamiPath: string | null = null;  // The node's own root, once known: its label names the device.
+  private whoamiPath: string | null = null;
+  // The hash of the node's schema as this client reads it (view=hash), for
+  // its schema cache; null when the node doesn't say, or once its tree
+  // changed (a peer's stub).
+  private rootHash: string | null = null;  // The node's own root, once known: its label names the device.
   root: Schema = { type: 'object' };
   store: Store;
   subs: Subscriptions;
@@ -208,6 +212,8 @@ export class Session {
   }
 
   private async load() {
+    const h = await this.ask({ op: 'get', path: '/', view: 'hash' });
+    this.rootHash = h.status === 'ok' && typeof h.body === 'string' ? h.body : null;
     if (!(await this.fetchSchema('/', 3))) return;
     this.findAuth();
     await this.whoami();
@@ -256,6 +262,7 @@ export class Session {
   }
 
   private refreshStub(path: string) {
+    this.rootHash = null;
     if (this.stubRefresh.has(path)) return;
     this.stubRefresh.set(
       path,
@@ -339,13 +346,14 @@ export class Session {
     }
   }
 
-  // Fetches the schema at `path`: from the local cache for a peer with an
-  // advertised hash (DESIGN.md §7.2), else from the node, in pieces when it
-  // is too large for one response.
+  // Fetches the schema at `path`: from the local cache while its node's hash
+  // holds (a peer's advertised one, else the node's view=hash; DESIGN.md
+  // §7.2), else from the node, in pieces when it is too large for one
+  // response.
   async fetchSchema(path: string, depth: number): Promise<boolean> {
     const remote = remoteOf(this.root, path);
-    const hash = remote?.stub.schema;
-    const cacheKey = hash && `tesserui:schema:${location.origin}:${hash}:${path.slice(remote!.path.length) || '/'}:${depth}`;
+    const hash = remote ? remote.stub.schema : this.rootHash;
+    const cacheKey = hash && `tesserui:schema:${location.origin}:${hash}:${path.slice(remote?.path.length ?? 0) || '/'}:${depth}`;
     if (cacheKey) {
       const cached = storageGet(cacheKey);
       if (cached) {
