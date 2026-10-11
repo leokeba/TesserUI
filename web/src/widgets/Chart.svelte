@@ -2,7 +2,7 @@
   // A time series of the value, kept by the renderer for ui.history seconds
   // (DESIGN.md §7.7), or an array's values by index, drawn on a canvas.
   import { useSession } from '../shared.svelte';
-  import { formatValue } from '../model/format';
+  import { chartRange, formatValue } from '../model/format';
   import type { WidgetProps } from './types';
   let { leaf, value }: WidgetProps = $props();
   const session = useSession();
@@ -28,9 +28,7 @@
     const css = getComputedStyle(c);
     g.clearRect(0, 0, w, h);
     if (!points.length) return;
-    let lo = leaf.min ?? Math.min(...points.map((p) => p[1]));
-    let hi = leaf.max ?? Math.max(...points.map((p) => p[1]));
-    if (hi === lo) (hi += 1), (lo -= 1);
+    const [lo, hi] = chartRange(points.map((p) => p[1]), leaf);
     const pad = 6 * devicePixelRatio;
     const x = array ? (i: number) => (i / Math.max(1, array.length - 1)) * w : (t: number) => w - ((now - t) / span) * w;
     const y = (v: number) => pad + (1 - (v - lo) / (hi - lo)) * (h - 2 * pad);

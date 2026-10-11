@@ -258,6 +258,8 @@ Notifications are merge patches: apply them to `values` exactly as TesserAPI app
 
 A chart keeps its own history: each value received for its path (snapshot and notifications) is stored with the time it arrived, up to `ui.history` seconds. Nothing is stored on the device. A chart's path is added to the page subscription even when it is hidden behind a collapsed group, so history keeps accumulating while the page is open.
 
+The vertical axis follows the values shown: their extent, widened around its middle to at least ten units of the displayed precision (`precision` 2: 0.1), so noise in the last digit stays a ripple, and kept within the value's `min` and `max`. The range bounds the axis but doesn't fix it: a target within 0–360° isn't drawn as a flat line at the bottom. Without a precision, a constant value gets an axis of ±1.
+
 ## 8. Views (tier 2)
 
 Views are explicit pages that combine values from anywhere in a tree, including several peers. They are declared in C++ on the node that serves the UI, usually the UI host, and served as one read-only custom node, `/_ui`, so they travel over every transport like the rest of the tree.

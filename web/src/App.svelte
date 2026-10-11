@@ -271,6 +271,17 @@
       padding: 0 10px;
       min-width: 0;
     }
+    /* Safari drops the native arrow of a styled select: draw one. */
+    .tesserui select {
+      appearance: none;
+      padding-right: 28px;
+      background-image: linear-gradient(45deg, #0000 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, #0000 50%);
+      background-position:
+        right 15px center,
+        right 10px center;
+      background-size: 5px 5px;
+      background-repeat: no-repeat;
+    }
     .tesserui textarea {
       padding: 8px 10px;
       width: 100%;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { decimalsOf, formatValue, humanize, printf } from '../src/model/format';
+import { chartRange, decimalsOf, formatValue, humanize, printf } from '../src/model/format';
 import { holds, parseConditions, resolvePath } from '../src/model/conditions';
 import { parse, stringify } from '../src/client/json';
 
@@ -71,5 +71,23 @@ describe('conditions (DESIGN §5.3)', () => {
   it('fails on missing values', () => {
     expect(holds(parseConditions('missing=1', '/config'), get)).toBe(false);
     expect(holds(parseConditions('missing!=1', '/config'), get)).toBe(false);
+  });
+});
+
+describe('chart axes (DESIGN §7.7)', () => {
+  it('spans at least ten steps of the displayed precision', () => {
+    // Encoder noise in the last digit stays a small ripple.
+    const [lo, hi] = chartRange([34.15, 34.19], { precision: 2 });
+    expect(hi - lo).toBeCloseTo(0.1);
+    expect((lo + hi) / 2).toBeCloseTo(34.17);
+    expect(chartRange([0, 50], { precision: 0 })).toEqual([0, 50]);
+    expect(chartRange([5, 5], {})).toEqual([4, 6]);
+    expect(chartRange([1, 3], {})).toEqual([1, 3]);
+  });
+  it('stays within the range instead of drawing all of it', () => {
+    expect(chartRange([5.67, 5.67], { min: 0, max: 360, precision: 2 })[0]).toBeCloseTo(5.62);
+    expect(chartRange([0, 0], { min: 0, max: 360, precision: 0 })).toEqual([0, 10]);
+    expect(chartRange([360, 359], { min: 0, max: 360, precision: 0 })).toEqual([350, 360]);
+    expect(chartRange([0.5, 0.5], { min: 0, max: 1, precision: 0 })).toEqual([0, 1]);
   });
 });

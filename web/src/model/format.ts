@@ -49,6 +49,22 @@ export function formatValue(v: unknown, f: NumberFormat): string {
   return f.unit ? `${text} ${f.unit}` : text;
 }
 
+// A chart's vertical axis (DESIGN.md §7.7): the values' extent, at least ten
+// steps of the displayed precision wide so noise in the last digit stays
+// small, and kept within the value's range (min, max) when it has one.
+export function chartRange(values: number[], f: { min?: number; max?: number; precision?: number }): [number, number] {
+  let lo = Math.min(...values);
+  let hi = Math.max(...values);
+  const span = f.precision === undefined ? (hi > lo ? 0 : 2) : 10 ** (1 - f.precision);
+  if (hi - lo < span) {
+    lo -= (span - (hi - lo)) / 2;
+    hi = lo + span;
+  }
+  if (f.min !== undefined && lo < f.min) (hi += f.min - lo), (lo = f.min);
+  if (f.max !== undefined && hi > f.max) (lo -= hi - f.max), (hi = f.max);
+  return [Math.max(lo, f.min ?? lo), hi];
+}
+
 // 1536 → "1.5 KB", 2031616 → "1.94 MB".
 export function bytes(n: number): string {
   if (Math.abs(n) < 1024) return `${n} B`;
