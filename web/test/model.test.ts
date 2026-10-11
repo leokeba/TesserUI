@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildMenu } from '../src/model/menu';
-import { buildLeaf, buildPage, depthOf, inferWidget, visiblePaths, type Leaf, type Section } from '../src/model/model';
+import { buildLeaf, buildPage, depthOf, inferWidget, placeCards, visiblePaths, weight, type Leaf, type Section } from '../src/model/model';
 import { isCut, mergeSchema, remoteOf, schemaAt, type Schema } from '../src/model/schema';
 import { fixture } from './fixtures';
 
@@ -194,5 +194,39 @@ describe('menu (DESIGN §6.3)', () => {
     // Read: its own values (hidden ones too, for conditions), not the
     // entries' subtrees.
     expect(page.keys).toBe('uptime,secret,_ui');
+  });
+});
+
+describe('columns (DESIGN §6.2)', () => {
+  const values = (n: number): Schema => ({ type: 'object', children: Object.fromEntries([...Array(n)].map((_, i) => [`v${i}`, { type: 'integer' }])) });
+  const page = buildPage(
+    {
+      type: 'object',
+      children: {
+        system: { type: 'object', label: 'System', children: { status: { type: 'string' } } },
+        heliostat: values(12),
+        azimuth: { type: 'object', children: { position: { type: 'number', ui: { widget: 'chart' } }, ...values(10).children } },
+        elevation: values(13),
+        settings: { type: 'object', ui: { collapsed: true }, children: values(30).children },
+      },
+    },
+    '/',
+  );
+  const [system, heliostat, azimuth, elevation, settings] = page.cards;
+  it('weighs cards by their rows', () => {
+    expect(weight(system)).toBe(2);
+    expect(weight(azimuth)).toBe(1 + 3 + 10);
+    // Closed: one row, however much it holds.
+    expect(weight(settings)).toBe(1);
+  });
+  it('puts each card in the lightest column, in order', () => {
+    const names = (cols: typeof page.cards[]) => cols.map((c) => c.map((s) => s.name));
+    // The short card no longer leaves a gap beside the tall ones.
+    expect(names(placeCards(page.cards, 2))).toEqual([
+      ['system', 'azimuth', 'settings'],
+      ['heliostat', 'elevation'],
+    ]);
+    expect(names(placeCards(page.cards, 3))).toEqual([['system', 'elevation'], ['heliostat', 'settings'], ['azimuth']]);
+    expect(names(placeCards(page.cards, 1))).toEqual([page.cards.map((c) => c.name)]);
   });
 });

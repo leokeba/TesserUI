@@ -1,7 +1,7 @@
 <script lang="ts">
   import { useSession } from './shared.svelte';
   import Icon from './Icon.svelte';
-  import { buildPage } from './model/model';
+  import { buildPage, placeCards } from './model/model';
   import { accessAt, parentPath } from './model/schema';
   import Item from './Item.svelte';
   import Section from './Section.svelte';
@@ -33,6 +33,12 @@
   $effect(() => {
     if (page) session.showPage(page);
   });
+  // Columns (DESIGN.md §6.2): as many 360 px ones as fit, at most the
+  // page's; cards are placed from the model, so they move only when the
+  // number of columns changes, not when a group opens.
+  let width = $state(0);
+  const n = $derived(page ? Math.max(1, Math.min(page.columns, width < 640 ? 1 : Math.floor((width + 16) / 376))) : 1);
+  const columns = $derived(page ? placeCards(page.cards, n) : []);
   const offline = $derived(session.isOffline(path));
   // A peer that comes back online: load what couldn't be.
   $effect(() => {
@@ -72,9 +78,11 @@
 {/if}
 
 {#if page}
-  <div class="grid" style="--cols: {page.columns}">
-    {#each page.cards as card, i (card.path + i)}
-      <Section sec={card} />
+  <div class="grid" style="--n: {n}" bind:clientWidth={width}>
+    {#each columns as col, j (j)}
+      <div class="col">
+        {#each col as card, i (card.path + i)}<Section sec={card} />{/each}
+      </div>
     {/each}
   </div>
 {:else if failed}
@@ -134,12 +142,11 @@
     display: grid;
     gap: var(--gap);
     align-items: start;
-    /* As many 360 px columns as fit, at most --cols (DESIGN.md §6.2). */
-    grid-template-columns: repeat(auto-fill, minmax(max(360px, (100% - (var(--cols) - 1) * var(--gap)) / var(--cols)), 1fr));
+    grid-template-columns: repeat(var(--n), minmax(0, 1fr));
   }
-  @media (max-width: 640px) {
-    .grid {
-      grid-template-columns: minmax(0, 1fr);
-    }
+  .col {
+    display: grid;
+    gap: var(--gap);
+    min-width: 0;
   }
 </style>

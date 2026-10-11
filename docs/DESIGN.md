@@ -185,7 +185,9 @@ Layout follows the tree. Children render in declaration order, which is TesserAP
 
 ### 6.2 Web
 
-- Cards flow in a responsive grid: one column below 640 px, then as many as fit at 360 px minimum, capped by `ui.columns` (default 3).
+- **Columns:** one below 640 px of page width, then as many as fit at 360 px minimum, capped by `ui.columns` (default 3).
+- **Placement:** each card, in order, goes to the column whose cards weigh least so far, so reading order stays roughly row by row and columns end level. Placement comes from the model, not from measured heights: cards move only when the number of columns changes, never when a group opens or a value grows.
+- **Weight:** a card's rows, roughly. A value or an action is 1; a chart, an events log 3; a table or a list 4; a gauge, a knob, a text area 2; a custom element 8; a link 1.5; a heading or a title 1. A collapsed card or group is 1, an "Advanced" group 1, tabs their heaviest tab, hidden items 0. The gap between cards counts 1.
 - Rows are a two-column grid (label, control), stacked below 300 px of card content width, so that phones (about 320 px) keep two columns.
 - Phone width: no horizontal scroll, 16 px gutters, controls at least 44 px tall.
 

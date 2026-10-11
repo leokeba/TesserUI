@@ -586,6 +586,34 @@ export function depthOf(s: Schema): number {
   return d + 1;
 }
 
+// A card's height in rows, roughly (DESIGN.md §6.2): what placing it in a
+// column weighs. Closed groups count one row; hidden items none.
+export function weight(i: Item): number {
+  if (i.hidden) return 0;
+  if (i.kind === 'link') return 1.5;
+  if (i.kind === 'section') {
+    if (i.collapsed) return 1;
+    const inner = i.items.map(weight);
+    return 1 + (i.tabs ? Math.max(0, ...inner) : inner.reduce((a, b) => a + b, 0)) + (i.advancedItems.length ? 1 : 0);
+  }
+  if (isElement(i.widget)) return 8;
+  return { chart: 3, table: 4, list: 4, events: 3, gauge: 2, knob: 2, textarea: 2, json: 2.5 }[i.widget as string] ?? 1;
+}
+
+// Cards in `n` columns: each, in order, goes to the lightest column so far,
+// so reading order stays roughly row by row and columns end level.
+export function placeCards(cards: Section[], n: number): Section[][] {
+  const cols: Section[][] = Array.from({ length: n }, () => []);
+  const h: number[] = cols.map(() => 0);
+  for (const c of cards) {
+    const i = h.indexOf(Math.min(...h));
+    cols[i].push(c);
+    // The gap between cards weighs a row.
+    if (weight(c)) h[i] += weight(c) + 1;
+  }
+  return cols;
+}
+
 // Paths that have a place on screen: errors and events for other paths go to
 // the nearest of these above them (DESIGN.md §7.3, §7.4).
 export function visiblePaths(page: { cards: Section[] }): Set<string> {
