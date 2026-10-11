@@ -138,6 +138,7 @@ export class Session {
     storageSet(this.tokenKey, token);
     this.signedIn = !!token;
     this.needToken = false;
+    this.store.toasts.show(this.t(token ? 'Signed in' : 'Signed out'), 'ok');
     this.reload();
   }
 
@@ -285,6 +286,8 @@ export class Session {
       const wasDown = this.state !== 'open';
       this.state = s;
       if (s !== 'open' || !wasDown) return;
+      // The banner said it was lost.
+      if (this.loaded) this.store.toasts.show(this.t('Connected again'), 'ok');
       const go = () => (this.loaded ? this.subs.renew() : this.load());
       // A line forgets its token when it reconnects.
       if (this.line() && this.token()) this.authLine().then(go);
@@ -514,7 +517,7 @@ export class Session {
       for (const c of [...(i.visibleWhen ?? []), ...(i.enabledWhen ?? [])]) followed.push(c.path);
       if (i.kind === 'leaf') {
         if (i.optionsFrom) followed.push(i.optionsFrom);
-        if (i.toast) store.toastLabels.set(i.path, i.label);
+        if (i.toast) store.toastLabels.set(i.path, [i.label, i.toast]);
         if (i.history) store.charts.set(i.path, i.history);
       } else if (i.kind === 'link' && i.remote && i.online && !this.schemaAt(i.path)?.tree) {
         peers.push(i.path);

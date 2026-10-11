@@ -67,7 +67,7 @@ describe('demo: widgets', () => {
   it('maps sensors, forms and conditions', () => {
     expect(leaf('/sensors/temperature').precision).toBe(1);
     expect(leaf('/sensors/pressure').format).toBe('%.0f hPa');
-    expect(leaf('/sensors/pressed')).toMatchObject({ widget: 'events', toast: true });
+    expect(leaf('/sensors/pressed')).toMatchObject({ widget: 'events', toast: 'info' });
     expect(leaf('/sensors/raw')).toMatchObject({ widget: 'json', editable: true });
     expect(sec('/settings').form).toBe(true);
     expect(leaf('/settings/apply').submit).toBe(true);

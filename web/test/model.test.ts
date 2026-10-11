@@ -23,6 +23,12 @@ describe('widget inference (DESIGN §4)', () => {
     expect(leaf({ type: 'list', maxSize: 4, items: { type: 'object', children: {} } }).widget).toBe('table');
     expect(leaf({ type: 'custom' }).widget).toBe('json');
   });
+  it('toasts events with the kind ui.toast names', () => {
+    expect(leaf({ type: 'event', ui: { toast: true } }).toast).toBe('info');
+    expect(leaf({ type: 'event', ui: { toast: 'warn' } }).toast).toBe('warn');
+    expect(leaf({ type: 'event', ui: { toast: 'loud' } }).toast).toBeUndefined();
+    expect(leaf({ type: 'event' }).toast).toBeUndefined();
+  });
   it('edits a list only when it says writable', () => {
     // TesserAPI a2b0002: a list the device fills (scan results) has no "writable".
     const items = { type: 'object' as const, children: { ssid: { type: 'string' as const } } };

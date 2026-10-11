@@ -5,16 +5,13 @@
 import { errorBody, errorText, type Client, type Notification, type Reply } from '../client/types';
 import { isObject } from '../client/json';
 import { isUnder, parentPath, segments } from '../model/schema';
+import type { ToastKind } from '../model/model';
+import { Toasts } from './toasts.svelte';
 
 export interface EventEntry {
   t: number;
   path: string;
   body: unknown;
-}
-
-export interface Toast {
-  id: number;
-  text: string;
 }
 
 type Tree = Record<string, unknown> | unknown[];
@@ -27,14 +24,14 @@ export class Store {
   pending: Record<string, number> = $state({});
   errors: Record<string, string> = $state({});
   events: Record<string, EventEntry[]> = $state({});
-  toasts: Toast[] = $state([]);
+  readonly toasts = new Toasts();
   // Bumped when chart history grows.
   historyTick = $state(0);
 
   // Paths with a place on screen; set by the page (see visiblePaths()).
   visible = new Set<string>();
-  // Event paths that also toast, with their labels.
-  toastLabels = new Map<string, string>();
+  // Event paths that also toast, with their labels and kinds.
+  toastLabels = new Map<string, [string, ToastKind]>();
   // Chart paths and their history length, in seconds.
   charts = new Map<string, number>();
   // Keyed lists (TesserAPI §4.4), by path: their key field. A path goes
@@ -53,7 +50,6 @@ export class Store {
     string,
     { last: number; value: unknown; timer?: ReturnType<typeof setTimeout>; end?: ReturnType<typeof setTimeout> }
   >();
-  private toastId = 0;
 
   constructor(private client: () => Client) {}
 
@@ -168,7 +164,7 @@ export class Store {
     delete this.errors[path];
     this.put(path, value);
     const r = await this.client().request({ op: 'set', path, body: value });
-    if (r.status === 'ok') this.confirmed.set(path, r.body);
+    if (r.status === 'ok') this.succeed(path, r.body);
     else this.fail(path, r);
     this.release(path);
     return r;
@@ -179,7 +175,10 @@ export class Store {
   async resend(path: string, value: unknown): Promise<boolean> {
     const r = await this.client().request({ op: 'set', path, body: value });
     if (r.status !== 'ok') this.fail(path, r);
-    else this.apply(path, r.body);
+    else {
+      this.apply(path, r.body);
+      this.toasts.clear(path);
+    }
     return r.status === 'ok';
   }
 
@@ -221,12 +220,26 @@ export class Store {
     delete this.errors[path];
     const r = await this.client().request({ op: 'set', path, body: arg ?? null }, timeoutMs);
     if (r.status !== 'ok') this.fail(path, r);
+    else this.toasts.clear(path);
     return r;
   }
 
+  private succeed(path: string, v: unknown) {
+    this.confirmed.set(path, v);
+    this.toasts.clear(path);
+  }
+
+  // An error shows on the widget at its path, or its nearest visible
+  // ancestor; with none on screen (another page), as a toast (DESIGN.md §7.8).
   fail(path: string, r: Reply) {
-    if (r.status === 'unauthorized') this.onUnauthorized?.();
-    this.errors[this.nearestVisible(errorBody(r).path ?? path)] = errorText(r, this.t);
+    const unauthorized = r.status === 'unauthorized';
+    if (unauthorized) this.onUnauthorized?.();
+    const at = errorBody(r).path ?? path;
+    const shown = this.nearestVisible(at);
+    const text = errorText(r, this.t);
+    if (this.visible.has(shown)) this.errors[shown] = text;
+    // The sign-in dialog says it already.
+    else if (!unauthorized) this.toasts.show(text, 'error', at);
   }
 
   nearestVisible(path: string): string {
@@ -242,14 +255,11 @@ export class Store {
     }
     const at = this.nearestVisible(n.path);
     this.events[at] = [{ t: Date.now(), path: n.path, body: n.body }, ...(this.events[at] ?? [])].slice(0, MAX_EVENTS);
-    const label = this.toastLabels.get(n.path);
-    if (label !== undefined) this.toast(n.body === null ? label : `${label}: ${typeof n.body === 'string' ? n.body : JSON.stringify(n.body)}`);
-  }
-
-  toast(text: string) {
-    const id = ++this.toastId;
-    this.toasts.push({ id, text });
-    setTimeout(() => (this.toasts = this.toasts.filter((t) => t.id !== id)), 3000);
+    const toast = this.toastLabels.get(n.path);
+    if (toast) {
+      const [label, kind] = toast;
+      this.toasts.show(n.body === null ? label : `${label}: ${typeof n.body === 'string' ? n.body : JSON.stringify(n.body)}`, kind);
+    }
   }
 
   // Errors are cleared by navigation (DESIGN.md §7.1).

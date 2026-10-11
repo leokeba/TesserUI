@@ -71,6 +71,32 @@ describe('store: writes (DESIGN §7.4)', () => {
     await done;
     expect(store.errors['/form']).toBe('failed (some changes were applied)');
   });
+  it('toasts errors with no place on screen, until a write there succeeds', async () => {
+    const { client, store } = setup();
+    store.visible.add('/lamp/on');
+    let done = store.write('/motor/speed', 9);
+    client.reply('invalid_value', { error: 'invalid_value', path: '/motor/speed', message: 'too fast' });
+    await done;
+    expect(store.errors).toEqual({});
+    expect(store.toasts.list).toMatchObject([{ kind: 'error', text: 'too fast', path: '/motor/speed', count: 1 }]);
+    done = store.write('/motor/speed', 9);
+    client.reply('invalid_value', { error: 'invalid_value', path: '/motor/speed', message: 'too fast' });
+    await done;
+    expect(store.toasts.list).toMatchObject([{ count: 2 }]);
+    done = store.write('/motor/speed', 5);
+    client.reply('ok', 5);
+    await done;
+    expect(store.toasts.list).toEqual([]);
+  });
+  it("doesn't toast unauthorized: the sign-in dialog opens", async () => {
+    const { client, store } = setup();
+    store.onUnauthorized = vi.fn();
+    const done = store.call('/go', null);
+    client.reply('unauthorized', { error: 'unauthorized' });
+    await done;
+    expect(store.onUnauthorized).toHaveBeenCalled();
+    expect(store.toasts.list).toEqual([]);
+  });
   it('sends at most one write per 100 ms while dragging, always the last', async () => {
     vi.useFakeTimers();
     const { client, store } = setup();
@@ -98,10 +124,10 @@ describe('store: events and charts', () => {
   it('routes events to the nearest visible path and toasts', () => {
     const { store } = setup();
     store.visible.add('/demo');
-    store.toastLabels.set('/demo/fired', 'Fired');
+    store.toastLabels.set('/demo/fired', ['Fired', 'warn']);
     store.notify({ op: 'event', path: '/demo/fired', body: 3 });
     expect(store.events['/demo']?.[0]).toMatchObject({ path: '/demo/fired', body: 3 });
-    expect(store.toasts[0].text).toBe('Fired: 3');
+    expect(store.toasts.list[0]).toMatchObject({ text: 'Fired: 3', kind: 'warn' });
   });
   it('keeps chart history', () => {
     const { store } = setup();

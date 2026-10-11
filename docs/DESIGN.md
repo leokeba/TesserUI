@@ -27,7 +27,7 @@ TesserUI renders user interfaces for [TesserAPI](https://github.com/leokeba/Tess
 | Item | Decision |
 |---|---|
 | Device side | C++17 and TesserAPI's rules: no exceptions, no RTTI, ESP-IDF ≥ 5.1 and Arduino-ESP32 ≥ 3.0. |
-| Web bundle | ≤ 54 KB gzipped for everything (JS and CSS), measured in CI. Evergreen browsers only. (Raised from 40 KB once phases 1, 2 and 4 were in: they measured 40.2 KB with every saving taken. Raised from 50 KB for the navigation menu, §6.3, and from 52 KB for the launcher and Bluetooth, §9.7.) |
+| Web bundle | ≤ 55.5 KB gzipped for everything (JS and CSS), measured in CI. Evergreen browsers only. (Raised from 40 KB once phases 1, 2 and 4 were in: they measured 40.2 KB with every saving taken. Raised from 50 KB for the navigation menu, §6.3, from 52 KB for the launcher and Bluetooth, §9.7, and from 54 KB for notifications, §7.8.) |
 | Web stack | Svelte 5 + TypeScript + Vite, without a CSS framework or chart library. |
 | LCD stack | LVGL 9.x. Display and touch drivers are the application's: TesserUI receives an `lv_display_t*`. |
 | Smallest node | A NowTP-only node with no Wi-Fi and no UI assets: its tree and its hint literals are all it stores. |
@@ -160,7 +160,7 @@ m.object("pid").ui("advanced");
 | `form` | flag | object | Edits are local until submitted (§7.4). |
 | `submit` | flag | action in a `form` | The form's submit action, when it has several. |
 | `visibleWhen`, `enabledWhen` | string | any | A condition (§5.3). |
-| `toast` | flag | event | Also show each occurrence as a toast (web). |
+| `toast` | flag or string | event | Also show each occurrence as a toast (§7.8): `true` is `"info"`; or `"ok"`, `"warn"`, `"error"`. |
 | `script` | string | custom element | URL of the module script defining the element (§9.8), relative to the node's API. |
 
 ### 5.3 Conditions
@@ -253,7 +253,7 @@ Notifications are merge patches: apply them to `values` exactly as TesserAPI app
   - Sliders, knobs and color pickers send at most one write per 100 ms while dragging, and always the final value.
   - The reply is the value read back: it replaces the optimistic one and clears `pending`.
   - While a path is pending, notifications for it are held back, so the control doesn't jitter, and applied when the reply arrives.
-- **Errors:** an error reply restores the last confirmed value and shows the message on the widget at the error's `path`. If that path isn't visible, on its nearest visible ancestor. `"partial": true` adds "some changes were applied".
+- **Errors:** an error reply restores the last confirmed value and shows the message on the widget at the error's `path`. If that path isn't visible, on its nearest visible ancestor; with none on screen (the page root, another page after navigating), as an error toast (§7.8). `"partial": true` adds "some changes were applied".
 - **Actions:** `set <path> <arg>`. `confirm` asks first. A button is disabled while its call is in flight. A reply other than `null` is shown next to the button, and errors appear as for values. The login action (`ui.auth: "login"`), wherever it is drawn, signs the UI in like the sign-in dialog.
 - **Keep-alives** (`ui.keepalive`), for dead-man timers: a device that stops a motor unless its manual output is rewritten within a timeout, so a closed tab or a lost connection can't leave it turning.
   - A writable number or boolean is re-sent every `keepalive` ms while it isn't neutral (0 or `false`), its control is on screen (not on another page or in a closed group), the tab is visible, the connection is open and the control is enabled. Otherwise the device's timer stops it.
@@ -270,7 +270,7 @@ Notifications are merge patches: apply them to `values` exactly as TesserAPI app
 
 ### 7.5 Connection state
 
-- **Transport down:** a banner, and controls are disabled. Reconnect with backoff (0.5, 1, 2, 5 s). On reconnect, re-subscribe the current page; the snapshot refreshes the store.
+- **Transport down:** a banner, and controls are disabled. Reconnect with backoff (0.5, 1, 2, 5 s). On reconnect, re-subscribe the current page; the snapshot refreshes the store. A toast says the connection is back.
 - **Requests** time out after 6 s: a gateway's NowTP calls time out after 3 s, plus Wi-Fi.
 
 ### 7.6 Peers behind a UI host
@@ -287,6 +287,28 @@ A chart keeps its own history: each value received for its path (snapshot and no
 The vertical axis follows the values shown: their extent, widened around its middle to at least ten units of the displayed precision (`precision` 2: 0.1), so noise in the last digit stays a ripple, and kept within the value's `min` and `max`. The range bounds the axis but doesn't fix it: a target within 0–360° isn't drawn as a flat line at the bottom. Without a precision, a constant value gets an axis of ±1.
 
 The line runs from the first value received to now, and a dot marks the latest value: a value that doesn't change is read once, and its line only grows from when the page opened.
+
+### 7.8 Notifications
+
+Toasts tell what has no place on screen. Inline errors stay the rule: a toast never repeats what a widget shows.
+
+| Source | Shown as |
+|---|---|
+| A write or call error at a visible path (or below one) | Inline only (§7.4). |
+| Validation of values and forms | Inline only. |
+| An error with no visible path above it | An error toast, led by the node's parent's and own labels ("Lamp › On"), linking to the page that shows it. |
+| An `unauthorized` reply | The sign-in dialog, no toast. |
+| An event with `ui.toast` | A toast of its kind: the event's label and payload. |
+| The connection lost | The banner (§7.5): a state, not a moment. |
+| The connection back, signing in or out | An `ok` toast. |
+| Subscription fallbacks, `too_large` retries | Nothing. |
+
+- **Kinds:** `info` and `ok` stay 3 s, `warn` 6 s. An `error` stays until dismissed, or until a successful write or call at its path or above it, like inline errors (§7.1). Navigation doesn't clear toasts.
+- **Repeats:** a toast with the same kind, text and path as one shown is counted on it ("×3") and its time restarts, instead of stacking.
+- **At most 3:** a fourth removes the oldest, errors last, never the new one.
+- **Timers wait** while the pointer or the focus is on the toasts and while the tab is hidden; they then leave a second at least.
+- **Web:** bottom right, bottom centre below 800 px wide. One polite live region; `warn` and `error` toasts are alerts. Each has a dismiss button, and none takes the focus. Custom elements raise toasts through `tesser.toast()` (§9.8), applications through the store's `toasts` (§9.9).
+- **LCD:** the same queue and rules, as labels at the bottom of the screen (§10.3).
 
 ## 8. Views (tier 2)
 
@@ -478,7 +500,7 @@ views.page("sky", "Sky").widget("x-sun-dial", "/sky");   // the same element as 
   | `label` | The node's label. |
   | `disabled` | No connection, the peer is offline, or `enabledWhen` fails. |
   | `error` | The last error at the node's path, or `null`. |
-  | `tesser` | `get(path)`, `set(path, value, drag)` and `call(path, arg)` (a promise of the result; rejects with the error body). Paths are relative to the node, `""` being the node itself, or absolute within the node's tree. `set` is optimistic and reconciled like any write (§7.4); `drag: true` throttles it. Setting an object writes a patch, validated whole. |
+  | `tesser` | `get(path)`, `set(path, value, drag)` and `call(path, arg)` (a promise of the result; rejects with the error body). Paths are relative to the node, `""` being the node itself, or absolute within the node's tree. `set` is optimistic and reconciled like any write (§7.4); `drag: true` throttles it. Setting an object writes a patch, validated whole. `toast(text, kind)` shows a notification (§7.8), `info` by default. |
 
 - **Fallback:** if the element isn't defined within 8 s, its script fails to load, or it throws when created, the tier 0 widget is drawn instead (an object's values as JSON). Elements must not set attributes in their constructor (the HTML rule).
 - **Styling:** the interface's CSS variables (`--accent`, `--text`, `--surface`...) reach into shadow roots, so elements follow the theme and the color scheme.
@@ -495,7 +517,7 @@ const ui = mount(document.getElementById("motor"), {
 ui.destroy();
 ```
 
-- **Options** are §9.2's. `mount()` returns the `Session` (values, writes, subscriptions) and `destroy()`.
+- **Options** are §9.2's. `mount()` returns the `Session` (values, writes, subscriptions, and notifications: `session.store.toasts.show(text, kind)`, §7.8) and `destroy()`.
 - **Several UIs** on one page each have their own session and connection; their styles are scoped to the `.tesserui` element they render into, and leave the page's alone.
 - **Custom UIs** can use the same pieces without the generic renderer: the client, the store, the model (`buildPage`, `buildView`, conditions, formatting), exported with their types.
 - **Local devices from public pages:** Chrome's Local Network Access asks the user before a public origin reaches a device on the local network.
@@ -553,7 +575,7 @@ void lvglTask() {
 | `gauge` | `lv_scale` with a needle |
 | `chart` | `lv_chart` |
 | `button`, `hold` | `lv_button` (`hold`: `LV_EVENT_PRESSED` / `LV_EVENT_RELEASED`) |
-| `events` | a toast: a label that fades out after 3 s |
+| `events` | a toast (§7.8), when `ui.toast` says so |
 | `table` | `lv_list` of rows; a row opens its element as a page |
 | `link` | a menu entry with an online dot |
 | `confirm` | `lv_msgbox` |

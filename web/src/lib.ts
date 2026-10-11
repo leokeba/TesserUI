@@ -3,12 +3,13 @@
 export { mountUi as mount, resolve, type Mounted, type Options } from './embed';
 export { Session, type Config } from './store/session.svelte';
 export { Store, type EventEntry } from './store/store.svelte';
+export { Toasts, type Toast } from './store/toasts.svelte';
 export { Subscriptions, type SubSpec } from './store/subs';
 export { EnvelopeClient, serialLink, webSocketLink, type Link } from './client/envelope';
 export { HttpClient } from './client/http';
 export { parse, stringify } from './client/json';
 export type { Client, ConnState, Notification, Reply, Request } from './client/types';
-export { buildLeaf, buildPage, buildSection, inferWidget, isElement, type Item, type Leaf, type LinkItem, type Page, type Section, type Widget } from './model/model';
+export { buildLeaf, buildPage, buildSection, inferWidget, isElement, type Item, type Leaf, type LinkItem, type Page, type Section, type ToastKind, type Widget } from './model/model';
 export { buildView, type View, type ViewItem, type ViewPage } from './model/views';
 export { holds, parseConditions, type Condition } from './model/conditions';
 export { formatValue, humanize, printf } from './model/format';

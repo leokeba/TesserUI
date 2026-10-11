@@ -62,6 +62,11 @@ interface Base {
   access?: Level;
 }
 
+// ui.toast on an event (DESIGN.md §5.2): true, or the notification's kind.
+export type ToastKind = 'info' | 'ok' | 'warn' | 'error';
+export const toastKind = (v: unknown): ToastKind | undefined =>
+  v === true ? 'info' : (['info', 'ok', 'warn', 'error'] as unknown[]).includes(v) ? (v as ToastKind) : undefined;
+
 export interface Leaf extends Base {
   kind: 'leaf';
   widget: Widget;
@@ -99,7 +104,7 @@ export interface Leaf extends Base {
   script?: string;
   // Charts, events, tables
   history?: number;
-  toast?: boolean;
+  toast?: ToastKind;
   columns?: Leaf[];
   maxSize?: number;
   // Tables: rows can't be added or removed (fixed-length arrays).
@@ -289,7 +294,7 @@ export function buildLeaf(name: string, path: string, s: Schema, parent: string,
       return action(leaf, s, parent);
     case 'event':
       leaf.widget = 'events';
-      leaf.toast = ui(s, 'toast') === true;
+      leaf.toast = toastKind(ui(s, 'toast'));
       return leaf;
     case 'list': {
       // Lists say "writable" when clients may add, remove and edit elements

@@ -7,6 +7,7 @@
   import { buildMenu, type MenuEntry } from './model/menu';
   import { isUnder } from './model/schema';
   import Page from './Page.svelte';
+  import Toasts from './Toasts.svelte';
   import type { Session } from './store/session.svelte';
   import ViewPage from './ViewPage.svelte';
 
@@ -224,9 +225,7 @@
     </dialog>
   {/if}
 
-  <div class="toasts" aria-live="polite">
-    {#each store.toasts as toast (toast.id)}<div class="toast">{toast.text}</div>{/each}
-  </div>
+  <Toasts />
 </div>
 
 <style>
@@ -619,23 +618,5 @@
     display: flex;
     justify-content: flex-end;
     gap: 8px;
-  }
-  .toasts {
-    position: fixed;
-    bottom: 16px;
-    left: 50%;
-    transform: translateX(-50%);
-    display: grid;
-    gap: 8px;
-    z-index: 4;
-    width: max-content;
-    max-width: calc(100% - 32px);
-  }
-  .toast {
-    background: var(--text);
-    color: var(--bg);
-    padding: 10px 16px;
-    border-radius: var(--radius);
-    box-shadow: 0 4px 16px #0004;
   }
 </style>

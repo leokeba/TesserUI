@@ -24,7 +24,7 @@
   // it never gets defined, the inferred widget stands in.
   import { parse, stringify } from '../client/json';
   import { errorBody } from '../client/types';
-  import { buildLeaf } from '../model/model';
+  import { buildLeaf, toastKind } from '../model/model';
   import { parentPath } from '../model/schema';
   import { useSession } from '../shared.svelte';
   import JsonView from './JsonView.svelte';
@@ -64,6 +64,7 @@
       if (r.status !== 'ok') throw errorBody(r);
       return r.body;
     },
+    toast: (text: string, kind?: string) => store.toasts.show(String(text), toastKind(kind) ?? 'info'),
   };
 
   // svelte-ignore state_referenced_locally

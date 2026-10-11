@@ -118,8 +118,40 @@ test('keep-alives outlast dead-man timers, and stop with the control', async ({ 
 
 test('events toast', async ({ page }) => {
   await open(page, '#/sensors');
-  await expect(page.locator('.toast')).toContainText('Pressed', { timeout: 7000 });
+  const toast = page.locator('.toast');
+  await expect(toast).toContainText('Pressed', { timeout: 7000 });
   await expect(row(page, 'Pressed').locator('li').first()).toBeVisible();
+  await toast.first().getByRole('button', { name: 'Dismiss' }).click();
+  await expect(toast).toHaveCount(0);
+});
+
+test('an error with no place on screen toasts, until a write there succeeds', async ({ page }) => {
+  // The reply to the first write of /lamp/on is held, and comes back an
+  // error once the page has changed.
+  let release: (() => void) | undefined;
+  await page.routeWebSocket(/\/ws/, (ws) => {
+    const server = ws.connectToServer();
+    ws.onMessage((m) => {
+      const msg = JSON.parse(String(m));
+      if (!release && msg.op === 'set' && msg.path === '/lamp/on') {
+        const body = { error: 'invalid_value', path: '/lamp/on', message: 'refused' };
+        release = () => ws.send(JSON.stringify({ id: msg.id, status: 'invalid_value', body }));
+      } else server.send(m);
+    });
+  });
+  await open(page, '#/lamp');
+  await row(page, 'On').locator('input[role=switch]').click();
+  await page.locator('nav.side').getByRole('link', { name: 'Sensors' }).click();
+  await expect(page.locator('h1')).toHaveText('Sensors');
+  release!();
+  const toast = page.locator('.toast[data-kind=error]');
+  await expect(toast).toHaveText(/Lamp › On: refused/);
+  await expect(toast).toHaveAttribute('role', 'alert');
+  await toast.getByRole('link', { name: 'On' }).click();
+  await expect(page.locator('h1')).toHaveText('Lamp');
+  await expect(main(page).locator('.error')).toHaveCount(0);
+  await row(page, 'On').locator('input[role=switch]').click();
+  await expect(toast).toHaveCount(0);
 });
 
 test('conditions and forms', async ({ page }) => {

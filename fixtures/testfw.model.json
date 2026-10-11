@@ -393,8 +393,7 @@
       "kind": "leaf",
       "widget": "events",
       "type": "event",
-      "editable": false,
-      "toast": false
+      "editable": false
      }
     ],
     "advancedItems": [
@@ -1238,8 +1237,7 @@
        "kind": "leaf",
        "widget": "events",
        "type": "event",
-       "editable": false,
-       "toast": false
+       "editable": false
       }
      ],
      "advancedItems": [

@@ -581,7 +581,7 @@
       "widget": "events",
       "type": "event",
       "editable": false,
-      "toast": true
+      "toast": "info"
      },
      {
       "name": "raw",
@@ -2587,7 +2587,7 @@
        "widget": "events",
        "type": "event",
        "editable": false,
-       "toast": true
+       "toast": "info"
       },
       {
        "name": "raw",
