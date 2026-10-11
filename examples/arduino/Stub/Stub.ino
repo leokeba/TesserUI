@@ -40,7 +40,10 @@ void setup() {
     Serial.printf("http://%s/\n", WiFi.localIP().toString().c_str());
 
     http.enableWebSocket("/ws");
+    http.enableCors("https://leokeba.github.io");  // the launcher, reaching it by address
     http.begin(80, "/api");
+    // tesser-stub.local, and listed by the launcher's bridge (DESIGN.md §9.7).
+    http.advertise("tesser-stub", "tesser-stub");
     // Pinned to this library's version: ".../tesserui@0.1.0/dist/ui.js".
     web.serveStub(http.handle(), "https://cdn.jsdelivr.net/npm/tesserui@" TESSERUI_VERSION "/dist/ui.js");
     api.startTask();

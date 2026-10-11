@@ -1,0 +1,3 @@
+dependencies:
+  # HttpServer::advertise(): led-01.local and a _tesser._tcp service.
+  espressif/mdns: "^1.4"

@@ -52,7 +52,9 @@ static void startApi() {
     home.card("LED").node("/led");
 
     http.enableWebSocket("/ws");
+    http.enableCors("https://leokeba.github.io");  // the launcher, reaching it by address
     ESP_ERROR_CHECK(http.begin(80, "/api"));
+    http.advertise("LED", "led-01");  // led-01.local, listed by the launcher's bridge (needs espressif/mdns)
     web.minVersion("0.1.0");
     ESP_ERROR_CHECK(web.serve(http.handle(), "/api", "/ws"));  // GET / and GET /ui.js
     api.startTask();                                           // live values for the interface

@@ -54,7 +54,10 @@ void setup() {
     Serial.printf("http://%s/  (channel %d)\n", WiFi.localIP().toString().c_str(), WiFi.channel());
 
     http.enableWebSocket("/ws");
+    http.enableCors("https://leokeba.github.io");  // the launcher, reaching it by address
     http.begin(80, "/api");
+    // ui-host.local, and listed by the launcher's bridge (DESIGN.md §9.7).
+    http.advertise("ui-host", "ui-host");
     web.serve(http.handle());
     api.startTask();
 

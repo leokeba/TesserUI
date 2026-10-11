@@ -49,7 +49,10 @@ void setup() {
     Serial.printf("http://%s/\n", WiFi.localIP().toString().c_str());
 
     http.enableWebSocket("/ws");
+    http.enableCors("https://leokeba.github.io");  // the launcher, reaching it by address
     http.begin(80, "/api");
+    // tesser-sky.local, and listed by the launcher's bridge (DESIGN.md §9.7).
+    http.advertise("tesser-sky", "tesser-sky");
     web.title("Heliostat")
         .theme("accent", "#d97706")
         .script("/ext/sun-dial.js")  // loaded by every page
