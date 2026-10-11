@@ -1,13 +1,16 @@
 <script lang="ts">
   // Files (DESIGN.md §4): downloaded with a GET, uploaded with the file as
   // a PUT's raw body, with progress. Over HTTP only, whatever the transport.
+  // Compact (a list's line): icon buttons, a chosen file uploads at once, and
+  // the outcome is a toast.
+  import { fileUrl } from '../client/http';
   import { parse } from '../client/json';
   import { errorText } from '../client/types';
   import Icon from '../Icon.svelte';
   import { bytes } from '../model/format';
   import { useSession } from '../shared.svelte';
   import type { WidgetProps } from './types';
-  let { leaf, disabled, id }: WidgetProps = $props();
+  let { leaf, disabled, id, compact = false }: WidgetProps & { compact?: boolean } = $props();
   const session = useSession();
   const t = (text: string, vars?: Record<string, string | number>) => session.t(text, vars);
 
@@ -31,11 +34,12 @@
     progress = null;
     failed = !ok;
     message = text;
+    if (compact && text) session.store.toasts.show(`${leaf.label}: ${text}`, ok ? 'ok' : 'error');
   }
 
   function transfer(method: 'GET' | 'PUT', body?: File) {
     const x = new XMLHttpRequest();
-    x.open(method, session.apiUrl(leaf.path));
+    x.open(method, fileUrl(session.apiUrl(), leaf.path, body?.name));
     const token = session.token();
     if (token) x.setRequestHeader('Authorization', `Bearer ${token}`);
     if (method === 'GET') x.responseType = 'blob';
@@ -79,6 +83,30 @@
   }
 </script>
 
+{#if compact}
+  {#if session.kind !== 'serial'}
+    {#if progress !== null}<progress class="mini" max="100" value={progress}></progress>{/if}
+    {#if leaf.readable}
+      <button type="button" class="quiet" disabled={disabled || progress !== null} aria-label="{t('Download')} {leaf.label}" title={t('Download')} onclick={() => transfer('GET')}><Icon name="download" /></button>
+    {/if}
+    {#if leaf.editable}
+      <input
+        class="sr"
+        {id}
+        type="file"
+        {accept}
+        disabled={disabled || progress !== null}
+        aria-label="{t('Upload')} {leaf.label}"
+        onchange={(e) => {
+          file = e.currentTarget.files?.[0] ?? null;
+          e.currentTarget.value = '';
+          upload();
+        }}
+      />
+      <label for={id} class="up" class:off={disabled || progress !== null} title={t('Upload')}><Icon name="upload" /></label>
+    {/if}
+  {/if}
+{:else}
 <div class="file">
   {#if session.kind === 'serial'}
     <span class="muted">{t('Files need a network connection')}</span>
@@ -99,6 +127,7 @@
     {#if message}<output class:error={failed} role={failed ? 'alert' : undefined}>{message}</output>{/if}
   {/if}
 </div>
+{/if}
 
 <style>
   .file {
@@ -126,10 +155,24 @@
     border-color: var(--accent);
     color: var(--accent);
   }
-  .sr:focus-visible + .pick {
+  .up {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: var(--control);
+    min-height: var(--control);
+    border-radius: calc(var(--radius) - 4px);
+    cursor: pointer;
+  }
+  .up:hover {
+    color: var(--accent);
+  }
+  .sr:focus-visible + .pick,
+  .sr:focus-visible + .up {
     outline: 2px solid var(--accent);
   }
-  .pick.off {
+  .pick.off,
+  .up.off {
     opacity: 0.5;
     pointer-events: none;
   }
@@ -147,5 +190,9 @@
   progress,
   output {
     flex-basis: 100%;
+  }
+  .mini {
+    flex: none;
+    width: 3em;
   }
 </style>

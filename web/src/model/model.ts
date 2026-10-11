@@ -111,6 +111,8 @@ export interface Leaf extends Base {
   fixed?: boolean;
   // Keyed lists: the field naming each row.
   key?: string;
+  // Lists: the file nodes of each element (paths relative to it), on its line.
+  files?: Leaf[];
   // Files: downloadable, and the type of what they hold.
   readable?: boolean;
   contentType?: string;
@@ -303,13 +305,16 @@ export function buildLeaf(name: string, path: string, s: Schema, parent: string,
       leaf.maxSize = s.maxSize;
       const cols = (leaf.columns = s.items ? columns(s.items, '') : []);
       if (s.key) leaf.key = s.key;
+      const children = Object.entries(s.items?.children ?? {});
+      const files = children.filter(([, c]) => c.type === 'file' && ui(c, 'hidden') !== true);
+      if (files.length) leaf.files = files.map(([name, c]) => buildLeaf(name, name, c, ''));
       // A row of a few short fields fits a table; anything more (nested
-      // objects, conditions, wider widgets, actions, which a table has no
-      // cell for) is one line per element that opens into the element's own
-      // controls.
-      const actions = Object.values(s.items?.children ?? {}).some((c) => c.type === 'action');
+      // objects, conditions, wider widgets, actions and files, which a table
+      // has no cell for) is one line per element that opens into the
+      // element's own controls.
+      const actions = children.some(([, c]) => c.type === 'action');
       const compact =
-        !actions && cols.length <= 3 && cols.every((c) => !c.path.includes('/') && !c.visibleWhen && !c.optionsFrom && TABLE_CELLS.includes(c.widget));
+        !actions && !files.length && cols.length <= 3 && cols.every((c) => !c.path.includes('/') && !c.visibleWhen && !c.optionsFrom && TABLE_CELLS.includes(c.widget));
       leaf.widget = uiStr(s, 'widget') === 'list' || (!compact && uiStr(s, 'widget') !== 'table') ? 'list' : 'table';
       return leaf;
     }

@@ -3,12 +3,15 @@
   // per leaf; every edit writes the whole array, as TesserAPI replaces lists
   // (§4.4 there), and keyed lists match rows by key, so unread secrets
   // survive. A list (widget "list"): one line per element, which opens into
-  // the element's own controls, each writing its own path.
+  // the element's own controls, each writing its own path; its file nodes
+  // have buttons on its line.
   import { isObject, parse, stringify } from '../client/json';
   import Icon from '../Icon.svelte';
   import Section from '../Section.svelte';
+  import { holds } from '../model/conditions';
   import { formatValue } from '../model/format';
-  import { buildSection, visiblePaths, type Leaf } from '../model/model';
+  import { buildLeaf, buildSection, visiblePaths, type Leaf } from '../model/model';
+  import File from './File.svelte';
   import { useSession } from '../shared.svelte';
   import { parseNumber, type WidgetProps } from './types';
   let { leaf, value, set, disabled }: WidgetProps = $props();
@@ -73,7 +76,9 @@
   const remove = (i: number) => send(copy().filter((_, j) => j !== i));
 
   // List lines: the element's name (its key, else its first value), up to
-  // three short values, and its first boolean as a switch.
+  // three short values, its first writable boolean as a switch, and its
+  // files' buttons. A boolean with an icon marks the line while true (a
+  // folder).
   // svelte-ignore state_referenced_locally
   const key = leaf.key;
   // svelte-ignore state_referenced_locally
@@ -81,7 +86,8 @@
   const id = (row: unknown, i: number) => String(key && isObject(row) ? row[key] : i);
   let open: string | null = $state(null);
   const top = $derived(cols.filter((c) => !c.path.includes('/') && c.path !== key && !c.secret));
-  const flag = $derived(top.find((c) => c.type === 'boolean' && c.editable));
+  const mark = $derived(top.find((c) => c.type === 'boolean' && c.icon));
+  const flag = $derived(top.find((c) => c.type === 'boolean' && c.editable && c !== mark));
   const shown = $derived(top.filter((c) => c !== flag && c.type !== 'boolean').slice(0, 3));
   function text(v: unknown, c: Leaf): string {
     if (v === '' || v === undefined || v === null) return '';
@@ -90,6 +96,12 @@
       return labels.filter((_, b) => (Number(v) >> b) & 1).join(' ');
     }
     return c.options?.find((o) => o.value === v)?.label ?? formatValue(v, c);
+  }
+  // An element's file node, with its conditions resolved within the element.
+  const get = (p: string) => session.store.get(p);
+  function fileOf(f: Leaf, path: string, k: string) {
+    const l = buildLeaf(f.name, `${path}/${f.name}`, f.schema, path, session.nodeRoot(leaf.path), leaf.access);
+    return { ...l, label: `${l.label} ${k}` };
   }
   // The element's controls, built when it opens; its paths are on screen,
   // so errors show on its fields.
@@ -119,6 +131,7 @@
       <div class="item" class:open={open === k}>
         <div class="line">
           <button type="button" class="quiet head" aria-expanded={open === k} onclick={() => (open = open === k ? null : k)}>
+            {#if mark}<span class="mark">{#if cell(row, mark) === true}<Icon name={mark.icon!} />{/if}</span>{/if}
             <span class="name">{key ? k : (text(cell(row, cols[0]), cols[0]) || `#${i + 1}`)}</span>
             <span class="muted sum">{shown.map((c) => text(cell(row, c), c)).filter(Boolean).join(' · ')}</span>
             <Icon name="down" />
@@ -126,6 +139,19 @@
           {#if flag}
             <input type="checkbox" role="switch" checked={cell(row, flag) === true} {disabled} aria-label="{flag.label} {k}" onchange={(e) => session.store.write(`${path}/${flag.path}`, e.currentTarget.checked)} />
           {/if}
+          {#each leaf.files ?? [] as f (f.name)}
+            {@const fl = fileOf(f, path, k)}
+            {#if !fl.visibleWhen || holds(fl.visibleWhen, get)}
+              <File
+                leaf={fl}
+                value={undefined}
+                set={() => {}}
+                disabled={disabled || !session.can(fl.access) || (!!fl.enabledWhen && !holds(fl.enabledWhen, get))}
+                id="f{leaf.path.replace(/[^\w-]/g, '_')}_{i}_{f.name}"
+                compact
+              />
+            {/if}
+          {/each}
           {#if resizable}
             <button type="button" class="quiet" {disabled} aria-label={t('Remove row {i}', { i: k })} onclick={() => remove(i)}><Icon name="trash" /></button>
           {/if}
@@ -284,13 +310,18 @@
     text-overflow: ellipsis;
     font-size: 0.9em;
   }
-  .head :global(.icon) {
+  .mark {
+    width: 1.15em;
+    flex: none;
+    color: var(--muted);
+  }
+  .head > :global(.icon) {
     margin-left: auto;
     flex: none;
     color: var(--muted);
     transition: transform 0.15s;
   }
-  .open .head :global(.icon) {
+  .open .head > :global(.icon) {
     transform: rotate(180deg);
   }
   .detail {

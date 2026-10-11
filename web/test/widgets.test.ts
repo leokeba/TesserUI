@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { fileUrl, urlPath } from '../src/client/http';
 import { buildLeaf, buildPage } from '../src/model/model';
 import type { Schema } from '../src/model/schema';
 import { posixTz } from '../src/model/tz';
@@ -22,6 +23,36 @@ describe('files (DESIGN §4)', () => {
       '/',
     );
     expect(page.keys).toBe('a');
+  });
+  it("in a list's elements open element by element, with buttons on each line", () => {
+    // TesserKIT's /sys/files/entries: read-only, keyed by name.
+    const entries = leaf({
+      type: 'list',
+      key: 'name',
+      items: {
+        type: 'object',
+        children: {
+          name: { type: 'string' },
+          size: { type: 'integer', unit: 'B' },
+          isDir: { type: 'boolean', ui: { icon: 'folder' } },
+          content: { type: 'file', readable: true, writable: true, ui: { visibleWhen: 'isDir=false' } },
+          secret: { type: 'file', readable: true, ui: { hidden: true } },
+        },
+      },
+    });
+    expect(entries).toMatchObject({ widget: 'list', editable: false, key: 'name' });
+    expect(entries.columns?.map((c) => c.path)).toEqual(['name', 'size', 'isDir']);
+    expect(entries.files?.map((f) => [f.name, f.path, f.readable, f.editable])).toEqual([['content', 'content', true, true]]);
+    // Without files or actions, the same fields fit a table.
+    const children = { name: { type: 'string' as const }, size: { type: 'integer' as const } };
+    expect(leaf({ type: 'list', items: { type: 'object', children } }).widget).toBe('table');
+    expect(leaf({ type: 'list', items: { type: 'object', children: { ...children, f: { type: 'file', readable: true } } } }).widget).toBe('list');
+  });
+  it('go by URL, keys encoded, uploads naming their file', () => {
+    expect(urlPath('/sys/files/entries/my notes#1.txt/content')).toBe('/sys/files/entries/my%20notes%231.txt/content');
+    expect(urlPath('/')).toBe('/');
+    expect(fileUrl('http://n/api', '/ota/firmware')).toBe('http://n/api/ota/firmware');
+    expect(fileUrl('http://n/api', '/sys/files/upload', 'a b&c.json')).toBe('http://n/api/sys/files/upload?filename=a%20b%26c.json');
   });
 });
 

@@ -9,6 +9,14 @@ import { REQUEST_TIMEOUT_MS, type Client, type ConnState, type Notification, typ
 // network access. Loopback is trustworthy already, and isn't "local".
 const isLocal = (url: string) => location.protocol === 'https:' && /^http:/.test(url) && !/^http:\/\/(localhost|127\.|\[::1\])/.test(url);
 
+// A tree path in a URL: each name percent-encoded, as a keyed list's keys
+// (file names) may hold spaces, '#' or '?'. The node decodes the path.
+export const urlPath = (path: string) => path.split('/').map(encodeURIComponent).join('/');
+
+// A file node's URL (DESIGN.md §4); an upload names the chosen file.
+export const fileUrl = (api: string, path: string, filename?: string) =>
+  api + urlPath(path) + (filename ? `?filename=${encodeURIComponent(filename)}` : '');
+
 export class HttpClient implements Client {
   readonly kind = 'http';
   readonly subscribes = false;
@@ -64,8 +72,7 @@ export class HttpClient implements Client {
     const headers: Record<string, string> = {};
     const token = this.token();
     if (token) headers.Authorization = `Bearer ${token}`;
-    const path = r.path === '/' ? '/' : r.path;
-    const url = this.api + path + (q.size ? `?${q}` : '');
+    const url = this.api + urlPath(r.path) + (q.size ? `?${q}` : '');
     const local = isLocal(url);
     const ctl = new AbortController();
     const timer = setTimeout(() => ctl.abort(), timeoutMs);
