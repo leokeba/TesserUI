@@ -57,10 +57,16 @@
     send(next);
   }
   // New elements start from their defaults: an empty patch, or, in a keyed
-  // list, one naming its key.
+  // list, one naming its key. A scalar array's elements are checked against
+  // their type (TesserAPI §4.5): the type's zero, within the range.
   let newKey = $state('');
+  function scalar(c: Leaf): unknown {
+    if (c.type === 'boolean') return false;
+    if (c.type === 'string') return c.options?.[0]?.value ?? '';
+    return Math.min(Math.max(0, c.min ?? -Infinity), c.max ?? Infinity);
+  }
   function add() {
-    send([...copy(), leaf.key ? { [leaf.key]: newKey } : cols.length === 1 && !cols[0].path ? null : {}]);
+    send([...copy(), leaf.key ? { [leaf.key]: newKey } : cols.length === 1 && !cols[0].path ? scalar(cols[0]) : {}]);
     if (leaf.key) open = newKey;
     newKey = '';
   }
