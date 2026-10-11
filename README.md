@@ -56,7 +56,7 @@ The full vocabulary is in [DESIGN.md §5](docs/DESIGN.md#5-hints-tier-1).
 
 A NowTP-only node with no Wi-Fi needs nothing but its tree and `nowApi.advertise()`: the UI host renders it.
 
-The launcher is at <https://leokeba.github.io/TesserUI/>. Plug a board into USB, pair one over Bluetooth, or type a node's address: `?api=http://192.168.1.20/api` opens that node directly. A board running `examples/arduino/UsbGateway` brings the NowTP nodes around it along over the one USB cable.
+The launcher is at <https://leokeba.github.io/TesserUI/>. Plug a board into USB, pair one over Bluetooth, or type a node's address: `?api=http://192.168.1.20/api` opens that node directly. A board running `examples/arduino/UsbGateway` brings the NowTP nodes around it along over the one USB cable; `examples/arduino/Bluetooth` is a node a phone reaches over Bluetooth, with nothing else.
 
 ## Views
 

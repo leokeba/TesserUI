@@ -55,6 +55,7 @@ jobs:
         fqbn: ["esp32:esp32:esp32", "esp32:esp32:esp32c3"]
     steps:
       - uses: actions/checkout@v5
+      # Every example but Bluetooth, with the default partitions.
       - uses: arduino/compile-sketches@v1
         with:
           fqbn: ${{ matrix.fqbn }}
@@ -62,7 +63,27 @@ jobs:
             - name: esp32:esp32
               source-url: https://espressif.github.io/arduino-esp32/package_esp32_index.json
               version: ${{ matrix.core }}
-          sketch-paths: examples/arduino
+          sketch-paths: |
+            - examples/arduino/CustomWidget
+            - examples/arduino/NowTpNode
+            - examples/arduino/SelfHosted
+            - examples/arduino/Stub
+            - examples/arduino/UiHost
+            - examples/arduino/UsbGateway
+          libraries: |
+            - source-path: ./
+            - source-url: https://github.com/leokeba/TesserAPI.git
+            - source-url: https://github.com/leokeba/NowTP.git
+            - name: ArduinoJson
+      # Bluedroid makes the ESP32 build about 1.7 MB: a larger app partition.
+      - uses: arduino/compile-sketches@v1
+        with:
+          fqbn: ${{ matrix.fqbn }}${{ matrix.fqbn == 'esp32:esp32:esp32' && ':PartitionScheme=huge_app' || '' }}
+          platforms: |
+            - name: esp32:esp32
+              source-url: https://espressif.github.io/arduino-esp32/package_esp32_index.json
+              version: ${{ matrix.core }}
+          sketch-paths: examples/arduino/Bluetooth
           libraries: |
             - source-path: ./
             - source-url: https://github.com/leokeba/TesserAPI.git
