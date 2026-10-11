@@ -1320,6 +1320,24 @@
       "precision": 0
      },
      {
+      "name": "source",
+      "path": "/widgets/source",
+      "label": "Source",
+      "advanced": false,
+      "hidden": false,
+      "kind": "leaf",
+      "widget": "select",
+      "type": "string",
+      "editable": true,
+      "options": [
+       {
+        "value": "Sun",
+        "label": "Sun"
+       }
+      ],
+      "optionsFrom": "/sky/sources"
+     },
+     {
       "name": "go",
       "path": "/widgets/go",
       "label": "Go",

@@ -170,6 +170,7 @@ struct Demo {
     uint32_t hue = 0x3366ff;
     bool armed = false;
     int conditional = 5;
+    std::string source = "Tower";
     std::string scene = "none";
     // sky: drawn by custom elements (<x-sun-dial>, <x-sky>)
     double sunAz = 135, sunEl = 40;

@@ -5,7 +5,6 @@ import { EnvelopeClient, serialLink, webSocketLink } from '../client/envelope';
 import { HttpClient } from '../client/http';
 import { isObject } from '../client/json';
 import { errorText, type Client, type ConnState, type Notification, type Reply, type Request } from '../client/types';
-import type { Condition } from '../model/conditions';
 import { visiblePaths, type Item, type Leaf, type Page, type Section } from '../model/model';
 import { isCut, isUnder, joinPath, mergeSchema, parentPath, rank, remoteOf, schemaAt, segments, type Level, type Schema } from '../model/schema';
 import type { ViewPage } from '../model/views';
@@ -422,12 +421,13 @@ export class Session {
     for (const i of items) store.visible.add(i.path);
     store.toastLabels.clear();
     store.charts.clear();
-    const conds: Condition[] = [];
+    // Paths followed though not shown: conditions', option lists'.
+    const followed: string[] = [];
     const peers: string[] = [];
     walk(items, (i) => {
-      if (i.visibleWhen) conds.push(...i.visibleWhen);
-      if (i.enabledWhen) conds.push(...i.enabledWhen);
+      for (const c of [...(i.visibleWhen ?? []), ...(i.enabledWhen ?? [])]) followed.push(c.path);
       if (i.kind === 'leaf') {
+        if (i.optionsFrom) followed.push(i.optionsFrom);
         if (i.toast) store.toastLabels.set(i.path, i.label);
         if (i.history) store.charts.set(i.path, i.history);
       } else if (i.kind === 'link' && i.remote && i.online && !this.schemaAt(i.path)?.tree) {
@@ -435,7 +435,7 @@ export class Session {
       }
     });
     const all = [...specs];
-    const outside = conds.map((c) => c.path).filter((p) => !specs.some((s) => isUnder(p, s.path)));
+    const outside = followed.filter((p) => !specs.some((s) => isUnder(p, s.path)));
     if (outside.length) {
       const base = commonAncestor(outside.map(parentPath));
       all.push({ path: base, depth: Math.max(...outside.map((p) => segments(p).length - segments(base).length)) });

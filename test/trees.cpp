@@ -268,6 +268,8 @@ Demo::Demo()
     widgets.value("hue", hue).range(0, 0xffffff).ui("widget", "color");
     widgets.value("armed", armed).ui("confirm", "Really change it?");
     widgets.value("conditional", conditional).ui("visibleWhen", "/config/enabled=true&../config/mode!=auto");
+    // A choice among a keyed list's current keys, and a fixed one.
+    widgets.value("source", source).ui("options", "/sky/sources").ui("optionsExtra", "Sun");
     widgets.action("go", [] {}).ui("style", "primary");
     widgets.action("scene", [this](std::string s) { scene = s; }).ui("widget", "button").ui("value", "sunset");
     widgets.object("pinned").ui("card").value("note", "A nested object shown as its own card.");

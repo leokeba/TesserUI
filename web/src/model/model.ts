@@ -1,7 +1,7 @@
 // Schema → UI model: widget inference (DESIGN.md §4), hints (§5) and layout
 // (§6.1). Pure functions, shared by every page and view.
 
-import { parseConditions, type Condition } from './conditions';
+import { parseConditions, resolvePath, type Condition } from './conditions';
 import { decimalsOf, humanize } from './format';
 import { higher, isUnder, joinPath, parentPath, type Hint, type Level, type Schema } from './schema';
 
@@ -78,6 +78,8 @@ export interface Leaf extends Base {
   placeholder?: string;
   maxLength?: number;
   options?: Option[];
+  // A keyed list whose current keys are choices too, after `options`.
+  optionsFrom?: string;
   confirm?: string;
   // Never read back: an empty password field.
   secret?: boolean;
@@ -164,6 +166,7 @@ export function inferWidget(s: Schema, type: string, editable: boolean): Widget 
       return hasRange ? 'slider' : 'number';
     case 'string':
       if (!editable) return 'readout';
+      if (uiStr(s, 'options') && !s.enum) return 'select';
       if (s.enum) {
         const labels = optionsOf(s) ?? [];
         return labels.length <= 4 && labels.every((o) => o.label.length <= 10) ? 'segmented' : 'select';
@@ -197,7 +200,7 @@ function fits(w: string, s: Schema, type: string, editable: boolean, hasRange: b
     case 'select':
     case 'segmented':
     case 'radio':
-      return type === 'string' && !!s.enum && editable;
+      return type === 'string' && (!!s.enum || !!uiStr(s, 'options')) && editable;
     case 'text':
     case 'password':
     case 'textarea':
@@ -214,7 +217,11 @@ function fits(w: string, s: Schema, type: string, editable: boolean, hasRange: b
 }
 
 export function optionsOf(s: Schema): Option[] | undefined {
-  if (!s.enum) return undefined;
+  if (!s.enum) {
+    // Choices among a keyed list's keys (ui.options), after fixed extras.
+    const extra = uiStr(s, 'optionsExtra');
+    return uiStr(s, 'options') ? (extra?.split(',') ?? []).map((v) => ({ value: v.trim(), label: v.trim() })) : undefined;
+  }
   const labels = uiStr(s, 'labels')?.split(',');
   return s.enum.map((v, i) => ({ value: v, label: labels?.[i]?.trim() || v }));
 }
@@ -275,7 +282,7 @@ export function buildLeaf(name: string, path: string, s: Schema, parent: string,
   }
   switch (s.type) {
     case 'action':
-      return action(leaf, s);
+      return action(leaf, s, parent);
     case 'event':
       leaf.widget = 'events';
       leaf.toast = ui(s, 'toast') === true;
@@ -288,7 +295,7 @@ export function buildLeaf(name: string, path: string, s: Schema, parent: string,
       // A row of a few short fields fits a table; anything more (nested
       // objects, conditions, wider widgets) is one line per element that
       // opens into the element's own controls.
-      const compact = cols.length <= 3 && cols.every((c) => !c.path.includes('/') && !c.visibleWhen && TABLE_CELLS.includes(c.widget));
+      const compact = cols.length <= 3 && cols.every((c) => !c.path.includes('/') && !c.visibleWhen && !c.optionsFrom && TABLE_CELLS.includes(c.widget));
       leaf.widget = uiStr(s, 'widget') === 'list' || (!compact && uiStr(s, 'widget') !== 'table') ? 'list' : 'table';
       return leaf;
     }
@@ -330,13 +337,22 @@ export function buildLeaf(name: string, path: string, s: Schema, parent: string,
   if (!leaf.editable && uiStr(s, 'style') === 'warning') leaf.style = 'warning';
   leaf.widget = s.secret && leaf.editable && s.type === 'string' ? 'password' : inferWidget(s, s.type, leaf.editable);
   number(leaf, s);
-  if (s.enum) leaf.options = optionsOf(s);
+  choices(leaf, s, parent);
   if (leaf.widget === 'chart') leaf.history = uiNum(s, 'history') ?? 60;
   return leaf;
 }
 
 // What a table cell can edit.
 const TABLE_CELLS: Widget[] = ['text', 'password', 'number', 'slider', 'select', 'segmented', 'toggle', 'readout', 'led'];
+
+// An enum's options, or a keyed list's keys (ui.options, a path resolved
+// like a condition's) after fixed extras (ui.optionsExtra).
+function choices(leaf: Leaf, s: Schema, parent: string) {
+  const options = optionsOf(s);
+  if (options) leaf.options = options;
+  const from = uiStr(s, 'options');
+  if (from && !s.enum && leaf.type === 'string') leaf.optionsFrom = resolvePath(from, parent, nodeRoot);
+}
 
 function number(leaf: Leaf, s: Schema) {
   if (!isNumeric(leaf.type)) return;
@@ -346,7 +362,7 @@ function number(leaf: Leaf, s: Schema) {
   if (format) leaf.format = format;
 }
 
-function action(leaf: Leaf, s: Schema): Leaf {
+function action(leaf: Leaf, s: Schema, parent: string): Leaf {
   leaf.deferred = !!s.deferred;
   if (s.returns) leaf.returns = s.returns;
   const style = uiStr(s, 'style');
@@ -383,6 +399,7 @@ function action(leaf: Leaf, s: Schema): Leaf {
   const argSchema: Schema = { type: arg as Schema['type'], writable: true, min: s.min, max: s.max, step: s.step, ui: s.ui };
   leaf.field = inferWidget({ ...argSchema, ui: { ...s.ui, widget: hint === 'button' ? '' : (hint ?? '') } }, arg, true);
   number(leaf, s);
+  choices(leaf, s, parent);
   return leaf;
 }
 

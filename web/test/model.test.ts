@@ -56,6 +56,23 @@ describe('widget inference (DESIGN §4)', () => {
     expect(leaf({ type: 'integer', writable: true }).step).toBe(1);
     expect(leaf({ type: 'number', ui: { widget: 'chart' } }).history).toBe(60);
   });
+  it("chooses among a keyed list's keys (ui.options)", () => {
+    const s: Schema = { type: 'string', writable: true, ui: { options: 'directions', optionsExtra: 'Sun' } };
+    expect(buildLeaf('source', '/heliostat/source', s, '/heliostat')).toMatchObject({
+      widget: 'select',
+      options: [{ value: 'Sun', label: 'Sun' }],
+      optionsFrom: '/heliostat/directions',
+    });
+    expect(leaf({ ...s, ui: { options: '/d', widget: 'radio' } }).widget).toBe('radio');
+    expect(leaf({ ...s, writable: false })).toMatchObject({ widget: 'readout' });
+    expect(leaf({ type: 'action', arg: 'string', ui: { options: '/d' } })).toMatchObject({ field: 'select', optionsFrom: '/d' });
+    // A table cell can't follow another list: such rows open instead.
+    const items: Schema = { type: 'object', children: { to: { ...s, ui: { options: '/d' } } } };
+    expect(leaf({ type: 'list', items }).widget).toBe('list');
+    // Relative like a condition's, absolute within the node's tree.
+    expect(buildLeaf('t', '/peers/p/h/t', { ...s, ui: { options: '../d' } }, '/peers/p/h', '/peers/p').optionsFrom).toBe('/peers/p/d');
+    expect(buildLeaf('t', '/peers/p/h/t', { ...s, ui: { options: '/d' } }, '/peers/p/h', '/peers/p')).toMatchObject({ optionsFrom: '/peers/p/d', options: [] });
+  });
 });
 
 describe('layout of the test firmware (DESIGN §6.1)', () => {

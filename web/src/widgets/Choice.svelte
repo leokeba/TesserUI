@@ -1,7 +1,17 @@
 <script lang="ts">
+  import { useSession } from '../shared.svelte';
   import type { WidgetProps } from './types';
   let { leaf, value, set, disabled, id }: WidgetProps = $props();
-  const options = $derived(leaf.options ?? []);
+  const session = useSession();
+  // ui.options: the fixed choices, then the keyed list's current keys.
+  const options = $derived.by(() => {
+    const fixed = leaf.options ?? [];
+    if (!leaf.optionsFrom) return fixed;
+    const list = session.store.get(leaf.optionsFrom);
+    const key = session.schemaAt(leaf.optionsFrom)?.key;
+    const keys = Array.isArray(list) && key ? list.map((e) => e?.[key]).filter((k) => typeof k === 'string') : [];
+    return [...fixed, ...keys.filter((k) => !fixed.some((o) => o.value === k)).map((k) => ({ value: k, label: k }))];
+  });
 </script>
 
 {#if leaf.widget === 'segmented'}

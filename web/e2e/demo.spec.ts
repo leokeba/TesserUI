@@ -76,6 +76,16 @@ test('conditions and forms', async ({ page }) => {
   await expect(row(page, 'Ssid').locator('input')).toHaveValue('field-net');
 });
 
+test("a select of a keyed list's keys", async ({ page }) => {
+  await open(page);
+  const select = row(page, 'Source').locator('select');
+  await expect(select.locator('option')).toHaveText(['Sun', 'Tower', 'Pool']);
+  await expect(select).toHaveValue('Tower');
+  await select.selectOption('Pool');
+  await expect(select).toHaveValue('Pool');
+  await expect(row(page, 'Source').locator('.busy')).toHaveCount(0);
+});
+
 test('groups load their schema on opening', async ({ page }) => {
   await open(page);
   await page.locator('summary', { hasText: 'Network' }).click();

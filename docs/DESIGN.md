@@ -72,6 +72,7 @@ Without any hint, each schema node maps to one semantic widget. The table is nor
 | `integer`/`number`, writable, no range | `number` | Numeric entry; `step` from the schema, else 1 for integers. |
 | `integer`/`number`, read-only | `readout` | Formatted with `unit` and `precision`. |
 | `string` with `enum`, writable | `segmented` if ≤ 4 options and each label ≤ 10 characters, else `select` | Display labels from `ui.labels` (§5.2), else the names. |
+| `string` with `ui.options`, writable | `select` | The current keys of the keyed list `ui.options` names, after the fixed choices of `ui.optionsExtra` (§5.2). Updated as the list changes. |
 | `string`, writable | `text` | `maxLength` enforced in the input. |
 | `string`, writable, `secret` | `password` | Whatever `ui.widget` says. The value always reads as `null` (TesserAPI §4.1): the field starts empty with a `••••••••` placeholder, and only what the user types is sent. |
 | `string`, read-only (with or without `enum`) | `readout` | |
@@ -132,6 +133,8 @@ m.object("pid").ui("advanced");
 | Key | Type | Applies to | Meaning |
 |---|---|---|---|
 | `labels` | string | enum, flags | Display labels in enum order, comma-separated: `"Off,Automatic,Manual"`; for `flags`, one per bit. |
+| `options` | string | writable string, string action argument | The path of a keyed list (TesserAPI §4.4), relative or absolute as a condition's (§5.3): the value is one of its keys, chosen in a `select` (`radio` and `segmented` fit too). The renderer subscribes to the list even when it isn't shown. The device still validates the value. A list whose rows hold such a field opens element by element instead of being a table. |
+| `optionsExtra` | string | with `options` | Fixed choices listed before the keys, comma-separated: `"Sun"`. |
 | `filename`, `accept` | string | file | The download's file name; the upload's file chooser filter (`".bin"`). |
 | `precision` | number | number | Decimals shown. |
 | `format` | string | readout | `"%.1f"`-style formatting, printf subset: `%d %i %u %f %.Nf %e %g %s %%`. |
