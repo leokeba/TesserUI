@@ -452,6 +452,18 @@
       "returns": "integer",
       "style": "quiet",
       "submit": false
+     },
+     {
+      "name": "homed",
+      "path": "/motor/homed",
+      "label": "Homed",
+      "advanced": false,
+      "hidden": true,
+      "kind": "leaf",
+      "widget": "events",
+      "type": "event",
+      "editable": false,
+      "toast": "ok"
      }
     ],
     "advancedItems": [
@@ -580,8 +592,7 @@
       "kind": "leaf",
       "widget": "events",
       "type": "event",
-      "editable": false,
-      "toast": "info"
+      "editable": false
      },
      {
       "name": "raw",
@@ -2388,6 +2399,18 @@
        "step": 0.01,
        "precision": 2,
        "keepalive": 400
+      },
+      {
+       "name": "homed",
+       "path": "/motor/homed",
+       "label": "Homed",
+       "advanced": false,
+       "hidden": true,
+       "kind": "leaf",
+       "widget": "events",
+       "type": "event",
+       "editable": false,
+       "toast": "ok"
       }
      ],
      "advancedItems": [],
@@ -2586,8 +2609,7 @@
        "kind": "leaf",
        "widget": "events",
        "type": "event",
-       "editable": false,
-       "toast": "info"
+       "editable": false
       },
       {
        "name": "raw",
@@ -4062,6 +4084,18 @@
         "returns": "integer",
         "style": "quiet",
         "submit": false
+       },
+       {
+        "name": "homed",
+        "path": "/motor/homed",
+        "label": "Homed",
+        "advanced": false,
+        "hidden": true,
+        "kind": "leaf",
+        "widget": "events",
+        "type": "event",
+        "editable": false,
+        "toast": "ok"
        }
       ],
       "advancedItems": [

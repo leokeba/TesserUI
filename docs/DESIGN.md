@@ -160,7 +160,7 @@ m.object("pid").ui("advanced");
 | `form` | flag | object | Edits are local until submitted (§7.4). |
 | `submit` | flag | action in a `form` | The form's submit action, when it has several. |
 | `visibleWhen`, `enabledWhen` | string | any | A condition (§5.3). |
-| `toast` | flag or string | event | Also show each occurrence as a toast (§7.8): `true` is `"info"`; or `"ok"`, `"warn"`, `"error"`. |
+| `toast` | flag or string | event | Also show each occurrence as a toast (§7.8), whatever page is on screen: `true` is `"info"`; or `"ok"`, `"warn"`, `"error"`. With `hidden`, a toast only, without an events log. |
 | `script` | string | custom element | URL of the module script defining the element (§9.8), relative to the node's API. |
 
 ### 5.3 Conditions
@@ -237,15 +237,16 @@ Widgets bind to paths and re-render when their value changes (Svelte runes on th
 
 ### 7.3 Subscriptions
 
-TesserAPI allows 4 subscriptions per client (default `maxSubscriptionsPerClient`). The renderer uses at most 3:
+TesserAPI allows 4 subscriptions per client (default `maxSubscriptionsPerClient`). The renderer uses at most 3 for what is on screen, and a fourth for events:
 
 1. **The page:** `sub <page path>` with `keys` = the visible children and `depth` = the visible depth (a list's element objects count, a level below the list), `interval` 100 ms. Navigating unsubscribes the old page before subscribing the new one. The snapshot fills the store. On `too_large`, subscribe with `snapshot: false` and read the visible cards with one get each.
 2. **The peer's stub,** while the page is a peer's (`/peers/<name>/...`): `sub /peers` with `keys` = the peer and `depth` 1, for its online state. A page showing links needs nothing extra: unmirrored remote nodes are part of its subscription and read as `null`. A notification carrying `{"<name>": null}` means that peer changed (mounted, online state, schema hash): re-read its stub with `/peers?view=schema&depth=1&keys=<name>`.
 3. **Condition paths** outside the page, when there are any.
+4. **The tree's events,** for those that toast wherever the user is (§7.8): `sub /` with `changes: false` (TesserAPI §11: events only), `snapshot: false` and `interval` 60 s, which keeps firmware that predates `changes` to one change notification a minute. It is subscribed after the page's, kept across pages, and subscribed again after an `unsub /`. When the node refuses it (`busy`, `not_allowed`), there are no toasts from other pages; nothing is polled for it.
 
 The page subscription leaves out mirrored remote children (their copies would come along) and `ui.page` sub-pages (they subscribe themselves). Specs for the same path are merged into one subscription, since `unsub` removes every subscription of a client at a path. Beyond 3 subscriptions, or when the node answers `busy` or `not_allowed`, the rest is polled once per second; a subscribe that times out (an offline peer) is retried every 5 s.
 
-Notifications are merge patches: apply them to `values` exactly as TesserAPI applies a `set` body. On `"overflow": true`, re-read the page with a get. Events (`op: "event"`) go to the `events` widget of their path, or to its nearest ancestor section.
+Notifications are merge patches: apply them to `values` exactly as TesserAPI applies a `set` body. On `"overflow": true`, re-read the page with a get. Events (`op: "event"`) under what the page watches go to the `events` widget of their path, or to its nearest ancestor section, unless `ui.hidden`. Whatever their path, those with `ui.toast` are also a toast; one whose schema isn't loaded yet (below the depth read so far) has it read first.
 
 ### 7.4 Writes
 
@@ -298,7 +299,7 @@ Toasts tell what has no place on screen. Inline errors stay the rule: a toast ne
 | Validation of values and forms | Inline only. |
 | An error with no visible path above it | An error toast, led by the node's parent's and own labels ("Lamp › On"), linking to the page that shows it. |
 | An `unauthorized` reply | The sign-in dialog, no toast. |
-| An event with `ui.toast` | A toast of its kind: the event's label and payload. |
+| An event with `ui.toast`, on any page | A toast of its kind, led by the event's parent's and own labels ("Wi-Fi › Joined") linking to the page that shows it, then its payload. With `ui.hidden`, nothing else shows it. |
 | The connection lost | The banner (§7.5): a state, not a moment. |
 | The connection back, signing in or out | An `ok` toast. |
 | Subscription fallbacks, `too_large` retries | Nothing. |

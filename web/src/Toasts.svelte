@@ -10,7 +10,8 @@
   const toasts = session.store.toasts;
   const ICON = { info: 'info', ok: 'check', warn: 'alert', error: 'alert' };
 
-  // An error's path, named after it and its parent, and the page that shows it.
+  // An error's or an event's path, named after it and its parent, and the
+  // page that shows it.
   const name = (path: string) => session.schemaAt(path)?.label ?? humanize(path.slice(path.lastIndexOf('/') + 1));
   function about(path: string) {
     const up = parentPath(path);
@@ -38,7 +39,7 @@
     <li class="toast" data-kind={toast.kind} role={toast.kind === 'error' || toast.kind === 'warn' ? 'alert' : undefined}>
       <Icon name={ICON[toast.kind]} />
       <span class="text">
-        {#if toast.path && toast.path !== '/'}{@const a = about(toast.path)}<a href={a.href}>{a.label}</a>{': '}{/if}{toast.text}
+        {#if toast.path && toast.path !== '/'}{@const a = about(toast.path)}<a href={a.href}>{a.label}</a>{toast.text && ': '}{/if}{toast.text}
         {#if toast.count > 1}<span class="count">×{toast.count}</span>{/if}
       </span>
       <button type="button" class="quiet" aria-label={session.t('Dismiss')} onclick={() => toasts.dismiss(toast.id)}><Icon name="x" /></button>

@@ -1,9 +1,9 @@
 // Subscriptions (DESIGN.md §7.3): the renderer says what it wants watched,
 // this keeps at most 3 subscriptions on the client and polls the rest (or
-// everything, over plain HTTP).
+// everything, over plain HTTP), plus one for the tree's events.
 
-import type { Client, Reply } from '../client/types';
-import { isUnder } from '../model/schema';
+import type { Client, Reply, Request } from '../client/types';
+import { isUnder, segments } from '../model/schema';
 import type { Store } from './store.svelte';
 
 export interface SubSpec {
@@ -15,6 +15,12 @@ export interface SubSpec {
 export const MAX_SUBSCRIPTIONS = 3;
 export const POLL_MS = 1000;
 const RETRY_MS = 5000;
+
+// Events from the whole tree, for those that toast wherever the user is
+// (DESIGN.md §7.8): a fourth subscription (TesserAPI allows 4 per client),
+// without changes. Firmware that predates `changes` ignores it: the interval
+// keeps the tree's changes to one notification a minute there.
+export const EVENTS: Request = { op: 'sub', path: '/', changes: false, snapshot: false, interval: 60000 };
 
 interface Active {
   spec: SubSpec;
@@ -29,6 +35,8 @@ export class Subscriptions {
   private active = new Map<string, Active>();
   private pollTimer: ReturnType<typeof setInterval> | undefined;
   private retryTimer: ReturnType<typeof setInterval> | undefined;
+  // The events subscription: 'none' once the node refused it (its budget).
+  private events: 'off' | 'on' | 'failed' | 'none' = 'off';
   // Names of the children of a path, for reading a too-large page in pieces.
   childNames: (path: string) => string[] = () => [];
 
@@ -52,7 +60,11 @@ export class Subscriptions {
     for (const [k, a] of this.active) {
       if (!nextKeys.has(k)) {
         this.active.delete(k);
-        if (a.mode === 'sub' && !a.failed) this.client().request({ op: 'unsub', path: a.spec.path });
+        if (a.mode === 'sub' && !a.failed) {
+          this.client().request({ op: 'unsub', path: a.spec.path });
+          // That removed the events subscription too.
+          if (a.spec.path === '/' && this.events === 'on') this.events = 'off';
+        }
       }
     }
     let subs = [...this.active.values()].filter((a) => a.mode === 'sub').length;
@@ -66,6 +78,8 @@ export class Subscriptions {
       if (mode === 'sub') this.subscribe(a);
       else this.read(spec);
     }
+    // After the page's: they come first within the node's budget.
+    if (this.events === 'off') this.subscribeEvents();
     this.schedule();
   }
 
@@ -73,11 +87,17 @@ export class Subscriptions {
   // fresh: the node still has them, at a lower level (a line that signed
   // in): replaced.
   renew(fresh = false) {
+    let root = false;
     for (const a of this.active.values()) {
       if (a.mode === 'sub' && fresh && !a.failed) this.client().request({ op: 'unsub', path: a.spec.path });
       if (a.mode === 'sub') this.subscribe(a);
       else this.read(a.spec);
+      root ||= a.mode === 'sub' && a.spec.path === '/';
     }
+    if (this.events === 'none') return;
+    // A page subscription at / was unsubscribed above, and this one with it.
+    if (fresh && this.events === 'on' && !root) this.client().request({ op: 'unsub', path: '/' });
+    this.subscribeEvents();
   }
 
   // Overflowed notifications: re-read whatever covers the path.
@@ -85,8 +105,22 @@ export class Subscriptions {
     for (const a of this.active.values()) if (isUnder(path, a.spec.path)) this.read(a.spec);
   }
 
+  // Whether the page watches `path`: its events are shown there.
+  covers(path: string): boolean {
+    for (const { spec } of this.active.values()) {
+      if (!isUnder(path, spec.path)) continue;
+      const rest = segments(path).slice(segments(spec.path).length);
+      if (spec.keys && rest.length && !spec.keys.split(',').includes(rest[0])) continue;
+      if (spec.depth === undefined || rest.length <= spec.depth) return true;
+    }
+    return false;
+  }
+
   stop() {
+    const events = this.events;
+    this.events = 'none';
     this.want([]);
+    if (events === 'on') this.client().request({ op: 'unsub', path: '/' });
     clearInterval(this.pollTimer);
     clearInterval(this.retryTimer);
   }
@@ -104,6 +138,7 @@ export class Subscriptions {
     if (!this.retryTimer) {
       this.retryTimer = setInterval(() => {
         for (const a of this.active.values()) if (a.failed) this.subscribe(a);
+        if (this.events === 'failed') this.subscribeEvents();
       }, RETRY_MS);
     }
   }
@@ -132,6 +167,15 @@ export class Subscriptions {
       a.failed = true;
       if (!['timeout', 'disconnected', 'busy'].includes(r.status)) this.store.fail(path, r);
     }
+  }
+
+  private async subscribeEvents() {
+    if (!this.client().subscribes) return;
+    this.events = 'on';
+    const r = await this.client().request(EVENTS);
+    if (this.events !== 'on' || r.status === 'ok') return;
+    const passing = ['timeout', 'disconnected'].includes(r.status) || (r.status === 'busy' && transient(r));
+    this.events = passing ? 'failed' : 'none';
   }
 
   private async read(spec: SubSpec): Promise<Reply> {

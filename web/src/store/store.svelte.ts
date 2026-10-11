@@ -5,7 +5,6 @@
 import { errorBody, errorText, type Client, type Notification, type Reply } from '../client/types';
 import { isObject } from '../client/json';
 import { isUnder, parentPath, segments } from '../model/schema';
-import type { ToastKind } from '../model/model';
 import { Toasts } from './toasts.svelte';
 
 export interface EventEntry {
@@ -30,8 +29,6 @@ export class Store {
 
   // Paths with a place on screen; set by the page (see visiblePaths()).
   visible = new Set<string>();
-  // Event paths that also toast, with their labels and kinds.
-  toastLabels = new Map<string, [string, ToastKind]>();
   // Chart paths and their history length, in seconds.
   charts = new Map<string, number>();
   // Keyed lists (TesserAPI §4.4), by path: their key field. A path goes
@@ -255,11 +252,6 @@ export class Store {
     }
     const at = this.nearestVisible(n.path);
     this.events[at] = [{ t: Date.now(), path: n.path, body: n.body }, ...(this.events[at] ?? [])].slice(0, MAX_EVENTS);
-    const toast = this.toastLabels.get(n.path);
-    if (toast) {
-      const [label, kind] = toast;
-      this.toasts.show(n.body === null ? label : `${label}: ${typeof n.body === 'string' ? n.body : JSON.stringify(n.body)}`, kind);
-    }
   }
 
   // Errors are cleared by navigation (DESIGN.md §7.1).

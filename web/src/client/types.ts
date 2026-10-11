@@ -13,6 +13,7 @@ export interface Request {
   remotes?: boolean;
   interval?: number;
   events?: boolean;
+  changes?: boolean;
   snapshot?: boolean;
   token?: string;
   body?: unknown;

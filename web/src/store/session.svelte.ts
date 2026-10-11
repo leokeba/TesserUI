@@ -5,7 +5,7 @@ import { bleLink, EnvelopeClient, serialLink, webSocketLink } from '../client/en
 import { HttpClient } from '../client/http';
 import { isObject } from '../client/json';
 import { errorText, type Client, type ConnState, type Notification, type Reply, type Request } from '../client/types';
-import { visiblePaths, type Item, type Leaf, type Page, type Section } from '../model/model';
+import { toastKind, visiblePaths, type Item, type Leaf, type Page, type Section } from '../model/model';
 import { isCut, isUnder, joinPath, mergeSchema, parentPath, rank, remoteOf, schemaAt, segments, type Level, type Schema } from '../model/schema';
 import type { ViewPage } from '../model/views';
 import { Store } from './store.svelte';
@@ -349,8 +349,11 @@ export class Session {
   }
 
   private notify(n: Notification) {
+    if (n.op === 'event') {
+      this.event(n);
+      return;
+    }
     this.store.notify(n);
-    if (n.op !== 'change') return;
     if (n.overflow) this.subs.reread(n.path);
     // A remote node's value turning up in a change ({"peer": null}) means its
     // stub changed: online state or advertised schema (TesserAPI §14.1).
@@ -360,6 +363,18 @@ export class Session {
       for (const s of segments(r.slice(n.path === '/' ? 0 : n.path.length))) v = isObject(v) ? v[s] : undefined;
       if (v === null) this.refreshStub(r);
     }
+  }
+
+  // An event goes to the page's log when the page watches its path, unless
+  // ui.hidden; with ui.toast, it is a toast wherever the user is (DESIGN.md
+  // §7.8). One from elsewhere (the events subscription) may need its schema
+  // read first.
+  private async event(n: Notification) {
+    let s = this.schemaAt(n.path);
+    if (s?.ui?.hidden !== true && this.subs.covers(n.path)) this.store.notify(n);
+    if (!s && (await this.ensure(parentPath(n.path), 1))) s = this.schemaAt(n.path);
+    const kind = s?.type === 'event' ? toastKind(s.ui?.toast) : undefined;
+    if (kind) this.store.toasts.show(n.body === null ? '' : typeof n.body === 'string' ? n.body : JSON.stringify(n.body), kind, n.path);
   }
 
   private refreshStub(path: string) {
@@ -508,7 +523,6 @@ export class Session {
     const store = this.store;
     store.visible = visiblePaths({ cards: items.filter((i): i is Section => i.kind === 'section') });
     for (const i of items) store.visible.add(i.path);
-    store.toastLabels.clear();
     store.charts.clear();
     // Paths followed though not shown: conditions', option lists'.
     const followed: string[] = [];
@@ -517,7 +531,6 @@ export class Session {
       for (const c of [...(i.visibleWhen ?? []), ...(i.enabledWhen ?? [])]) followed.push(c.path);
       if (i.kind === 'leaf') {
         if (i.optionsFrom) followed.push(i.optionsFrom);
-        if (i.toast) store.toastLabels.set(i.path, [i.label, i.toast]);
         if (i.history) store.charts.set(i.path, i.history);
       } else if (i.kind === 'link' && i.remote && i.online && !this.schemaAt(i.path)?.tree) {
         peers.push(i.path);

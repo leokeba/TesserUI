@@ -146,6 +146,7 @@ struct Demo {
     float pressure = 1013.25f;
     int presses = 0;
     tesser::EventNode* pressed = nullptr;
+    tesser::EventNode* homed = nullptr;
     // settings
     std::string ssid = "heliostat-net";
     std::string password = "hunter2";

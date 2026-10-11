@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Store } from '../src/store/store.svelte';
-import { Subscriptions, commonAncestor } from '../src/store/subs';
+import { EVENTS, Subscriptions, commonAncestor } from '../src/store/subs';
 import type { Schema } from '../src/model/schema';
 import { FakeClient, tick } from './fake';
 
@@ -27,6 +27,21 @@ describe('store: merge patches (DESIGN §7.3)', () => {
 afterEach(() => {
   vi.useRealTimers();
 });
+
+// As TesserAPI renders a schema: an object or a list at the limit loses its
+// children or its items.
+const cut = (s: Schema, left: number): Schema => {
+  if (s.type === 'object' && s.children) {
+    if (left <= 0) return { ...s, children: undefined };
+    return { ...s, children: Object.fromEntries(Object.entries(s.children).map(([k, c]) => [k, cut(c, left - 1)])) };
+  }
+  if (s.type === 'list' && s.items) {
+    if (left <= 0) return { ...s, items: undefined };
+    return { ...s, items: cut(s.items, left) };
+  }
+  return s;
+};
+
 
 describe('store: writes (DESIGN §7.4)', () => {
   it('is optimistic, then takes the read-back value', async () => {
@@ -121,13 +136,11 @@ describe('store: writes (DESIGN §7.4)', () => {
 });
 
 describe('store: events and charts', () => {
-  it('routes events to the nearest visible path and toasts', () => {
+  it('routes events to the nearest visible path', () => {
     const { store } = setup();
     store.visible.add('/demo');
-    store.toastLabels.set('/demo/fired', ['Fired', 'warn']);
     store.notify({ op: 'event', path: '/demo/fired', body: 3 });
     expect(store.events['/demo']?.[0]).toMatchObject({ path: '/demo/fired', body: 3 });
-    expect(store.toasts.list[0]).toMatchObject({ text: 'Fired: 3', kind: 'warn' });
   });
   it('keeps chart history', () => {
     const { store } = setup();
@@ -145,7 +158,7 @@ describe('subscriptions (DESIGN §7.3)', () => {
     const subs = new Subscriptions(() => client, store);
     subs.want([{ path: '/a' }, { path: '/b' }, { path: '/c' }, { path: '/d', depth: 1 }]);
     await tick();
-    expect(client.sent.filter((r) => r.op === 'sub').map((r) => r.path)).toEqual(['/a', '/b', '/c']);
+    expect(client.sent.filter((r) => r.op === 'sub' && r !== EVENTS).map((r) => r.path)).toEqual(['/a', '/b', '/c']);
     expect(client.sent.find((r) => r.op === 'get')?.path).toBe('/d');
     client.sent = [];
     subs.want([{ path: '/a' }, { path: '/b', keys: 'x' }]);
@@ -159,7 +172,7 @@ describe('subscriptions (DESIGN §7.3)', () => {
     const subs = new Subscriptions(() => client, store);
     subs.want([{ path: '/', keys: 'a', depth: 1 }, { path: '/', keys: 'b', depth: 3 }]);
     await tick();
-    expect(client.sent).toEqual([{ op: 'sub', path: '/', keys: 'a,b', depth: 3, interval: 100 }]);
+    expect(client.sent).toEqual([{ op: 'sub', path: '/', keys: 'a,b', depth: 3, interval: 100 }, EVENTS]);
     subs.stop();
   });
   it('reads in pieces when the snapshot is too large', async () => {
@@ -172,6 +185,40 @@ describe('subscriptions (DESIGN §7.3)', () => {
     await tick();
     expect(store.get('/a')).toBe(1);
     expect(store.get('/b')).toBe(1);
+    subs.stop();
+  });
+  it("takes one more for the tree's events, after the page's", async () => {
+    const { client, store } = setup();
+    client.answer = (r) => ({ status: 'ok', body: r.op === 'unsub' ? 1 : null });
+    const subs = new Subscriptions(() => client, store);
+    const sent = () => client.sent.splice(0).map((r) => (r === EVENTS ? 'events' : `${r.op} ${r.path}`));
+    subs.want([{ path: '/a' }, { path: '/b' }, { path: '/c' }]);
+    await tick();
+    expect(sent()).toEqual(['sub /a', 'sub /b', 'sub /c', 'events']);
+    subs.want([{ path: '/' }]);
+    await tick();
+    expect(sent()).toEqual(['unsub /a', 'unsub /b', 'unsub /c', 'sub /']);
+    // unsub removes every subscription at a path: the events one is renewed.
+    subs.want([{ path: '/b', keys: 'x', depth: 1 }]);
+    await tick();
+    expect(sent()).toEqual(['unsub /', 'sub /b', 'events']);
+    expect(subs.covers('/b/x')).toBe(true);
+    expect(subs.covers('/b/x/y')).toBe(false);
+    expect(subs.covers('/b/z')).toBe(false);
+    expect(subs.covers('/a/x')).toBe(false);
+    subs.stop();
+    expect(sent()).toEqual(['unsub /b', 'unsub /']);
+  });
+  it('gives the events up beyond the node\'s budget', async () => {
+    const { client, store } = setup();
+    client.answer = (r) => (r === EVENTS ? { status: 'busy', body: { error: 'busy', message: 'too many subscriptions' } } : { status: 'ok', body: null });
+    const subs = new Subscriptions(() => client, store);
+    subs.want([{ path: '/a' }]);
+    await tick();
+    client.sent = [];
+    subs.renew();
+    await tick();
+    expect(client.sent.map((r) => r.path)).toEqual(['/a']);
     subs.stop();
   });
   it('finds common ancestors', () => {
@@ -231,19 +278,6 @@ describe('session: lists cut by depth', () => {
     items: { type: 'object', children: { ssid: { type: 'string', writable: true }, static: { type: 'object', children: { ip: { type: 'string', writable: true } } } } },
   };
   const tree: Schema = { type: 'object', children: { network: { type: 'object', children: { wifi: { type: 'object', children: { networks } } } } } };
-  // As TesserAPI renders a schema: an object or a list at the limit loses its
-  // children or its items.
-  const cut = (s: Schema, left: number): Schema => {
-    if (s.type === 'object' && s.children) {
-      if (left <= 0) return { ...s, children: undefined };
-      return { ...s, children: Object.fromEntries(Object.entries(s.children).map(([k, c]) => [k, cut(c, left - 1)])) };
-    }
-    if (s.type === 'list' && s.items) {
-      if (left <= 0) return { ...s, items: undefined };
-      return { ...s, items: cut(s.items, left) };
-    }
-    return s;
-  };
 
   it('fetches a list whose items depth cut, and keeps them', async () => {
     const { Session } = await import('../src/store/session.svelte');
@@ -265,5 +299,50 @@ describe('session: lists cut by depth', () => {
     // A shallower read of a parent keeps them.
     await s.fetchSchema('/network/wifi', 1);
     expect(s.schemaAt('/network/wifi/networks')).toEqual(networks);
+  });
+});
+
+describe('session: events (DESIGN §7.8)', () => {
+  const tree: Schema = {
+    type: 'object',
+    children: {
+      lamp: { type: 'object', children: { on: { type: 'boolean', writable: true }, pressed: { type: 'event' }, blinked: { type: 'event', ui: { toast: 'warn' } } } },
+      sys: {
+        type: 'object',
+        children: { net: { type: 'object', children: { wifi: { type: 'object', label: 'Wi-Fi', children: { joined: { type: 'event', ui: { toast: 'ok', hidden: true } } } } } } },
+      },
+    },
+  };
+
+  it('logs those the page shows, and toasts wherever the user is', async () => {
+    const { Session } = await import('../src/store/session.svelte');
+    const { schemaAt } = await import('../src/model/schema');
+    const client = new FakeClient();
+    client.answer = (r) => {
+      if (r.view === 'schema') return { status: 'ok', body: cut(r.path === '/' ? tree : schemaAt(tree, r.path)!, r.depth ?? 99) };
+      return { status: 'ok', body: r.op === 'unsub' ? 1 : null };
+    };
+    const s = new Session({ api: '/api', ws: '/ws', transport: 'ws' });
+    (s as unknown as { use(c: FakeClient): void }).use(client);
+    await s.ensure('/', 2);
+    s.subs.want([{ path: '/lamp' }]);
+    s.store.visible.add('/lamp');
+    await tick();
+    expect(client.sent.some((r) => r === EVENTS)).toBe(true);
+
+    client.push({ op: 'event', path: '/lamp/pressed', body: 1 });
+    client.push({ op: 'event', path: '/lamp/blinked', body: 2 });
+    await tick();
+    expect(s.store.events['/lamp'].map((e) => e.path)).toEqual(['/lamp/blinked', '/lamp/pressed']);
+    expect(s.store.toasts.list).toMatchObject([{ kind: 'warn', text: '2', path: '/lamp/blinked' }]);
+
+    // Off the page and below what was loaded: its schema is read first. A
+    // hidden one is a toast only.
+    expect(s.schemaAt('/sys/net/wifi/joined')).toBeUndefined();
+    client.push({ op: 'event', path: '/sys/net/wifi/joined', body: '192.168.1.50 on Workshop' });
+    await vi.waitFor(() => expect(s.store.toasts.list.length).toBe(2));
+    expect(s.store.toasts.list[1]).toMatchObject({ kind: 'ok', text: '192.168.1.50 on Workshop', path: '/sys/net/wifi/joined' });
+    expect(Object.keys(s.store.events)).toEqual(['/lamp']);
+    s.close();
   });
 });

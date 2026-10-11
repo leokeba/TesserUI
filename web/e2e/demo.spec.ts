@@ -116,12 +116,19 @@ test('keep-alives outlast dead-man timers, and stop with the control', async ({ 
   await expect(drive).toHaveValue('0.00');
 });
 
-test('events toast', async ({ page }) => {
+test('events log on their page, and toast wherever the user is', async ({ page }) => {
   await open(page, '#/sensors');
-  const toast = page.locator('.toast');
-  await expect(toast).toContainText('Pressed', { timeout: 7000 });
-  await expect(row(page, 'Pressed').locator('li').first()).toBeVisible();
-  await toast.first().getByRole('button', { name: 'Dismiss' }).click();
+  await expect(row(page, 'Pressed').locator('li').first()).toBeVisible({ timeout: 7000 });
+  await expect(page.locator('.toast')).toHaveCount(0);
+  // Homing ends with a hidden event marked ui.toast, seen from another page.
+  await page.locator('nav.side').getByRole('link', { name: 'Motor' }).click();
+  await page.getByRole('button', { name: /^Home/ }).click();
+  await page.locator('nav.side').getByRole('link', { name: 'Lamp' }).click();
+  const toast = page.locator('.toast[data-kind=ok]');
+  await expect(toast).toHaveText(/Motor › Homed: at 0°/, { timeout: 5000 });
+  await toast.getByRole('link', { name: 'Motor › Homed' }).click();
+  await expect(page).toHaveURL(/#\/motor$/);
+  await toast.getByRole('button', { name: 'Dismiss' }).click();
   await expect(toast).toHaveCount(0);
 });
 

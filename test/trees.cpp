@@ -208,6 +208,8 @@ Demo::Demo()
         if (homing) homeDueMs = clockMs() + 2000;
     });
     motor.action("count", [this] { return ++count; }).ui("style", "quiet");
+    // A moment with no place on screen: a toast wherever the user is.
+    homed = &motor.event("homed").ui("toast", "ok").ui("hidden");
     auto& pid = motor.object("pid").ui("advanced");
     pid.value("kp", kp);
     pid.value("ki", ki);
@@ -221,7 +223,7 @@ Demo::Demo()
                return std::string(homeDueMs ? "homing" : target != position ? "moving" : "ok");
            })
         .watch();
-    pressed = &sensors.event("pressed").ui("toast");
+    pressed = &sensors.event("pressed");
     sensors.custom(
         "raw", [this](tesser::JsonWriter& w) { w.raw(raw); },
         [this](JsonVariantConst v) {
@@ -418,6 +420,7 @@ void Demo::tick(uint32_t nowMs) {
         speed = 0;
         homing.reply(position);
         homing = tesser::Pending();
+        homed->emit(std::string("at 0°"));
     }
 
     if (sequenceStartMs) {

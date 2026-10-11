@@ -9,7 +9,7 @@ export interface Toast {
   id: number;
   kind: ToastKind;
   text: string;
-  // The path an error is about: its label links to its page.
+  // The path an error or an event is about: its label links to its page.
   path?: string;
   // How many times it came, while shown.
   count: number;
