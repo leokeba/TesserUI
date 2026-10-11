@@ -94,6 +94,12 @@ void describe(tesser::Object& o, Slot& s) {
     o.value("runs", s.runs).readOnly();
 }
 
+void describe(tesser::Object& o, Network& n) {
+    o.value("ssid", n.ssid).label("Network");
+    o.value("rssi", n.rssi).unit("dBm");
+    o.action("join", [] {});  // actions still run in a read-only list
+}
+
 void describe(tesser::Object& o, Channel& c) {
     o.value("gain", c.gain).range(0, 2).step(0.1);
     o.value("mute", c.mute);
@@ -257,6 +263,8 @@ Demo::Demo()
     channels.mount("ch2", ch2);
 
     api.list("schedule", schedule).maxSize(8);
+    // Filled by the device: no adding, removing or editing (TesserAPI a2b0002).
+    api.list("networks", networks).readOnly().label("Networks nearby");
 
     auto& info = api.object("info").ui("page").label("Device info");
     info.value("version", "1.2.0");

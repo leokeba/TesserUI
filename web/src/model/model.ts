@@ -276,7 +276,7 @@ export function buildLeaf(name: string, path: string, s: Schema, parent: string,
   // A custom element takes any node, objects included, as it is.
   if (isElement(s.ui?.widget)) {
     leaf.widget = s.ui.widget;
-    leaf.editable = (!!s.writable || s.type === 'action' || s.type === 'list') && ui(s, 'readonly') !== true;
+    leaf.editable = (!!s.writable || s.type === 'action') && ui(s, 'readonly') !== true;
     const script = uiStr(s, 'script');
     if (script) leaf.script = script;
     if (s.type === 'action' && s.arg) leaf.type = s.arg;
@@ -292,14 +292,19 @@ export function buildLeaf(name: string, path: string, s: Schema, parent: string,
       leaf.toast = ui(s, 'toast') === true;
       return leaf;
     case 'list': {
-      leaf.editable = true;
+      // Lists say "writable" when clients may add, remove and edit elements
+      // (TesserAPI): one the device fills (scan results) doesn't.
+      leaf.editable = !!s.writable && ui(s, 'readonly') !== true;
       leaf.maxSize = s.maxSize;
       const cols = (leaf.columns = s.items ? columns(s.items, '') : []);
       if (s.key) leaf.key = s.key;
       // A row of a few short fields fits a table; anything more (nested
-      // objects, conditions, wider widgets) is one line per element that
-      // opens into the element's own controls.
-      const compact = cols.length <= 3 && cols.every((c) => !c.path.includes('/') && !c.visibleWhen && !c.optionsFrom && TABLE_CELLS.includes(c.widget));
+      // objects, conditions, wider widgets, actions, which a table has no
+      // cell for) is one line per element that opens into the element's own
+      // controls.
+      const actions = Object.values(s.items?.children ?? {}).some((c) => c.type === 'action');
+      const compact =
+        !actions && cols.length <= 3 && cols.every((c) => !c.path.includes('/') && !c.visibleWhen && !c.optionsFrom && TABLE_CELLS.includes(c.widget));
       leaf.widget = uiStr(s, 'widget') === 'list' || (!compact && uiStr(s, 'widget') !== 'table') ? 'list' : 'table';
       return leaf;
     }

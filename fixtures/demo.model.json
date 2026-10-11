@@ -1127,6 +1127,63 @@
     "columns": 3
    },
    {
+    "name": "",
+    "path": "/networks",
+    "label": "Networks nearby",
+    "advanced": false,
+    "hidden": false,
+    "kind": "section",
+    "level": 1,
+    "items": [
+     {
+      "name": "networks",
+      "path": "/networks",
+      "label": "",
+      "advanced": false,
+      "hidden": false,
+      "kind": "leaf",
+      "widget": "list",
+      "type": "list",
+      "editable": false,
+      "maxSize": 32,
+      "columns": [
+       {
+        "name": "ssid",
+        "path": "ssid",
+        "label": "Network",
+        "advanced": false,
+        "hidden": false,
+        "kind": "leaf",
+        "widget": "readout",
+        "type": "string",
+        "editable": false
+       },
+       {
+        "name": "rssi",
+        "path": "rssi",
+        "label": "Rssi",
+        "advanced": false,
+        "hidden": false,
+        "kind": "leaf",
+        "widget": "readout",
+        "type": "integer",
+        "editable": false,
+        "unit": "dBm",
+        "step": 1,
+        "precision": 0
+       }
+      ]
+     }
+    ],
+    "advancedItems": [],
+    "lazy": false,
+    "tabs": false,
+    "inline": false,
+    "collapsed": false,
+    "form": false,
+    "columns": 3
+   },
+   {
     "name": "widgets",
     "path": "/widgets",
     "label": "Widget overrides",
@@ -1714,7 +1771,7 @@
   "actions": [],
   "columns": 3,
   "depth": null,
-  "keys": "uptime,online,lamp,motor,sensors,settings,config,offset,channels,schedule,widgets,sky,sequence,tables,system,account,blob,peers,_ui"
+  "keys": "uptime,online,lamp,motor,sensors,settings,config,offset,channels,schedule,networks,widgets,sky,sequence,tables,system,account,blob,peers,_ui"
  },
  "menu": [
   {
@@ -1965,12 +2022,69 @@
      "collapsed": false,
      "form": false,
      "columns": 3
+    },
+    {
+     "name": "",
+     "path": "/networks",
+     "label": "Networks nearby",
+     "advanced": false,
+     "hidden": false,
+     "kind": "section",
+     "level": 1,
+     "items": [
+      {
+       "name": "networks",
+       "path": "/networks",
+       "label": "",
+       "advanced": false,
+       "hidden": false,
+       "kind": "leaf",
+       "widget": "list",
+       "type": "list",
+       "editable": false,
+       "maxSize": 32,
+       "columns": [
+        {
+         "name": "ssid",
+         "path": "ssid",
+         "label": "Network",
+         "advanced": false,
+         "hidden": false,
+         "kind": "leaf",
+         "widget": "readout",
+         "type": "string",
+         "editable": false
+        },
+        {
+         "name": "rssi",
+         "path": "rssi",
+         "label": "Rssi",
+         "advanced": false,
+         "hidden": false,
+         "kind": "leaf",
+         "widget": "readout",
+         "type": "integer",
+         "editable": false,
+         "unit": "dBm",
+         "step": 1,
+         "precision": 0
+        }
+       ]
+      }
+     ],
+     "advancedItems": [],
+     "lazy": false,
+     "tabs": false,
+     "inline": false,
+     "collapsed": false,
+     "form": false,
+     "columns": 3
     }
    ],
    "actions": [],
    "columns": 3,
    "depth": 2,
-   "keys": "uptime,online,schedule,blob,_ui"
+   "keys": "uptime,online,schedule,networks,blob,_ui"
   },
   "/lamp": {
    "path": "/lamp",

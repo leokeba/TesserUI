@@ -78,6 +78,12 @@ struct Slot {
     int runs = 0;  // read-only: a list element field the client must not write back
 };
 
+// A Wi-Fi scan's result: the device fills the list, clients only read it.
+struct Network {
+    std::string ssid;
+    int rssi = 0;
+};
+
 struct Channel {
     double gain = 1.0;
     bool mute = false;
@@ -159,6 +165,7 @@ struct Demo {
     Channel ch1;
     Channel ch2{0.5, true};
     std::vector<Slot> schedule{{7, true, "Morning", 12}, {19, false, "Evening", 0}};
+    std::vector<Network> networks{{"home", -48}, {"cafe", -71}};
     std::string raw = "{\"curve\":[0,10,40,100]}";
     // widgets: overrides reachable only through hints
     bool sw = true;

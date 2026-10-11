@@ -23,6 +23,13 @@ describe('widget inference (DESIGN §4)', () => {
     expect(leaf({ type: 'list', maxSize: 4, items: { type: 'object', children: {} } }).widget).toBe('table');
     expect(leaf({ type: 'custom' }).widget).toBe('json');
   });
+  it('edits a list only when it says writable', () => {
+    // TesserAPI a2b0002: a list the device fills (scan results) has no "writable".
+    const items = { type: 'object' as const, children: { ssid: { type: 'string' as const } } };
+    expect(leaf({ type: 'list', writable: true, items }).editable).toBe(true);
+    expect(leaf({ type: 'list', items }).editable).toBe(false);
+    expect(leaf({ type: 'list', writable: true, ui: { readonly: true }, items }).editable).toBe(false);
+  });
   it('builds typed action fields', () => {
     const a = leaf({ type: 'action', arg: 'number', min: 0, max: 360, unit: '°' });
     expect(a).toMatchObject({ widget: 'button', field: 'slider', type: 'number', min: 0, max: 360, unit: '°', editable: true });

@@ -172,12 +172,14 @@ test('warnings show while their condition holds', async ({ page }) => {
 
 test('lists are edited element by element', async ({ page }) => {
   await open(page);
-  const items = page.locator('.lv .item');
+  // The start page also has the read-only Networks nearby list.
+  const schedule = card(page, 'Schedule');
+  const items = schedule.locator('.lv .item');
   await expect(items).toHaveCount(2);
   // An element opens into its own controls; Runs is read-only. Writes leave
   // it out, or the device would refuse them.
   await items.first().locator('.head').click();
-  await expect(page.locator('.lv .detail output')).toHaveText(['12']);
+  await expect(schedule.locator('.lv .detail output')).toHaveText(['12']);
   await items.first().locator('.head').click();
   await page.getByRole('button', { name: /Add/ }).click();
   await expect(items).toHaveCount(3);
@@ -191,7 +193,7 @@ test('lists are edited element by element', async ({ page }) => {
   await page.getByRole('button', { name: /Add/ }).click();
   await expect(items).toHaveCount(3);
   await expect(label).toHaveValue('Dusk');
-  await expect(page.locator('.lv .error')).toHaveCount(0);
+  await expect(schedule.locator('.lv .error')).toHaveCount(0);
 });
 
 test('views come first and combine peers', async ({ page }) => {
@@ -237,4 +239,19 @@ test('phone width: no horizontal scroll, 44 px controls, the menu in a drawer', 
       ).length,
   );
   expect(small).toBe(0);
+});
+
+// A list the device fills (TesserAPI's ListNode::readOnly()) has no
+// "writable" in its schema: its rows show, with nothing to add, remove or
+// edit, and their actions still run. Elements with actions open into their
+// own controls, since a table has no cell for an action.
+test('a read-only list shows its rows, without editing', async ({ page }) => {
+  await open(page, '#/networks');
+  const list = main(page);
+  await expect(list.getByRole('button', { name: /^Add/ })).toHaveCount(0);
+  await expect(list.getByRole('button', { name: /Remove row/ })).toHaveCount(0);
+  await list.getByRole('button', { name: /^home/ }).click();
+  await expect(list.locator('.detail')).toContainText('-48');
+  await expect(list.locator('.detail input:not([type=hidden])')).toHaveCount(0);
+  await expect(list.locator('.detail').getByRole('button', { name: /join/i })).toBeEnabled();
 });
