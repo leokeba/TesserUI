@@ -1,0 +1,36 @@
+{
+  "name": "tesserui-bridge",
+  "version": "0.1.0",
+  "description": "Finds TesserAPI nodes on the network (mDNS) and serial ports, and serves them to TesserUI's launcher from localhost",
+  "license": "MIT",
+  "author": "Leo Baque",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/leokeba/TesserUI.git",
+    "directory": "bridge"
+  },
+  "type": "module",
+  "bin": {
+    "tesserui-bridge": "bridge.mjs"
+  },
+  "files": [
+    "bridge.mjs",
+    "mdns.mjs",
+    "ui"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "packageManager": "pnpm@11.7.0",
+  "scripts": {
+    "start": "node bridge.mjs",
+    "test": "node --test test/*.test.mjs",
+    "prepack": "mkdir -p ui && cp ../web/dist/index.html ../web/dist/ui.js ui/"
+  },
+  "dependencies": {
+    "ws": "^8.22.0"
+  },
+  "optionalDependencies": {
+    "serialport": "^13.0.0"
+  }
+}

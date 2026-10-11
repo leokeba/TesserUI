@@ -433,13 +433,23 @@ The same bundle, published on GitHub Pages by CI from `main` (`https://leokeba.g
 |---|---|---|---|
 | **USB** | Web Serial to a `LineTransport` (`?transport=serial`) | Chromium on desktop | A node with no radio at all; debugging; a **NowTP gateway on USB**: a board that mounts the NowTP nodes around it (`examples/arduino/UsbGateway`, `examples/idf/usb_gateway`), so a laptop reaches a field with no Wi-Fi. |
 | **Bluetooth** | Web Bluetooth to TesserAPI's `BleTransport` (`?transport=ble`, `examples/arduino/Bluetooth`, `examples/idf/bluetooth`) | Chromium on desktop and Android | A phone next to a node, with no Wi-Fi in common. |
-| **Network** | An address, opened as `?api=http://<address>/api` | All; the prompt is Chrome's | A node on the network, without flashing the bundle into it. |
+| **Network** | An address, opened as `?api=http://<address>/api` | Chromium (local network access) | A node on the network, without flashing the bundle into it. `name.local` works for a node that announces itself (`HttpServer::advertise()`). |
+| **Nearby** | The nodes the bridge finds over mDNS, through its proxy | Chromium and Firefox from Pages; any browser from the bridge's own page | Finding the nodes on the network, live. |
+| **Bluetooth serial** | Web Serial to a paired SPP device (`examples/arduino/BluetoothSerial`), offered with the USB ports | Chromium, Android included | A phone and an original ESP32, as a serial line. |
 
 - **Mixed content:** an HTTPS page can't reach `http://` or `ws://` devices, except as Chrome's Local Network Access allows: after the user's permission, `fetch` to a private IP literal, a `.local` name, or a request marked `targetAddressSpace: "local"` (which the HTTP client adds for `http://` URLs from an HTTPS page). WebSockets aren't covered, so such a node is polled over HTTP (§9.2), and the node must enable CORS. Loopback (`localhost`, `127.0.0.1`) is trustworthy: a node there, such as `scripts/device.mjs`, is live over its WebSocket.
+- **The bridge** (`bridge/`, the npm package `tesserui-bridge`: `npx tesserui-bridge`) runs on the user's machine and does what a page can't, on `localhost:8765`:
+  - it browses mDNS for `_tesser._tcp` services (what `HttpServer::advertise()` announces: the API's paths in the TXT record), with legacy unicast queries from an ephemeral port, so the system's own responder keeps port 5353; it lists them, with the serial ports, at `GET /nodes`, labelled from each node's schema;
+  - it proxies each node's API (`/n/<host:port>/api/...`) and WebSocket (`/n/<host:port>/ws`): a page reaches `http://localhost` and `ws://localhost`, which Chromium and Firefox trust from HTTPS, so a node is live through it, not polled;
+  - it carries serial ports over WebSocket (`/s/<path>`), one page per port, for browsers without Web Serial;
+  - it serves the launcher at `/`, marked with `<meta name="tesserui-bridge">`, which works in every browser: Safari (WebKit) refuses `http://localhost` from an HTTPS page.
+  Only pages from the launcher's origin, from localhost, or from `--origin` may use it, and it only reaches the nodes it listed. `--node host[:port]` adds a node by hand.
+- **Nearby list:** on Pages, the launcher asks the bridge only when the user clicks *Look for the bridge*, since Chrome asks before a public page reaches localhost; after a first answer, and on the bridge's own page, it asks every 5 s. `?bridge=` names another bridge.
+- **A board that resets:** opening a serial port resets most devkits, and a Wi-Fi node then takes seconds to boot (7.6 s for TesserAPI's test firmware) before it answers. The first request is asked again every 1.5 s, for up to a minute, before the schema is read.
 - **Recent nodes:** the nodes reached by address are remembered in the browser, most recent first, and listed on the connection screen. Tokens are kept per node (by API URL), since one origin talks to all of them.
 - **Switching:** the header has a button back to the connection screen; leaving the page closes a port or a Bluetooth connection.
 - **Links:** `?api=` makes a node's page shareable: `https://leokeba.github.io/TesserUI/?api=http://192.168.1.20/api#/motor`.
-- **Android:** Chrome on Android has no Web Serial over USB (only Bluetooth serial ports), so phones use Bluetooth or the network.
+- **Android:** Chrome on Android has no Web Serial over USB, only Bluetooth serial ports, which the USB chooser lists (`allowedBluetoothServiceClassIds`: SPP). Phones use Bluetooth LE, Bluetooth serial or the network. The Bluetooth serial example is not yet tried on hardware (pairing needs a person).
 - **Bluetooth throughput,** measured from an ESP32 to a Mac: on ESP-IDF (NimBLE, notifications) about 60 ms per request and 13 KB/s for long replies; on Arduino (confirmed indications) about 120 ms and 6 KB/s. A node's schema loads in a second or two. A Bluetooth client isn't authenticated (anyone in range can connect): it has the `public` level, and the node's authorizer decides what it may change.
 - **On a node's own page**, `serial: true` in `window.TESSER` shows the connection screen without the network way.
 
@@ -567,6 +577,7 @@ void lvglTask() {
 TesserUI/
   docs/DESIGN.md
   web/                 the web renderer (npm package "tesserui": dist/ui.js and index.html for nodes, tesserui.js and its types for applications)
+  bridge/              tesserui-bridge (npm): mDNS discovery, proxies and serial ports on localhost, for the launcher (§9.7)
   src/tesserui/        C++: WebUi (bundle and stub serving), Views, LvglUi
   src/tesserui/bundle/ tesserui_bundle.h, generated by the web build and committed per release
   examples/            self-hosted, UI host + NowTP node, stub, LCD local, LCD remote

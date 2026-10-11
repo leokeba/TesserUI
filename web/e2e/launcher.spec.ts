@@ -40,6 +40,37 @@ test('on HTTPS, reaches a loopback node live', async ({ page }) => {
   await expect(page.locator('.state')).toHaveText('Live');
 });
 
+// The bridge (../bridge) lists the nodes it found, and proxies them: live
+// over its WebSocket, or polled over its HTTP.
+test('the bridge lists the nodes it finds, and serves them live', async ({ page }) => {
+  await page.goto('/?bridge=http://localhost:8766');
+  await page.getByRole('button', { name: 'Look for the bridge' }).click();
+  const node = page.locator('a.recent', { hasText: 'TesserUI demo' });
+  await expect(node).toContainText('localhost');
+  await node.click();
+  await expect(page.locator('.state')).toHaveText('Live');
+  await expect(page.locator('.brand')).toHaveText('TesserUI demo');
+  await menu(page).getByRole('link', { name: 'Sensors' }).click();
+  const temperature = page.locator('.row', { has: page.locator('label span:text-is("Temperature")') }).locator('output');
+  const first = await temperature.textContent();
+  await expect(temperature).not.toHaveText(first!, { timeout: 8000 });
+
+  // Listed among the recent nodes, behind the bridge.
+  await page.getByRole('link', { name: 'Another node' }).click();
+  await expect(page.locator('a.recent', { hasText: 'TesserUI demo' }).last()).toContainText('localhost:8091 · bridge');
+});
+
+test('through the bridge over HTTP too', async ({ page }) => {
+  await page.goto(`/?api=${encodeURIComponent('http://localhost:8766/n/localhost:8091/api')}&ws=`);
+  await expect(page.locator('.state')).toHaveText('Polling');
+  await expect(page.locator('.brand')).toHaveText('TesserUI demo');
+});
+
+test('the bridge serves the launcher, which lists its nodes at once', async ({ page }) => {
+  await page.goto('http://localhost:8766/');
+  await expect(page.locator('a.recent', { hasText: 'TesserUI demo' })).toBeVisible();
+});
+
 // A fake navigator.serial and navigator.bluetooth, relaying to the device.
 function fakeDevices() {
   const enc = new TextEncoder();

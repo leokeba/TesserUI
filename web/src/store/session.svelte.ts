@@ -61,6 +61,8 @@ function storageSet(key: string, value: string | null) {
 const RECENT_KEY = 'tesserui:recent';
 export interface RecentNode {
   api: string;
+  // null: HTTP only; absent: the default (DESIGN.md §9.2).
+  ws?: string | null;
   label: string;
 }
 
@@ -261,7 +263,12 @@ export class Session {
   }
 
   private async load() {
-    const h = await this.ask({ op: 'get', path: '/', view: 'hash' });
+    // Opening a serial port resets most boards, which answer once booted (a
+    // Wi-Fi node takes seconds): until one answers, ask again, briefly.
+    let h = await this.client.request({ op: 'get', path: '/', view: 'hash' }, 1500);
+    for (let i = 0; h.status === 'timeout' && i < 40 && this.state === 'open'; i++) {
+      h = await this.client.request({ op: 'get', path: '/', view: 'hash' }, 1500);
+    }
     this.rootHash = h.status === 'ok' && typeof h.body === 'string' ? h.body : null;
     if (!(await this.fetchSchema('/', 3))) return;
     this.findAuth();
@@ -277,7 +284,8 @@ export class Session {
     if (this.config.launcher && (this.client.kind === 'ws' || this.client.kind === 'http')) {
       const api = this.apiUrl();
       const label = this.root.label ?? new URL(api).host;
-      storageSet(RECENT_KEY, JSON.stringify([{ api, label }, ...recentNodes().filter((n) => n.api !== api)].slice(0, 6)));
+      const node: RecentNode = { api, ws: this.config.ws, label };
+      storageSet(RECENT_KEY, JSON.stringify([node, ...recentNodes().filter((n) => n.api !== api)].slice(0, 6)));
     }
   }
 

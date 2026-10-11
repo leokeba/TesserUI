@@ -1,0 +1,4 @@
+# serialport loads its prebuilt binary; its install script only compiles one
+# when none matches, which needs a toolchain.
+allowBuilds:
+  '@serialport/bindings-cpp': false
