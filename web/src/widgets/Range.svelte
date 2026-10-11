@@ -1,10 +1,18 @@
 <script lang="ts">
   import { formatValue } from '../model/format';
   import { useSession } from '../shared.svelte';
-  import { asNumber, fixed, parseNumber, type WidgetProps } from './types';
+  import { asNumber, detent, fixed, parseNumber, type WidgetProps } from './types';
   let { leaf, value, set, disabled, id }: WidgetProps = $props();
   const session = useSession();
   const n = $derived(asNumber(value));
+  // Pointer drags snap to 0 (the thumb too); arrow keys move freely.
+  let dragging = false;
+  function input(el: HTMLInputElement) {
+    const v = Number(el.value);
+    const snapped = dragging ? detent(v, leaf) : v;
+    if (snapped !== v) el.value = String(snapped);
+    set(snapped, true);
+  }
 </script>
 
 <div class="range">
@@ -17,7 +25,10 @@
     value={Number.isNaN(n) ? leaf.min : n}
     {disabled}
     aria-valuetext={formatValue(value, leaf)}
-    oninput={(e) => set(Number(e.currentTarget.value), true)}
+    onpointerdown={() => (dragging = true)}
+    onpointerup={() => (dragging = false)}
+    onpointercancel={() => (dragging = false)}
+    oninput={(e) => input(e.currentTarget)}
   />
   <input
     class="entry"

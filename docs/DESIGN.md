@@ -114,7 +114,7 @@ m.object("pid").ui("advanced");
 |---|---|---|
 | `toggle`, `checkbox` | boolean | Switch or checkbox. |
 | `led` | boolean | Indicator, even if writable (display only). |
-| `slider`, `knob` | number with range | Linear or rotary. |
+| `slider`, `knob` | number with range | Linear or rotary. A range spanning 0 has a detent there: dragging within 2.5 % of the range from 0 gives exactly 0. Keys and typed values aren't snapped. |
 | `number` | number | Numeric entry, even with a range. |
 | `stepper` | number | − / value / + buttons by `step`; good for encoders. |
 | `select`, `segmented`, `radio` | enum | |
@@ -257,6 +257,7 @@ Notifications are merge patches: apply them to `values` exactly as TesserAPI app
 - **Keep-alives** (`ui.keepalive`), for dead-man timers: a device that stops a motor unless its manual output is rewritten within a timeout, so a closed tab or a lost connection can't leave it turning.
   - A writable number or boolean is re-sent every `keepalive` ms while it isn't neutral (0 or `false`), its control is on screen (not on another page or in a closed group), the tab is visible, the connection is open and the control is enabled. Otherwise the device's timer stops it.
   - What's re-sent is the value on screen: a device that sets it back to neutral (its timeout, a disable) ends the keep-alive.
+  - A kept-alive number has a button beside its control that sets it to 0, since dragging back to exactly 0 is hard.
   - Re-sends aren't edits: nothing is pending, so notifications keep reaching the screen, and none is sent while a write to the path is in flight. An error ends the keep-alive until the next edit.
   - A `hold` action repeats its `true` call the same way while held (every 300 ms by default), and calls `false` on release, cancel, blur, a hidden tab or leaving the page.
 - **Forms** (`ui.form` objects): edits stay in a local draft, shown as modified. Submit sends one patch to the object with the edited values and the submit action, either `ui.submit` or the first action: `{"az": 120, "el": 30, "go": null}`. TesserAPI validates every value before applying any and runs the action after the values (TesserAPI §6.3), so the form is atomic up to the action. Success clears the draft; errors highlight fields by `path`. Reset discards the draft.

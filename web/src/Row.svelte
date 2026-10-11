@@ -51,6 +51,10 @@
     };
   });
 
+  // A kept-alive number gets a button back to 0: stopping it by dragging
+  // to exactly 0 is hard.
+  const stoppable = $derived(!!leaf.keepalive && leaf.type !== 'boolean' && leaf.editable);
+
   // A declined confirmation re-renders the control with the device's value.
   let revert = $state(0);
   function set(v: unknown, drag = false) {
@@ -75,10 +79,13 @@
         {#if leaf.description}<span class="info" aria-hidden="true"><Icon name="info" /></span>{/if}
       </label>
     {/if}
-    <div class="control">
+    <div class="control" class:stop={stoppable}>
       {#key revert}
         <Widget {leaf} {value} {set} {disabled} {id} />
       {/key}
+      {#if stoppable}
+        <button type="button" class="quiet" title={session.t('Set to 0')} aria-label={session.t('Set to 0')} disabled={disabled || !value} onclick={() => set(0)}><Icon name="stop" /></button>
+      {/if}
       {#if store.pending[leaf.path]}<span class="busy" aria-label={session.t('Saving')}></span>{/if}
     </div>
     {#if error}<p class="error" role="alert">{error}</p>{/if}
@@ -143,6 +150,9 @@
     min-width: 0;
     justify-content: flex-end;
     position: relative;
+  }
+  .stop > :global(*:first-child) {
+    flex: 1 1 0;
   }
   .wide > .control,
   .bare > .control {

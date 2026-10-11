@@ -91,6 +91,24 @@ test('keep-alives outlast dead-man timers, and stop with the control', async ({ 
   await drive.press('Enter');
   await page.waitForTimeout(2500);
   await expect(drive).toHaveValue('0.50');
+  // Back to 0 in one click, or by dragging close to the middle (a detent).
+  await row(page, 'Drive').getByRole('button', { name: 'Set to 0' }).click();
+  await expect(drive).toHaveValue('0.00');
+  const slider = row(page, 'Drive').locator('input[type=range]');
+  const s = (await slider.boundingBox())!;
+  await page.mouse.move(s.x + s.width * 0.8, s.y + s.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(s.x + s.width * 0.51, s.y + s.height / 2, { steps: 5 });
+  await page.mouse.up();
+  await expect(drive).toHaveValue('0.00');
+  await expect(slider).toHaveValue('0');
+  // Keys aren't snapped: the smallest step away from 0 stays.
+  await slider.press('ArrowRight');
+  await expect(drive).toHaveValue('0.01');
+  await slider.press('ArrowLeft');
+  await expect(drive).toHaveValue('0.00');
+  await drive.fill('0.5');
+  await drive.press('Enter');
   // Off screen, the device's timer stops it.
   await page.locator('nav.side').getByRole('link', { name: 'Lamp' }).click();
   await page.waitForTimeout(1600);
