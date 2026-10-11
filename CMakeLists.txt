@@ -41,22 +41,25 @@ set(TESSERAPI_DIR "" CACHE PATH "TesserAPI source tree (default: ../TesserAPI if
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # TesserAPI, for tesser_core (and ArduinoJson through it).
-set(TESSER_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-if(NOT TESSERAPI_DIR AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../TesserAPI/CMakeLists.txt")
-    get_filename_component(TESSERAPI_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../TesserAPI" ABSOLUTE)
-    set(TESSERAPI_DIR "${TESSERAPI_DIR}" CACHE PATH "" FORCE)
-endif()
-if(TESSERAPI_DIR)
-    message(STATUS "TesserAPI: ${TESSERAPI_DIR}")
-    add_subdirectory("${TESSERAPI_DIR}" "${CMAKE_BINARY_DIR}/tesserapi")
-else()
-    message(STATUS "TesserAPI: fetching https://github.com/leokeba/TesserAPI.git")
-    include(FetchContent)
-    FetchContent_Declare(tesserapi
-        GIT_REPOSITORY https://github.com/leokeba/TesserAPI.git
-        GIT_TAG main
-        GIT_SHALLOW ON)
-    FetchContent_MakeAvailable(tesserapi)
+# A parent project that already added it (TesserMotion, TesserKIT) keeps its own.
+if(NOT TARGET tesser_core)
+    set(TESSER_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+    if(NOT TESSERAPI_DIR AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../TesserAPI/CMakeLists.txt")
+        get_filename_component(TESSERAPI_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../TesserAPI" ABSOLUTE)
+        set(TESSERAPI_DIR "${TESSERAPI_DIR}" CACHE PATH "" FORCE)
+    endif()
+    if(TESSERAPI_DIR)
+        message(STATUS "TesserAPI: ${TESSERAPI_DIR}")
+        add_subdirectory("${TESSERAPI_DIR}" "${CMAKE_BINARY_DIR}/tesserapi")
+    else()
+        message(STATUS "TesserAPI: fetching https://github.com/leokeba/TesserAPI.git")
+        include(FetchContent)
+        FetchContent_Declare(tesserapi
+            GIT_REPOSITORY https://github.com/leokeba/TesserAPI.git
+            GIT_TAG main
+            GIT_SHALLOW ON)
+        FetchContent_MakeAvailable(tesserapi)
+    endif()
 endif()
 
 set(TESSERUI_WARNINGS -Wall -Wextra -Wpedantic -Wshadow -Wconversion -Werror -fno-exceptions -fno-rtti)
