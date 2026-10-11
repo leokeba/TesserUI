@@ -6,6 +6,7 @@ export const ICONS: Record<string, string> = {
   stop: 'M6 6h12v12H6z',
   play: 'M7 5l12 7-12 7z',
   pause: 'M8 5v14M16 5v14',
+  menu: 'M4 6h16M4 12h16M4 18h16',
   home: 'M3 11l9-8 9 8M5 9.5V20h5v-6h4v6h5V9.5',
   settings: 'M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1',
   wifi: 'M2 9a15 15 0 0 1 20 0M5 12.5a10 10 0 0 1 14 0M8.5 16a5 5 0 0 1 7 0M12 20h.01',

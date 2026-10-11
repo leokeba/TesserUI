@@ -368,5 +368,377 @@
   "actions": [],
   "columns": 3,
   "depth": 3
+ },
+ "menu": [
+  {
+   "label": "Azimuth motor",
+   "href": "#/azimuth"
+  },
+  {
+   "label": "Elevation motor",
+   "href": "#/elevation"
+  },
+  {
+   "label": "Calibration",
+   "href": "#/calibration"
+  }
+ ],
+ "pages": {
+  "/azimuth": {
+   "path": "/azimuth",
+   "label": "Azimuth motor",
+   "cards": [
+    {
+     "name": "control",
+     "path": "/azimuth/control",
+     "label": "Control",
+     "advanced": false,
+     "hidden": false,
+     "kind": "section",
+     "level": 1,
+     "items": [
+      {
+       "name": "speed",
+       "path": "/azimuth/control/speed",
+       "label": "Speed",
+       "advanced": false,
+       "hidden": false,
+       "kind": "leaf",
+       "widget": "slider",
+       "type": "number",
+       "editable": true,
+       "min": -1,
+       "max": 1,
+       "step": 0.01,
+       "precision": 2
+      },
+      {
+       "name": "duty",
+       "path": "/azimuth/control/duty",
+       "label": "Duty cycle",
+       "advanced": false,
+       "hidden": false,
+       "kind": "leaf",
+       "widget": "slider",
+       "type": "integer",
+       "editable": true,
+       "min": 0,
+       "max": 100,
+       "unit": "%",
+       "step": 1,
+       "precision": 0
+      },
+      {
+       "name": "direction",
+       "path": "/azimuth/control/direction",
+       "label": "Direction",
+       "advanced": false,
+       "hidden": false,
+       "kind": "leaf",
+       "widget": "toggle",
+       "type": "boolean",
+       "editable": true
+      }
+     ],
+     "advancedItems": [],
+     "lazy": false,
+     "tabs": false,
+     "inline": false,
+     "collapsed": false,
+     "form": false
+    },
+    {
+     "name": "config",
+     "path": "/azimuth/config",
+     "label": "Settings",
+     "advanced": false,
+     "hidden": false,
+     "kind": "section",
+     "level": 1,
+     "items": [
+      {
+       "name": "invert",
+       "path": "/azimuth/config/invert",
+       "label": "Invert direction",
+       "advanced": false,
+       "hidden": false,
+       "kind": "leaf",
+       "widget": "toggle",
+       "type": "boolean",
+       "editable": true
+      },
+      {
+       "name": "shape",
+       "path": "/azimuth/config/shape",
+       "label": "Shape",
+       "advanced": false,
+       "hidden": false,
+       "kind": "leaf",
+       "widget": "slider",
+       "type": "number",
+       "editable": true,
+       "min": 0,
+       "max": 1,
+       "step": 0.01,
+       "precision": 2
+      },
+      {
+       "name": "minVal",
+       "path": "/azimuth/config/minVal",
+       "label": "Min value",
+       "advanced": false,
+       "hidden": false,
+       "kind": "leaf",
+       "widget": "slider",
+       "type": "number",
+       "editable": true,
+       "min": 0,
+       "max": 1,
+       "step": 0.01,
+       "precision": 2
+      }
+     ],
+     "advancedItems": [],
+     "lazy": false,
+     "tabs": false,
+     "inline": false,
+     "collapsed": true,
+     "form": false
+    }
+   ],
+   "actions": [
+    {
+     "name": "stop",
+     "path": "/azimuth/stop",
+     "label": "Stop",
+     "advanced": false,
+     "hidden": false,
+     "icon": "stop",
+     "kind": "leaf",
+     "widget": "button",
+     "type": "action",
+     "editable": false,
+     "deferred": false,
+     "style": "danger",
+     "submit": false
+    }
+   ],
+   "columns": 3,
+   "depth": 2
+  },
+  "/elevation": {
+   "path": "/elevation",
+   "label": "Elevation motor",
+   "cards": [
+    {
+     "name": "control",
+     "path": "/elevation/control",
+     "label": "Control",
+     "advanced": false,
+     "hidden": false,
+     "kind": "section",
+     "level": 1,
+     "items": [
+      {
+       "name": "speed",
+       "path": "/elevation/control/speed",
+       "label": "Speed",
+       "advanced": false,
+       "hidden": false,
+       "kind": "leaf",
+       "widget": "slider",
+       "type": "number",
+       "editable": true,
+       "min": -1,
+       "max": 1,
+       "step": 0.01,
+       "precision": 2
+      },
+      {
+       "name": "duty",
+       "path": "/elevation/control/duty",
+       "label": "Duty cycle",
+       "advanced": false,
+       "hidden": false,
+       "kind": "leaf",
+       "widget": "slider",
+       "type": "integer",
+       "editable": true,
+       "min": 0,
+       "max": 100,
+       "unit": "%",
+       "step": 1,
+       "precision": 0
+      },
+      {
+       "name": "direction",
+       "path": "/elevation/control/direction",
+       "label": "Direction",
+       "advanced": false,
+       "hidden": false,
+       "kind": "leaf",
+       "widget": "toggle",
+       "type": "boolean",
+       "editable": true
+      }
+     ],
+     "advancedItems": [],
+     "lazy": false,
+     "tabs": false,
+     "inline": false,
+     "collapsed": false,
+     "form": false
+    },
+    {
+     "name": "config",
+     "path": "/elevation/config",
+     "label": "Settings",
+     "advanced": false,
+     "hidden": false,
+     "kind": "section",
+     "level": 1,
+     "items": [
+      {
+       "name": "invert",
+       "path": "/elevation/config/invert",
+       "label": "Invert direction",
+       "advanced": false,
+       "hidden": false,
+       "kind": "leaf",
+       "widget": "toggle",
+       "type": "boolean",
+       "editable": true
+      },
+      {
+       "name": "shape",
+       "path": "/elevation/config/shape",
+       "label": "Shape",
+       "advanced": false,
+       "hidden": false,
+       "kind": "leaf",
+       "widget": "slider",
+       "type": "number",
+       "editable": true,
+       "min": 0,
+       "max": 1,
+       "step": 0.01,
+       "precision": 2
+      },
+      {
+       "name": "minVal",
+       "path": "/elevation/config/minVal",
+       "label": "Min value",
+       "advanced": false,
+       "hidden": false,
+       "kind": "leaf",
+       "widget": "slider",
+       "type": "number",
+       "editable": true,
+       "min": 0,
+       "max": 1,
+       "step": 0.01,
+       "precision": 2
+      }
+     ],
+     "advancedItems": [],
+     "lazy": false,
+     "tabs": false,
+     "inline": false,
+     "collapsed": true,
+     "form": false
+    }
+   ],
+   "actions": [
+    {
+     "name": "stop",
+     "path": "/elevation/stop",
+     "label": "Stop",
+     "advanced": false,
+     "hidden": false,
+     "icon": "stop",
+     "kind": "leaf",
+     "widget": "button",
+     "type": "action",
+     "editable": false,
+     "deferred": false,
+     "style": "danger",
+     "submit": false
+    }
+   ],
+   "columns": 3,
+   "depth": 2
+  },
+  "/calibration": {
+   "path": "/calibration",
+   "label": "Calibration",
+   "cards": [
+    {
+     "name": "calibration",
+     "path": "/calibration",
+     "label": "",
+     "advanced": false,
+     "hidden": false,
+     "kind": "section",
+     "level": 1,
+     "items": [
+      {
+       "name": "az",
+       "path": "/calibration/az",
+       "label": "Azimuth target",
+       "advanced": false,
+       "hidden": false,
+       "kind": "leaf",
+       "widget": "slider",
+       "type": "number",
+       "editable": true,
+       "min": 0,
+       "max": 360,
+       "unit": "°",
+       "step": 0.1,
+       "precision": 1
+      },
+      {
+       "name": "el",
+       "path": "/calibration/el",
+       "label": "Elevation target",
+       "advanced": false,
+       "hidden": false,
+       "kind": "leaf",
+       "widget": "slider",
+       "type": "number",
+       "editable": true,
+       "min": 0,
+       "max": 90,
+       "unit": "°",
+       "step": 0.1,
+       "precision": 1
+      },
+      {
+       "name": "go",
+       "path": "/calibration/go",
+       "label": "Go",
+       "advanced": false,
+       "hidden": false,
+       "kind": "leaf",
+       "widget": "button",
+       "type": "action",
+       "editable": false,
+       "deferred": false,
+       "style": "primary",
+       "submit": true
+      }
+     ],
+     "advancedItems": [],
+     "lazy": false,
+     "tabs": false,
+     "inline": false,
+     "collapsed": false,
+     "form": true
+    }
+   ],
+   "actions": [],
+   "columns": 3,
+   "depth": 1
+  }
  }
 }

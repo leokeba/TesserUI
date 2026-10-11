@@ -3,6 +3,7 @@
   import { compareVersions, provideSession } from './shared.svelte';
   import Icon from './Icon.svelte';
   import { humanize } from './model/format';
+  import { buildMenu, type MenuEntry } from './model/menu';
   import { isUnder } from './model/schema';
   import Page from './Page.svelte';
   import type { Session } from './store/session.svelte';
@@ -42,11 +43,29 @@
     const path = h.replace(/\/+$/, '') || home;
     return { view: null as string | null, path: isUnder(path, home) ? path : home };
   });
-  // View pages come first: an empty route opens the first one.
+  // The menu (DESIGN.md §6.3): views, the status, then one entry per
+  // object or remote node of the start page, each a page of its own.
+  const menu = $derived.by(() => {
+    const s = (config.menu ?? full) && config.header !== false && session.loaded ? session.pageSchema(home) : null;
+    return s ? buildMenu(s, home, views, t) : null;
+  });
+  const flat = $derived(menu?.flatMap((e) => [e, ...(e.children ?? [])]).filter((e) => e.href) ?? []);
+  // The entry shown: the deepest one the route is in.
+  const current = $derived.by(() => {
+    const at = route.view !== null ? `#/v/${route.view}` : `#${route.path}`;
+    let best: MenuEntry | undefined;
+    for (const e of flat) if ((at === e.href || at.startsWith(e.href + '/')) && e.href!.length > (best?.href!.length ?? 0)) best = e;
+    return best;
+  });
+  let drawer = $state(false);
+  // Pages come in menu order: an empty route opens the first one, and so
+  // does the start page when it has nothing of its own.
+  const first = $derived(flat[0]?.href ?? (views?.length ? `#/v/${views[0].id}` : undefined));
+  const landing = $derived(!hash || (!!menu && route.view === null && route.path === home && !flat.some((e) => e.href === `#${home}`)));
   $effect(() => {
-    if (hash || !views?.length) return;
-    if (memory) hash = `#/v/${views[0].id}`;
-    else location.replace(`#/v/${views[0].id}`);
+    if (!landing || !first) return;
+    if (memory) hash = first;
+    else location.replace(first);
   });
   // Errors are cleared by navigation (and only by it: untracked).
   $effect(() => {
@@ -103,9 +122,12 @@
 <div class="tesserui" class:full style={theme} onclick={intercept}>
   {#if config.header !== false}
     <header class="top">
-      <a class="brand" href="#{home}">{deviceLabel}</a>
-      {#if views?.length}
-        <nav aria-label={t('Pages')}>
+      {#if menu}
+        <button type="button" class="quiet burger" aria-label={t('Menu')} aria-expanded={drawer} onclick={() => (drawer = !drawer)}><Icon name="menu" /></button>
+      {/if}
+      <a class="brand" href={first ?? `#${home}`}>{deviceLabel}</a>
+      {#if views?.length && !menu}
+        <nav class="tabs" aria-label={t('Pages')}>
           {#each views as v (v.id)}
             <a href="#/v/{v.id}" aria-current={route.view === v.id ? 'page' : undefined}>{v.label}</a>
           {/each}
@@ -131,6 +153,21 @@
     <p class="banner warn" role="alert"><Icon name="alert" /> {t('The connection to the node is lost. Reconnecting…')}</p>
   {/if}
 
+  <div class="body">
+  {#if menu}
+    <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
+    <nav class="side" class:open={drawer} aria-label={t('Menu')} onclick={() => (drawer = false)}>
+      {#each menu as e, i (i)}
+        {#if i && menu[i - 1].href?.startsWith('#/v/') && !e.href?.startsWith('#/v/')}<hr />{/if}
+        {#if e.href}{@render entry(e)}{:else}<p class="group">{e.label}</p>{/if}
+        <!-- Sub-entries show under a group, or once their page is open. -->
+        {#if e.children && (!e.href || current === e || e.children.includes(current!))}
+          <div class="sub">{#each e.children as c, j (j)}{@render entry(c)}{/each}</div>
+        {/if}
+      {/each}
+    </nav>
+    {#if drawer}<div class="scrim drawer" onclick={() => (drawer = false)}></div>{/if}
+  {/if}
   <main>
     {#if config.transport === 'serial' && !session.kind}
       <section class="card connect">
@@ -143,7 +180,7 @@
           <p>{t('Web Serial needs a Chromium-based browser (Chrome, Edge, Opera).')}</p>
         {/if}
       </section>
-    {:else if !session.loaded || (!hash && views?.length)}
+    {:else if !session.loaded || (landing && first)}
       <p class="muted center">{session.state === 'open' ? t('Loading…') : stateText}</p>
     {:else if route.view !== null}
       {@const page = views?.find((v) => v.id === route.view)}
@@ -153,9 +190,17 @@
         <p class="muted center">{t('No view page named “{id}”.', { id: route.view })}</p>
       {/if}
     {:else}
-      {#key route.path}<Page path={route.path} {home} />{/key}
+      {#key route.path}<Page path={route.path} {home} menu={!!menu} />{/key}
     {/if}
   </main>
+  </div>
+
+  {#snippet entry(e: MenuEntry)}
+    <a href={e.href} aria-current={current === e ? 'page' : undefined}>
+      <span class="ic">{#if e.icon}<Icon name={e.icon} />{/if}</span>{e.label}
+      {#if e.online === false}<i class="off" title={t('Offline')}></i>{/if}
+    </a>
+  {/snippet}
 
   {#if session.needToken}
     <div class="scrim"></div>
@@ -421,20 +466,20 @@
     color: var(--text);
     text-decoration: none;
   }
-  nav {
+  .tabs {
     display: flex;
     gap: 4px;
     overflow-x: auto;
     flex: 1;
   }
-  nav a {
+  .tabs a {
     padding: 6px 10px;
     border-radius: 8px;
     color: var(--muted);
     text-decoration: none;
     white-space: nowrap;
   }
-  nav a[aria-current] {
+  .tabs a[aria-current] {
     background: var(--surface-2);
     color: var(--text);
   }
@@ -458,10 +503,94 @@
   .state.connecting i {
     background: var(--warn);
   }
+  .body {
+    display: flex;
+    align-items: flex-start;
+  }
   main {
     padding: var(--gap);
     max-width: 1400px;
     margin: 0 auto;
+    flex: 1;
+    min-width: 0;
+  }
+  .side {
+    position: sticky;
+    top: 52px;
+    flex: none;
+    width: 230px;
+    height: calc(100vh - 52px);
+    overflow-y: auto;
+    padding: 12px 8px;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+  }
+  .side a {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 38px;
+    padding: 0 10px;
+    border-radius: 8px;
+    color: var(--text);
+    text-decoration: none;
+  }
+  .side a:hover {
+    background: var(--surface-2);
+  }
+  .side a[aria-current] {
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .ic {
+    width: 1.15em;
+    display: flex;
+  }
+  .side .off {
+    margin-left: auto;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--muted);
+  }
+  .sub a {
+    padding-left: 38px;
+    min-height: 34px;
+  }
+  .side hr {
+    border: 0;
+    border-top: 1px solid var(--border);
+    margin: 8px 10px;
+  }
+  .group {
+    margin: 14px 10px 4px;
+    font-size: 0.8em;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+  }
+  .burger {
+    display: none;
+    padding: 0 8px;
+  }
+  @media (max-width: 800px) {
+    .burger {
+      display: inline-flex;
+      align-items: center;
+    }
+    .side {
+      position: fixed;
+      left: 0;
+      z-index: 6;
+      transform: translateX(-100%);
+      transition: transform 0.2s;
+    }
+    .side.open {
+      transform: none;
+      box-shadow: 0 10px 40px #0005;
+    }
   }
   .connect {
     max-width: 440px;

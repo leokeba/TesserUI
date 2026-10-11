@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { buildMenu } from '../src/model/menu';
 import { buildLeaf, buildPage, depthOf, inferWidget, visiblePaths, type Leaf, type Section } from '../src/model/model';
 import { isCut, mergeSchema, remoteOf, schemaAt, type Schema } from '../src/model/schema';
 import { fixture } from './fixtures';
@@ -153,5 +154,45 @@ describe('schema tree', () => {
     // A new advertised hash drops the cached tree.
     mergeSchema(root, '/peers', { type: 'object', children: { 'tesser-f37c': { type: 'remote', schema: '00000000' } } });
     expect(schemaAt(root, '/peers/tesser-f37c/lamp')).toBeUndefined();
+  });
+});
+
+describe('menu (DESIGN §6.3)', () => {
+  const root: Schema = {
+    type: 'object',
+    children: {
+      uptime: { type: 'integer' },
+      heliostat: { type: 'object', label: 'Heliostat', ui: { icon: 'sun' }, children: { mode: { type: 'string' } } },
+      azimuth: { type: 'object', ui: { group: 'Controllers' }, children: {} },
+      artnet: { type: 'object', label: 'Art-Net', ui: { group: 'Connections' }, children: {} },
+      elevation: { type: 'object', ui: { group: 'Controllers' }, children: {} },
+      secret: { type: 'object', ui: { hidden: true }, children: {} },
+      peers: { type: 'object', label: 'Nodes', children: { lamp: { type: 'remote', online: false, schema: 'ab' } } },
+      sys: { type: 'object', label: 'System', ui: { page: true }, children: { network: { type: 'object', children: {} }, reboot: { type: 'action' } } },
+      _ui: { type: 'custom', ui: { hidden: true } },
+    },
+  };
+  it('lists views, the status, then objects and nodes in tree order', () => {
+    expect(buildMenu(root, '/', [{ id: 'field', label: 'Field', items: [] }])).toEqual([
+      { label: 'Field', href: '#/v/field' },
+      { label: 'Status', icon: 'home', href: '#/' },
+      { label: 'Heliostat', icon: 'sun', href: '#/heliostat' },
+      { label: 'Controllers', children: [{ label: 'Azimuth', href: '#/azimuth' }, { label: 'Elevation', href: '#/elevation' }] },
+      { label: 'Connections', children: [{ label: 'Art-Net', href: '#/artnet' }] },
+      { label: 'Nodes', href: '#/peers', children: [{ label: 'lamp', href: '#/peers/lamp', online: false }] },
+      { label: 'System', href: '#/sys', children: [{ label: 'Network', href: '#/sys/network' }] },
+    ]);
+  });
+  it('has no status entry without values of its own, and starts from a subtree', () => {
+    const sub: Schema = { type: 'object', children: { a: { type: 'object', children: { b: { type: 'object', children: {} } } } } };
+    expect(buildMenu(sub, '/motor', null)).toEqual([{ label: 'A', href: '#/motor/a' }]);
+  });
+  it("shows the start page's own values only", () => {
+    const page = buildPage(root, '/', '/', undefined, undefined, true);
+    const shown = page.cards.filter((c) => !c.hidden).map((c) => c.items.filter((i) => !i.hidden).map((i) => i.path));
+    expect(shown).toEqual([['/uptime']]);
+    // Read: its own values (hidden ones too, for conditions), not the
+    // entries' subtrees.
+    expect(page.keys).toBe('uptime,secret,_ui');
   });
 });

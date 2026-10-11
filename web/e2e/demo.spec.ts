@@ -5,20 +5,38 @@ import { expect, test, type Page } from '@playwright/test';
 const open = (page: Page, hash = '#/', query = '') => page.goto(`/?api=http://localhost:8091/api${query}${hash}`);
 const row = (page: Page, label: string) => page.locator('.row', { has: page.locator(`label span:text-is("${label}")`) });
 const card = (page: Page, title: string) => page.locator('fieldset.card', { has: page.locator(`.title:text-is("${title}")`) });
+const main = (page: Page) => page.locator('main');
+// A value the demo animates, read on its page.
+async function live(page: Page) {
+  const temperature = row(page, 'Temperature').locator('output');
+  const first = await temperature.textContent();
+  await expect(temperature).not.toHaveText(first!, { timeout: 8000 });
+}
 
-test('renders the tree, live', async ({ page }) => {
+test('renders the tree, live, one page per menu entry', async ({ page }) => {
   await open(page);
   await expect(page.locator('.state')).toHaveText('Live');
   await expect(page.locator('.brand')).toHaveText('TesserUI demo');
-  for (const t of ['Lamp', 'Motor', 'Sensors', 'Settings', 'Widget overrides', 'Nodes']) await expect(card(page, t)).toBeVisible();
-  const uptime = row(page, 'Uptime').locator('output');
-  const first = await uptime.textContent();
-  await expect(uptime).not.toHaveText(first!, { timeout: 5000 });
+  const menu = page.locator('nav.side');
+  for (const t of ['Overview', 'Status', 'Lamp', 'Motor', 'Sensors', 'Settings', 'Widget overrides', 'Nodes']) {
+    await expect(menu.getByRole('link', { name: t, exact: true })).toBeVisible();
+  }
+  // The start page: the node's own values, not its objects.
+  await expect(row(page, 'Uptime')).toBeVisible();
+  await expect(row(page, 'Brightness')).toHaveCount(0);
+  await menu.getByRole('link', { name: 'Sensors' }).click();
+  await expect(page).toHaveURL(/#\/sensors$/);
+  await expect(page.locator('h1')).toHaveText('Sensors');
+  await expect(menu.locator('[aria-current=page]')).toHaveText('Sensors');
+  await live(page);
+  // Nodes lists its peers once open.
+  await menu.getByRole('link', { name: 'Nodes' }).click();
+  await expect(menu.getByRole('link', { name: 'Porch lamp' })).toBeVisible({ timeout: 10000 });
 });
 
 test('writes are read back, and errors roll back', async ({ page }) => {
-  await open(page);
-  const lamp = card(page, 'Lamp');
+  await open(page, '#/lamp');
+  const lamp = main(page);
   // Power is computed by the device from on and brightness.
   await expect(row(page, 'Power').locator('output')).toHaveText('36 W');
   await row(page, 'On').locator('input[role=switch]').click();
@@ -35,7 +53,7 @@ test('writes are read back, and errors roll back', async ({ page }) => {
 });
 
 test('actions: results, deferred calls, confirmations', async ({ page }) => {
-  await open(page);
+  await open(page, '#/motor');
   const count = row(page, 'Count');
   await page.getByRole('button', { name: 'Count' }).click();
   await expect(page.locator('.action output').first()).toHaveText('→ 1');
@@ -53,21 +71,22 @@ test('actions: results, deferred calls, confirmations', async ({ page }) => {
 });
 
 test('events toast', async ({ page }) => {
-  await open(page);
+  await open(page, '#/sensors');
   await expect(page.locator('.toast')).toContainText('Pressed', { timeout: 7000 });
   await expect(row(page, 'Pressed').locator('li').first()).toBeVisible();
 });
 
 test('conditions and forms', async ({ page }) => {
-  await open(page);
-  const config = card(page, 'Config');
+  await open(page, '#/config');
+  const config = main(page);
   await expect(row(page, 'Manual speed')).toBeVisible();
   await config.getByRole('radio', { name: 'auto' }).click();
   await expect(row(page, 'Manual speed')).toHaveCount(0);
   await row(page, 'Enabled').locator('input[role=switch]').click();
   await expect(row(page, 'Threshold').locator('input')).toBeDisabled();
 
-  const settings = card(page, 'Settings');
+  await open(page, '#/settings');
+  const settings = main(page);
   await row(page, 'Ssid').locator('input').fill('field-net');
   await row(page, 'Ssid').locator('input').press('Enter');
   await expect(settings.locator('.form-actions span')).toHaveText('1 modified');
@@ -77,7 +96,7 @@ test('conditions and forms', async ({ page }) => {
 });
 
 test("a select of a keyed list's keys", async ({ page }) => {
-  await open(page);
+  await open(page, '#/widgets');
   const select = row(page, 'Source').locator('select');
   await expect(select.locator('option')).toHaveText(['Sun', 'Tower', 'Pool']);
   await expect(select).toHaveValue('Tower');
@@ -87,16 +106,16 @@ test("a select of a keyed list's keys", async ({ page }) => {
 });
 
 test('groups load their schema on opening', async ({ page }) => {
-  await open(page);
+  await open(page, '#/config');
+  // Network is a collapsed card, Deep a heading, Deeper a group below the
+  // page's schema depth: fetched when opened, then shown.
   await page.locator('summary', { hasText: 'Network' }).click();
-  // Below the page's schema depth: fetched when opened, then shown.
-  await page.locator('summary', { hasText: 'Deep' }).click();
   await page.locator('summary', { hasText: 'Deeper' }).click();
   await expect(row(page, 'Leaf').locator('input')).toHaveValue('42');
 });
 
 test('warnings show while their condition holds', async ({ page }) => {
-  await open(page);
+  await open(page, '#/config');
   await page.locator('summary', { hasText: 'Network' }).click();
   const warning = row(page, 'Static address');
   await expect(warning).toHaveClass(/warning/);
@@ -105,24 +124,28 @@ test('warnings show while their condition holds', async ({ page }) => {
   await expect(warning).toHaveCount(0);
 });
 
-test('lists are edited as a whole', async ({ page }) => {
+test('lists are edited element by element', async ({ page }) => {
   await open(page);
-  const schedule = row(page, 'Schedule');
-  await expect(schedule.locator('tbody tr')).toHaveCount(2);
-  // Runs is read-only: the rows written leave it out, or the device refuses them.
-  await expect(schedule.locator('tbody tr').first().locator('td').nth(4)).toHaveText('12');
-  await schedule.getByRole('button', { name: /Add/ }).click();
-  await expect(schedule.locator('tbody tr')).toHaveCount(3);
-  await schedule.getByRole('button', { name: 'Remove row 0' }).click();
-  await expect(schedule.locator('tbody tr')).toHaveCount(2);
-  await expect(schedule.locator('tbody tr').first().locator('input[type=text]')).toHaveValue('Evening');
-  const label = schedule.getByRole('textbox', { name: 'Label 0' });
+  const items = page.locator('.lv .item');
+  await expect(items).toHaveCount(2);
+  // An element opens into its own controls; Runs is read-only. Writes leave
+  // it out, or the device would refuse them.
+  await items.first().locator('.head').click();
+  await expect(page.locator('.lv .detail output')).toHaveText(['12']);
+  await items.first().locator('.head').click();
+  await page.getByRole('button', { name: /Add/ }).click();
+  await expect(items).toHaveCount(3);
+  await page.getByRole('button', { name: 'Remove row 0' }).click();
+  await expect(items).toHaveCount(2);
+  await items.first().locator('.head').click();
+  const label = page.getByRole('textbox', { name: 'Label', exact: true });
+  await expect(label).toHaveValue('Evening');
   await label.fill('Dusk');
   await label.press('Enter');
-  await schedule.getByRole('button', { name: /Add/ }).click();
-  await expect(schedule.locator('tbody tr')).toHaveCount(3);
+  await page.getByRole('button', { name: /Add/ }).click();
+  await expect(items).toHaveCount(3);
   await expect(label).toHaveValue('Dusk');
-  await expect(schedule.locator('.error')).toHaveCount(0);
+  await expect(page.locator('.lv .error')).toHaveCount(0);
 });
 
 test('views come first and combine peers', async ({ page }) => {
@@ -142,18 +165,24 @@ test('peer pages go through the gateway', async ({ page }) => {
 });
 
 test('HTTP fallback polls', async ({ page }) => {
-  await open(page, '#/', '&ws=');
+  await open(page, '#/sensors', '&ws=');
   await expect(page.locator('.state')).toHaveText('Polling');
-  await expect(card(page, 'Lamp')).toBeVisible();
-  const uptime = row(page, 'Uptime').locator('output');
-  const first = await uptime.textContent();
-  await expect(uptime).not.toHaveText(first!, { timeout: 5000 });
+  await live(page);
 });
 
-test('phone width: no horizontal scroll, 44 px controls', async ({ page }) => {
+test('phone width: no horizontal scroll, 44 px controls, the menu in a drawer', async ({ page }) => {
   await page.setViewportSize({ width: 360, height: 780 });
-  await open(page);
-  await expect(card(page, 'Lamp')).toBeVisible();
+  await open(page, '#/lamp');
+  await expect(row(page, 'Brightness')).toBeVisible();
+  const menu = page.locator('nav.side');
+  await expect(menu).not.toBeInViewport();
+  await page.getByRole('button', { name: 'Menu' }).click();
+  await expect(menu).toBeInViewport();
+  await menu.getByRole('link', { name: 'Motor' }).click();
+  await expect(page.locator('h1')).toHaveText('Motor');
+  await expect(menu).not.toBeInViewport();
+  await open(page, '#/lamp');
+  await expect(row(page, 'Brightness')).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(360);
   const small = await page.evaluate(
     () =>

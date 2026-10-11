@@ -4,10 +4,9 @@ import { expect, test, type Page } from '@playwright/test';
 // /account, /settings and /sequence (test/trees.cpp).
 const open = (page: Page, hash = '#/') => page.goto(`/?api=http://localhost:8091/api${hash}`);
 const row = (page: Page, label: string) => page.locator('.row', { has: page.locator(`label span:text-is("${label}")`) });
-const card = (page: Page, title: string) => page.locator('fieldset.card', { has: page.locator(`.title:text-is("${title}")`) });
 
 test('flags, time zones, the browser clock and typed deferred actions', async ({ page }) => {
-  await open(page);
+  await open(page, '#/system');
   const days = row(page, 'Timer days');
   await expect(days.getByLabel('Mon')).toBeChecked();
   await expect(days.getByLabel('Sat')).not.toBeChecked();
@@ -32,8 +31,8 @@ test('flags, time zones, the browser clock and typed deferred actions', async ({
 });
 
 test('secrets are never shown, and sign-in goes through the login action', async ({ page }) => {
-  await open(page);
-  const password = card(page, 'Settings').locator('input[type=password]');
+  await open(page, '#/settings');
+  const password = page.locator('main input[type=password]');
   await expect(password).toHaveValue('');
   await expect(password).toHaveAttribute('placeholder', '••••••••');
 
@@ -55,7 +54,9 @@ test('secrets are never shown, and sign-in goes through the login action', async
   expect(await page.evaluate(() => localStorage.getItem('tesserui:token'))).toBeNull();
 
   // The login action's own fields, in its card, sign in too.
-  const account = card(page, 'Account');
+  await page.locator('nav.side').getByRole('link', { name: 'Account' }).click();
+  await expect(page.locator('h1')).toHaveText('Account');
+  const account = page.locator('main');
   await account.locator('input[type=text]').fill('admin');
   await account.locator('input[type=password]').fill('admin');
   await account.getByRole('button', { name: 'Login' }).click();
@@ -63,8 +64,9 @@ test('secrets are never shown, and sign-in goes through the login action', async
 });
 
 test('arrays: edited whole, or plotted', async ({ page }) => {
-  await open(page);
-  const gains = row(page, 'Gains');
+  await open(page, '#/tables');
+  // An array directly under a page is a card of its own, titled by it.
+  const gains = page.locator('fieldset.card', { has: page.locator('.title:text-is("Gains")') });
   await expect(gains.locator('tbody tr')).toHaveCount(3);
   await gains.getByRole('button', { name: 'Add' }).click();
   await expect(gains.locator('tbody tr')).toHaveCount(4);
@@ -79,7 +81,7 @@ test('arrays: edited whole, or plotted', async ({ page }) => {
 });
 
 test('custom elements: keyframes and the sky', async ({ page }) => {
-  await open(page);
+  await open(page, '#/sequence');
   const keyframes = page.locator('x-keyframes');
   const svg = keyframes.locator('svg');
   await expect(svg).toHaveAttribute('aria-label', 'Azimuth: 4 frames');

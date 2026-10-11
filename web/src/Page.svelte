@@ -7,7 +7,8 @@
   import Section from './Section.svelte';
 
   // home: where the UI starts; back doesn't go above it.
-  let { path, home = '/' }: { path: string; home?: string } = $props();
+  // menu: the menu leads to the start page's objects (DESIGN.md §6.3).
+  let { path, home = '/', menu = false }: { path: string; home?: string; menu?: boolean } = $props();
   const session = useSession();
   const t = (text: string) => session.t(text);
 
@@ -27,7 +28,7 @@
   // the same tree in place: the page is rebuilt on every merge.
   const page = $derived.by(() => {
     void session.schemaVersion;
-    return schema ? buildPage(schema, path, nodeRoot, t, accessAt(session.root, parentPath(path))) : null;
+    return schema ? buildPage(schema, path, nodeRoot, t, accessAt(session.root, parentPath(path)), menu && path === home) : null;
   });
   $effect(() => {
     if (page) session.showPage(page);
@@ -42,11 +43,12 @@
   // ui.page (DESIGN.md §6.1).
   const back = $derived.by(() => {
     void session.schemaVersion;
-    if (path === home) return null;
+    // The menu leads to the start page's entries.
+    if (path === home || (menu && parentPath(path) === home)) return null;
     let p = parentPath(path);
     while (p !== '/' && p !== home) {
       const s = session.schemaAt(p);
-      if (s?.type === 'remote' || s?.ui?.page === true) break;
+      if (s?.type === 'remote' || s?.ui?.page === true || (menu && parentPath(p) === home)) break;
       p = parentPath(p);
     }
     return p;

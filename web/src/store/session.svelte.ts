@@ -26,8 +26,11 @@ export interface Config {
   strings?: Record<string, string>;
   // The path the UI starts from and doesn't go above (embedding a subtree).
   path?: string;
-  // The top bar: device label, view pages, connection state.
+  // The top bar: device label, connection state, sign-in.
   header?: boolean;
+  // The navigation menu (DESIGN.md §6.3): one page per entry. Default: on
+  // for the node's own page, off when embedded or without the header.
+  menu?: boolean;
   // 'hash' follows location.hash; 'memory' keeps the route to itself, for
   // UIs embedded in a page that owns the URL.
   routing?: 'hash' | 'memory';

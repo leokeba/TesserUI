@@ -27,7 +27,7 @@ TesserUI renders user interfaces for [TesserAPI](https://github.com/leokeba/Tess
 | Item | Decision |
 |---|---|
 | Device side | C++17 and TesserAPI's rules: no exceptions, no RTTI, ESP-IDF ≥ 5.1 and Arduino-ESP32 ≥ 3.0. |
-| Web bundle | ≤ 50 KB gzipped for everything (JS and CSS), measured in CI. Evergreen browsers only. (Raised from 40 KB once phases 1, 2 and 4 were in: they measured 40.2 KB with every saving taken.) |
+| Web bundle | ≤ 52 KB gzipped for everything (JS and CSS), measured in CI. Evergreen browsers only. (Raised from 40 KB once phases 1, 2 and 4 were in: they measured 40.2 KB with every saving taken. Raised from 50 KB for the navigation menu, §6.3.) |
 | Web stack | Svelte 5 + TypeScript + Vite, without a CSS framework or chart library. |
 | LCD stack | LVGL 9.x. Display and touch drivers are the application's: TesserUI receives an `lv_display_t*`. |
 | Smallest node | A NowTP-only node with no Wi-Fi and no UI assets: its tree and its hint literals are all it stores. |
@@ -133,6 +133,7 @@ m.object("pid").ui("advanced");
 | Key | Type | Applies to | Meaning |
 |---|---|---|---|
 | `labels` | string | enum, flags | Display labels in enum order, comma-separated: `"Off,Automatic,Manual"`; for `flags`, one per bit. |
+| `group` | string | top-level object | The menu heading it's listed under (§6.3): `"Connections"`. |
 | `options` | string | writable string, string action argument | The path of a keyed list (TesserAPI §4.4), relative or absolute as a condition's (§5.3): the value is one of its keys, chosen in a `select` (`radio` and `segmented` fit too). The renderer subscribes to the list even when it isn't shown. The device still validates the value. A list whose rows hold such a field opens element by element instead of being a table. |
 | `optionsExtra` | string | with `options` | Fixed choices listed before the keys, comma-separated: `"Sun"`. |
 | `filename`, `accept` | string | file | The download's file name; the upload's file chooser filter (`".bin"`). |
@@ -175,7 +176,7 @@ Layout follows the tree. Children render in declaration order, which is TesserAP
 
 ### 6.1 Rules (both renderers)
 
-1. A **page** is the root of a node, an object with `ui.page`, or a view page (§8).
+1. A **page** is the root of a node, a menu entry (§6.3), an object with `ui.page`, or a view page (§8). An object that is a form, tabs or an inline group stays one card on its own page.
 2. On a page, each child **object** is a **card**, and so is each list (titled by it). Actions without an argument directly under the page are buttons beside its title. Other values directly under the page's root form a first, untitled card; when only `advanced` ones are left, they form a collapsed card titled "Advanced", last.
 3. Inside a card, values and actions are **rows**: label, then control. A nested object is a **sub-section** with a heading, and a third level is a collapsible group, open unless `ui.collapsed`; one whose schema the page's depth cut is fetched when open. `ui.card` promotes a nested object to its own card; `ui.page` makes it a link to its own page.
 4. `advanced` children of a section go into one collapsed "Advanced" group at its end, unless nothing else in it is shown (to this client): then they are shown as they are. On a page, an `advanced` object is a card that starts collapsed; `advanced` values go to the first card's group.
@@ -188,9 +189,24 @@ Layout follows the tree. Children render in declaration order, which is TesserAP
 - Rows are a two-column grid (label, control), stacked below 300 px of card content width, so that phones (about 320 px) keep two columns.
 - Phone width: no horizontal scroll, 16 px gutters, controls at least 44 px tall.
 
-### 6.3 LCD
+### 6.3 Menu (both renderers)
 
-- The root page is a **menu**: one entry per card, plus remote links. Selecting an entry opens that card as a full-screen page. On screens ≥ 800 px wide, cards may be shown side by side like the web.
+A node's UI is a **menu** of pages rather than one page of every card.
+
+- **Entries,** in order:
+  - the view pages (§8);
+  - **Status**: the start page's own values, lists and actions (`#/`), when it has any;
+  - one entry per child object and remote node of the start page, in tree order (`#/heliostat`). Hidden objects have none.
+- **Labels and icons** come from `label` and `ui.icon`.
+- **Groups:** top-level objects with the same `ui.group` (`"Controllers"`, `"Connections"`) are gathered under that heading, where the first of them would be.
+- **Sub-entries:** an object with `ui.page` (`/sys`), or one holding remote nodes (`/peers`), lists its objects and nodes as sub-entries, one level deep. The web shows them while the entry's page, or one of theirs, is open.
+- **Pages:** an entry's page follows §6.1 with the object as its root: its own values form the first card, and its child objects are cards. The start page shows its own values only, the rest being entries. A remote node's entry opens its root page (§7.6).
+- **Start:** the first entry opens when the route is empty, or when it is the start page and that has no entry of its own.
+- **Web:** a sidebar beside the page; below 800 px, a drawer opened from the header's menu button, closed by choosing an entry. The header keeps the device label, the connection state and sign-in. The menu replaces the view tabs. It's on for the node's own page and off when the UI is embedded or has no header (§9.9): those show the start page with every card, and view tabs. The `menu` option (§9.2) decides otherwise.
+
+### 6.4 LCD
+
+- The menu (§6.3) is the root screen. Selecting an entry opens its page full-screen. On screens ≥ 800 px wide, cards may be shown side by side like the web.
 - Sub-sections are headings on the scrolling page; collapsible groups and `tabs` become sub-pages.
 - A header shows the page label, a back button and the connection state.
 
@@ -293,7 +309,7 @@ field.card("Calibration").node("/calib");         // an auto-rendered subtree
 | `{"each": path, "item": item}` | The item repeated for each child of the object at `path`, with `$` replaced by the child's path. With `/peers`, one entry per discovered node. |
 
 - A `widget` item may name a custom element (§9.8) over any path, an object included. A view whose only item is one is a **custom page**: the element alone, the page's full width.
-- The renderer shows view pages first, before the node's own tree, as entries of the root menu (LCD) or as tabs (web). Route: `#/v/<id>`.
+- The renderer shows view pages first, before the node's own tree: the first menu entries (§6.3), or tabs without the menu. Route: `#/v/<id>`.
 - A view's subscriptions follow §7.3: one per distinct remote node involved, plus one local, within the budget of 4. When a page involves more than 3 nodes, the renderer subscribes to the nodes on screen and falls back to polling (one get per second) for the rest.
 - `Views` stores its declaration as C++ structures of string literals and renders the JSON on request: no JSON document at rest. A UI host may instead serve a JSON file from its filesystem through a `custom` node with the same name and format.
 
@@ -337,6 +353,7 @@ web/
   | `strings` | The interface's text (§9.10). |
   | `path` | The path the UI starts from and doesn't go above: a subtree, or a peer. View pages show only when it is `/`. |
   | `header` | `false` hides the top bar; a lost connection still shows a banner. |
+  | `menu` | The navigation menu (§6.3). Default: on for the node's own page, off when embedded; always off without the header. |
   | `routing` | `hash` (default) follows `location.hash`; `memory` keeps the route inside the UI, for pages that own the URL. |
 
   For development, the query string overrides the page's: `?api=http://<ip>/api`, `?ws=` (empty: HTTP only), `?transport=serial`.

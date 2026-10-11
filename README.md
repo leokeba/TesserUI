@@ -26,11 +26,11 @@ void setup() {
 }
 ```
 
-Open `http://<node>/`: a card for the motor with a knob, a switch and a danger button, live through a WebSocket subscription.
+Open `http://<node>/`: a menu with an entry for the motor, whose page has a knob, a switch and a danger button, live through a WebSocket subscription.
 
 ## From schema to screen
 
-Without any hint, every node gets a widget from its schema: writable booleans are switches, numbers with a range are sliders, enums are segmented controls or selects, actions are buttons (with an input when they take an argument), events are logs, lists are editable tables, objects are cards and sections in declaration order. Hints on the same line refine it:
+Without any hint, every node gets a widget from its schema: writable booleans are switches, numbers with a range are sliders, enums are segmented controls or selects, actions are buttons (with an input when they take an argument), events are logs, lists are editable tables, objects are cards and sections in declaration order. Each top-level object is a page of its own, reached from a menu (a sidebar, a drawer on phones). Hints on the same line refine it:
 
 | Hint | Effect |
 |---|---|
@@ -40,6 +40,7 @@ Without any hint, every node gets a widget from its schema: writable booleans ar
 | `.ui("advanced")`, `.ui("hidden")`, `.ui("readonly")` | Visibility |
 | `.ui("visibleWhen", "mode=manual")`, `.ui("enabledWhen", "enabled=true")` | Conditions |
 | `.ui("page")`, `.ui("card")`, `.ui("tabs")`, `.ui("inline")`, `.ui("collapsed")` | Layout |
+| `.ui("icon", "sun")`, `.ui("group", "Connections")` | Menu entry icon, menu heading |
 | `.ui("form")` | Edits stay local until submitted as one atomic patch |
 
 The full vocabulary is in [DESIGN.md §5](docs/DESIGN.md#5-hints-tier-1).

@@ -17,9 +17,8 @@ test('custom elements draw nodes and write through tesser', async ({ page }) => 
 
 test('an element that cannot load falls back to the inferred widget', async ({ page }) => {
   await page.route('**/ext/sun-dial.js', (r) => r.abort());
-  await page.goto(`/?api=${api}#/`);
-  const sky = page.locator('.row', { has: page.locator('label span:text-is("Sky")') });
-  await expect(sky.locator('pre')).toContainText('"targetAz": 180');
+  await page.goto(`/?api=${api}#/sky`);
+  await expect(page.locator('main pre')).toContainText('"targetAz": 180');
 });
 
 // A page that embeds two UIs (DESIGN.md §9.9), served on the preview's origin.

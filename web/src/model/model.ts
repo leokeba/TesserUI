@@ -3,6 +3,7 @@
 
 import { parseConditions, resolvePath, type Condition } from './conditions';
 import { decimalsOf, humanize } from './format';
+import { isEntry } from './menu';
 import { higher, isUnder, joinPath, parentPath, type Hint, type Level, type Schema } from './schema';
 
 export type Widget =
@@ -487,8 +488,12 @@ function section(name: string, path: string, s: Schema, level: number, parent: s
 
 // The page at `path`, from the schema of the page's object. `root` is the
 // path of the node it belongs to ('/', or a remote node's path).
-// `above`: the level the page's ancestors require.
-export function buildPage(s: Schema, path: string, root = '/', t: (text: string) => string = (x) => x, above?: Level): Page {
+// `above`: the level the page's ancestors require. `menu`: the page's objects
+// and remote nodes are menu entries (DESIGN.md §6.3), not cards: the page
+// shows its own values only.
+export function buildPage(s: Schema, path: string, root = '/', t: (text: string) => string = (x) => x, above?: Level, menu = false): Page {
+  const all = s;
+  if (menu) s = { ...s, children: Object.fromEntries(Object.entries(s.children ?? {}).filter(([, c]) => !isEntry(c))) };
   nodeRoot = root;
   inherited = above;
   const page: Page = {
@@ -505,6 +510,14 @@ export function buildPage(s: Schema, path: string, root = '/', t: (text: string)
     const leaf = buildLeaf(path.slice(path.lastIndexOf('/') + 1) || 'root', path, s, parentPath(path), root, above);
     leaf.label = '';
     page.cards.push({ ...base('', path, {type: 'object'}, path), kind: 'section', level: 1, items: [leaf], advancedItems: [], lazy: false, tabs: false, inline: false, collapsed: false, form: false });
+    return page;
+  }
+  // A form, tabs or an inline group stays one card, as on its parent's page:
+  // a menu entry's page (DESIGN.md §6.3), or one with ui.page.
+  if (path !== root && (ui(s, 'form') === true || ui(s, 'tabs') === true || ui(s, 'inline') === true)) {
+    const promoted: Section[] = [];
+    const card = section(path.slice(path.lastIndexOf('/') + 1), path, s, 1, parentPath(path), promoted);
+    page.cards.push({ ...card, label: '', icon: undefined, description: undefined }, ...promoted);
     return page;
   }
   // Values directly under the page form a first, untitled card; each child
@@ -541,8 +554,8 @@ export function buildPage(s: Schema, path: string, root = '/', t: (text: string)
 
   // Subscribe to everything shown except mirrored remote nodes, whose copies
   // would come along, and sub-pages, which subscribe themselves.
-  const children = Object.entries(s.children ?? {});
-  const keep = children.filter(([, c]) => !(c.type === 'remote' && c.mirror) && !(c.type === 'object' && ui(c, 'page') === true));
+  const children = Object.entries(all.children ?? {});
+  const keep = children.filter(([, c]) => !(c.type === 'remote' && c.mirror) && !(c.type === 'object' && ui(c, 'page') === true) && !(menu && isEntry(c)));
   const read = keep.filter(([, c]) => valued(c));
   if (read.length < children.filter(([, c]) => valued(c)).length) {
     page.keys = read.map(([n]) => n).join(',');
