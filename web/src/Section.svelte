@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { setContext } from 'svelte';
-  import { useSession, Draft, DRAFT } from './shared.svelte';
+  import { getContext, setContext } from 'svelte';
+  import { useSession, Draft, DRAFT, SHOWN } from './shared.svelte';
   import { isObject } from './client/json';
   import Icon from './Icon.svelte';
   import Item from './Item.svelte';
@@ -37,6 +37,9 @@
   // svelte-ignore state_referenced_locally
   const draft = sec.form ? new Draft() : null;
   if (draft) setContext(DRAFT, draft);
+  // Shown: not inside a closed group (keep-alives stop there).
+  const above = getContext<(() => boolean) | undefined>(SHOWN);
+  setContext(SHOWN, () => (!foldable || open) && (above?.() ?? true));
   const submitAction = $derived(sec.form ? (sec.items.find((i) => i.kind === 'leaf' && i.submit) as Leaf | undefined) : undefined);
   let busy = $state(false);
 

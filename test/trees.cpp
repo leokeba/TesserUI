@@ -172,7 +172,18 @@ Demo::Demo()
         .ui("history", 30)
         .watch();
     motor.value("invert", invert).ui("widget", "checkbox");
-    motor.action("jog", [this](bool down) { jogging = down; }).ui("widget", "hold");
+    // Dead-man timers, as TesserMotion's: the jog and the manual drive stop
+    // unless called or rewritten within a second (DESIGN.md §7.4). The UI
+    // repeats the hold's true, and keeps the drive alive while it isn't 0.
+    motor.action("jog", [this](bool down) {
+        jogging = down;
+        jogMs = lastMs_;
+    }).ui("widget", "hold");
+    motor.value("jogging", [this] { return jogging; }).watch();
+    motor.value("drive", [this] { return drive; }, [this](double v) {
+        drive = v;
+        driveMs = lastMs_;
+    }).range(-1, 1).step(0.01).ui("keepalive", 400).watch();
     motor.action("moveTo", [this](float deg) { target = deg; })
         .range(0, 360)
         .unit("°")
@@ -372,8 +383,10 @@ void Demo::tick(uint32_t nowMs) {
     humidity = 48.25f + 6.0f * static_cast<float>(sin(t / 33.0));
     pressure = 1013.25f + 3.0f * static_cast<float>(sin(t / 61.0));
 
+    if (jogging && nowMs - jogMs > 1000) jogging = false;
+    if (drive != 0 && nowMs - driveMs > 1000) drive = 0;
     // The motor: toward the moveTo target at 90 °/s, else by jog (30 °/s)
-    // and speed (60 °/s at full speed). Values in [0, 360).
+    // and speed and drive (60 °/s at full). Values in [0, 360).
     if (target != position) {
         double step = 90.0 * dt;
         double d = target - position;
@@ -385,7 +398,7 @@ void Demo::tick(uint32_t nowMs) {
             position = target;
         }
     } else {
-        position += (jogging ? 30.0 : 0.0) * dt + speed * 60.0 * dt;
+        position += (jogging ? 30.0 : 0.0) * dt + (speed + drive) * 60.0 * dt;
         position = fmod(position, 360.0);
         if (position < 0) position += 360.0;
         target = position;

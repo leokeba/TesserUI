@@ -70,6 +70,34 @@ test('actions: results, deferred calls, confirmations', async ({ page }) => {
   void count;
 });
 
+test('keep-alives outlast dead-man timers, and stop with the control', async ({ page }) => {
+  await open(page, '#/motor');
+  // The jog stops unless called within a second: held, it's repeated.
+  const jog = page.getByRole('button', { name: 'Jog' });
+  const jogging = row(page, 'Jogging').locator('.led');
+  const box = (await jog.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await expect(jogging).toHaveAttribute('aria-label', 'On');
+  await page.waitForTimeout(2500);
+  await expect(jogging).toHaveAttribute('aria-label', 'On');
+  await page.mouse.up();
+  await expect(jogging).toHaveAttribute('aria-label', 'Off');
+
+  // The drive falls back to 0 unless rewritten within a second: while it
+  // isn't 0 and is on screen, the UI re-sends it.
+  const drive = row(page, 'Drive').locator('input[type=number]');
+  await drive.fill('0.5');
+  await drive.press('Enter');
+  await page.waitForTimeout(2500);
+  await expect(drive).toHaveValue('0.50');
+  // Off screen, the device's timer stops it.
+  await page.locator('nav.side').getByRole('link', { name: 'Lamp' }).click();
+  await page.waitForTimeout(1600);
+  await page.locator('nav.side').getByRole('link', { name: 'Motor' }).click();
+  await expect(drive).toHaveValue('0.00');
+});
+
 test('events toast', async ({ page }) => {
   await open(page, '#/sensors');
   await expect(page.locator('.toast')).toContainText('Pressed', { timeout: 7000 });

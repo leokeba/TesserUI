@@ -57,6 +57,16 @@ describe('widget inference (DESIGN §4)', () => {
     expect(leaf({ type: 'integer', writable: true }).step).toBe(1);
     expect(leaf({ type: 'number', ui: { widget: 'chart' } }).history).toBe(60);
   });
+  it('keeps values alive for dead-man timers (ui.keepalive)', () => {
+    expect(leaf({ type: 'number', writable: true, min: -1, max: 1, ui: { keepalive: 400 } }).keepalive).toBe(400);
+    expect(leaf({ type: 'boolean', writable: true, ui: { keepalive: 400 } }).keepalive).toBe(400);
+    // Neither read-only values nor strings.
+    expect(leaf({ type: 'number', ui: { keepalive: 400 } }).keepalive).toBeUndefined();
+    expect(leaf({ type: 'string', writable: true, ui: { keepalive: 400 } }).keepalive).toBeUndefined();
+    // A hold repeats its true call, every 300 ms by default.
+    expect(leaf({ type: 'action', arg: 'boolean', ui: { widget: 'hold' } }).keepalive).toBe(300);
+    expect(leaf({ type: 'action', arg: 'boolean', ui: { widget: 'hold', keepalive: 200 } }).keepalive).toBe(200);
+  });
   it("chooses among a keyed list's keys (ui.options)", () => {
     const s: Schema = { type: 'string', writable: true, ui: { options: 'directions', optionsExtra: 'Sun' } };
     expect(buildLeaf('source', '/heliostat/source', s, '/heliostat')).toMatchObject({

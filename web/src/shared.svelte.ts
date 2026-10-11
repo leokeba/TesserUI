@@ -22,6 +22,9 @@ export class Draft {
 }
 
 export const DRAFT = Symbol('draft');
+// Whether a section's content is shown (no closed group above it): a
+// function, for keep-alives (DESIGN.md §7.4).
+export const SHOWN = Symbol('shown');
 
 export function compareVersions(a: string, b: string): number {
   const pa = a.split('.').map(Number);

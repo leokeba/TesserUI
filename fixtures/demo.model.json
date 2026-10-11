@@ -362,7 +362,35 @@
       "type": "boolean",
       "editable": false,
       "deferred": false,
-      "submit": false
+      "submit": false,
+      "keepalive": 300
+     },
+     {
+      "name": "jogging",
+      "path": "/motor/jogging",
+      "label": "Jogging",
+      "advanced": false,
+      "hidden": false,
+      "kind": "leaf",
+      "widget": "led",
+      "type": "boolean",
+      "editable": false
+     },
+     {
+      "name": "drive",
+      "path": "/motor/drive",
+      "label": "Drive",
+      "advanced": false,
+      "hidden": false,
+      "kind": "leaf",
+      "widget": "slider",
+      "type": "number",
+      "editable": true,
+      "min": -1,
+      "max": 1,
+      "step": 0.01,
+      "precision": 2,
+      "keepalive": 400
      },
      {
       "name": "moveTo",
@@ -2217,7 +2245,35 @@
        "type": "boolean",
        "editable": false,
        "deferred": false,
-       "submit": false
+       "submit": false,
+       "keepalive": 300
+      },
+      {
+       "name": "jogging",
+       "path": "/motor/jogging",
+       "label": "Jogging",
+       "advanced": false,
+       "hidden": false,
+       "kind": "leaf",
+       "widget": "led",
+       "type": "boolean",
+       "editable": false
+      },
+      {
+       "name": "drive",
+       "path": "/motor/drive",
+       "label": "Drive",
+       "advanced": false,
+       "hidden": false,
+       "kind": "leaf",
+       "widget": "slider",
+       "type": "number",
+       "editable": true,
+       "min": -1,
+       "max": 1,
+       "step": 0.01,
+       "precision": 2,
+       "keepalive": 400
       }
      ],
      "advancedItems": [],
@@ -3802,7 +3858,35 @@
         "type": "boolean",
         "editable": false,
         "deferred": false,
-        "submit": false
+        "submit": false,
+        "keepalive": 300
+       },
+       {
+        "name": "jogging",
+        "path": "/motor/jogging",
+        "label": "Jogging",
+        "advanced": false,
+        "hidden": false,
+        "kind": "leaf",
+        "widget": "led",
+        "type": "boolean",
+        "editable": false
+       },
+       {
+        "name": "drive",
+        "path": "/motor/drive",
+        "label": "Drive",
+        "advanced": false,
+        "hidden": false,
+        "kind": "leaf",
+        "widget": "slider",
+        "type": "number",
+        "editable": true,
+        "min": -1,
+        "max": 1,
+        "step": 0.01,
+        "precision": 2,
+        "keepalive": 400
        },
        {
         "name": "moveTo",

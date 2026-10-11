@@ -174,6 +174,15 @@ export class Store {
     return r;
   }
 
+  // A keep-alive (DESIGN.md §7.4): the value again, not an edit. Nothing is
+  // pending, so the device's notifications keep reaching the screen.
+  async resend(path: string, value: unknown): Promise<boolean> {
+    const r = await this.client().request({ op: 'set', path, body: value });
+    if (r.status !== 'ok') this.fail(path, r);
+    else this.apply(path, r.body);
+    return r.status === 'ok';
+  }
+
   // For sliders, knobs and color pickers: at most one write per `ms` while
   // dragging, always the final value, and no notification jitter meanwhile.
   writeSoon(path: string, value: unknown, ms = 100) {

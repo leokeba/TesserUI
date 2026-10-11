@@ -124,7 +124,7 @@ m.object("pid").ui("advanced");
 | `timezone` | string | The IANA time zones the browser knows; choosing one writes its POSIX TZ string (`<+01>-1<+02>,M3.5.0,M10.5.0/3`), derived from the zone's offsets over the current year, which is what `tzset()` reads on the device. |
 | `readout`, `bar`, `gauge` | number | `bar` and `gauge` need `min`/`max`, which a read-only value may declare with `.range()`. |
 | `chart` | number, numeric array | A time series of the value, kept by the renderer (§7.7); for an array, its values by index. |
-| `hold` | action with a boolean `arg` | Called with `true` on press and `false` on release: jog buttons. |
+| `hold` | action with a boolean `arg` | Called with `true` on press, again every `ui.keepalive` ms while held (default 300), and `false` on release: jog buttons behind a dead-man timer (§7.4). |
 | `button` | action | Explicitly a button (e.g. a typed action whose argument comes from `ui.value`). |
 | any name with a hyphen (`x-sun-dial`) | any node, objects included | A custom element (§9.8), web only. Other renderers use the tier 0 widget; on an object, its section. |
 
@@ -146,6 +146,7 @@ m.object("pid").ui("advanced");
 | `value` | number or string | action | The argument the action's button sends, instead of an input: `o.action("preset", ...).ui("value", 3)`. `"$now"` sends the browser's clock (milliseconds since 1970). |
 | `auth` | string | action | `"login"`: the action signing clients in (§7.4). `"whoami"`: the action telling a client its access level. |
 | `history` | number | chart | Seconds of history (default 60). |
+| `keepalive` | number | writable number or boolean, `hold` action | Milliseconds between keep-alives for a device's dead-man timer (§7.4). A `hold` action repeats every 300 ms without it. |
 | `advanced` | flag | any | Shown under a collapsed "Advanced" group of its section. |
 | `hidden` | flag | any | Not shown. Its value is still read and usable in conditions. |
 | `readonly` | flag | value | Shown as a readout even though writable. |
@@ -253,6 +254,11 @@ Notifications are merge patches: apply them to `values` exactly as TesserAPI app
   - While a path is pending, notifications for it are held back, so the control doesn't jitter, and applied when the reply arrives.
 - **Errors:** an error reply restores the last confirmed value and shows the message on the widget at the error's `path`. If that path isn't visible, on its nearest visible ancestor. `"partial": true` adds "some changes were applied".
 - **Actions:** `set <path> <arg>`. `confirm` asks first. A button is disabled while its call is in flight. A reply other than `null` is shown next to the button, and errors appear as for values. The login action (`ui.auth: "login"`), wherever it is drawn, signs the UI in like the sign-in dialog.
+- **Keep-alives** (`ui.keepalive`), for dead-man timers: a device that stops a motor unless its manual output is rewritten within a timeout, so a closed tab or a lost connection can't leave it turning.
+  - A writable number or boolean is re-sent every `keepalive` ms while it isn't neutral (0 or `false`), its control is on screen (not on another page or in a closed group), the tab is visible, the connection is open and the control is enabled. Otherwise the device's timer stops it.
+  - What's re-sent is the value on screen: a device that sets it back to neutral (its timeout, a disable) ends the keep-alive.
+  - Re-sends aren't edits: nothing is pending, so notifications keep reaching the screen, and none is sent while a write to the path is in flight. An error ends the keep-alive until the next edit.
+  - A `hold` action repeats its `true` call the same way while held (every 300 ms by default), and calls `false` on release, cancel, blur, a hidden tab or leaving the page.
 - **Forms** (`ui.form` objects): edits stay in a local draft, shown as modified. Submit sends one patch to the object with the edited values and the submit action, either `ui.submit` or the first action: `{"az": 120, "el": 30, "go": null}`. TesserAPI validates every value before applying any and runs the action after the values (TesserAPI §6.3), so the form is atomic up to the action. Success clears the draft; errors highlight fields by `path`. Reset discards the draft.
 - **Authentication:** an `unauthorized` reply opens a sign-in dialog (web). The token it yields is kept in `localStorage` and sent as `?token=` on the WebSocket handshake and as `Authorization: Bearer` with HTTP requests.
   - **Login action:** when the tree has an action with `ui.auth: "login"` (TesserKIT's `/sys/auth/login`), the dialog shows its argument's string fields (`secret` ones as passwords) and calls it. The reply is the token, as a string or as `{"token": ..., "access": ...}`. The header offers "Sign in" and, once signed in, "Sign out".

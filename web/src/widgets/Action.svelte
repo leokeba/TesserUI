@@ -2,6 +2,7 @@
   // Actions (DESIGN.md §4): a button; a typed argument's input and a button;
   // an object argument's inputs and a button; raw JSON and a button; or a
   // hold button (true on press, false on release).
+  import { untrack } from 'svelte';
   import { useSession } from '../shared.svelte';
   import { isObject, parse } from '../client/json';
   import { DEFERRED_TIMEOUT_MS } from '../client/types';
@@ -66,12 +67,26 @@
     }
   }
 
+  // While held, true is sent again every leaf.keepalive ms, for a device's
+  // dead-man timer (a jog): a lost release still stops within its timeout.
   let held = false;
+  let repeat: ReturnType<typeof setInterval> | undefined;
   function hold(on: boolean) {
     if (held === on || (on && disabled)) return;
     held = on;
+    clearInterval(repeat);
     store.call(leaf.path, on);
+    if (on) repeat = setInterval(() => store.call(leaf.path, true), leaf.keepalive ?? 300);
   }
+  $effect(() => {
+    if (leaf.widget !== 'hold') return;
+    if (disabled) untrack(() => hold(false));
+    const hidden = () => document.hidden && hold(false);
+    document.addEventListener('visibilitychange', hidden);
+    return () => document.removeEventListener('visibilitychange', hidden);
+  });
+  // Leaving the page releases it.
+  $effect(() => () => hold(false));
 </script>
 
 {#if leaf.widget === 'hold'}

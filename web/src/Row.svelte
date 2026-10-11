@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { getContext } from 'svelte';
-  import { useSession, DRAFT, type Draft } from './shared.svelte';
+  import { getContext, untrack } from 'svelte';
+  import { useSession, DRAFT, SHOWN, type Draft } from './shared.svelte';
   import Icon from './Icon.svelte';
   import { holds } from './model/conditions';
   import type { Leaf } from './model/model';
@@ -24,9 +24,37 @@
   const error = $derived(store.errors[leaf.path]);
   const id = $derived(`t${leaf.path.replace(/[^\w-]/g, '_')}`);
 
+  // Keep-alive (DESIGN.md §7.4): while shown, connected and enabled, a value
+  // other than 0 or false is re-sent every leaf.keepalive ms, so a device's
+  // dead-man timer (a motor's manual output) keeps it. An error stops it
+  // until the next edit; a hidden tab pauses it.
+  const shown = getContext<(() => boolean) | undefined>(SHOWN) ?? (() => true);
+  let stalled = $state(false);
+  $effect(() => {
+    const ms = leaf.keepalive;
+    if (!ms || !value || disabled || draft || !visible || stalled || !shown()) return;
+    const v = value;
+    const send = () =>
+      untrack(() => {
+        if (!store.pending[leaf.path]) store.resend(leaf.path, v).then((ok) => ok || (stalled = true));
+      });
+    let timer: ReturnType<typeof setInterval> | undefined;
+    const run = () => {
+      clearInterval(timer);
+      if (!document.hidden) timer = setInterval(send, ms);
+    };
+    run();
+    document.addEventListener('visibilitychange', run);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', run);
+    };
+  });
+
   // A declined confirmation re-renders the control with the device's value.
   let revert = $state(0);
   function set(v: unknown, drag = false) {
+    stalled = false;
     if (draft) return void (draft.values[leaf.path] = v);
     if (leaf.confirm && !drag && !confirm(leaf.confirm)) return void revert++;
     if (drag) store.writeSoon(leaf.path, v);

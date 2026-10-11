@@ -84,6 +84,9 @@ export interface Leaf extends Base {
   confirm?: string;
   // Never read back: an empty password field.
   secret?: boolean;
+  // Keep-alive (DESIGN.md §7.4): a non-neutral value is re-sent every this
+  // many ms while shown; a hold action repeats its true call as often.
+  keepalive?: number;
   // Actions
   field?: Widget; // the argument's input, for typed actions
   params?: Leaf[]; // the fields of an object argument, paths relative to it
@@ -339,6 +342,8 @@ export function buildLeaf(name: string, path: string, s: Schema, parent: string,
   leaf.widget = s.secret && leaf.editable && s.type === 'string' ? 'password' : inferWidget(s, s.type, leaf.editable);
   number(leaf, s);
   choices(leaf, s, parent);
+  const keepalive = uiNum(s, 'keepalive');
+  if (keepalive && leaf.editable && (isNumeric(s.type) || s.type === 'boolean')) leaf.keepalive = keepalive;
   if (leaf.widget === 'chart') leaf.history = uiNum(s, 'history') ?? 60;
   return leaf;
 }
@@ -388,6 +393,7 @@ function action(leaf: Leaf, s: Schema, parent: string): Leaf {
   }
   if (hint === 'hold' && arg === 'boolean') {
     leaf.widget = 'hold';
+    leaf.keepalive = uiNum(s, 'keepalive') ?? 300;
     return leaf;
   }
   if (arg === 'any') {

@@ -127,6 +127,9 @@ struct Demo {
     double target = 123.5;  // moveTo
     bool invert = false;
     bool jogging = false;
+    uint32_t jogMs = 0;
+    double drive = 0;
+    uint32_t driveMs = 0;
     int count = 0;
     double kp = 1.2, ki = 0.05, kd = 0.01;
     tesser::Pending homing;
