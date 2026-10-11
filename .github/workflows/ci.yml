@@ -37,14 +37,21 @@ jobs:
         with:
           repository: leokeba/TesserAPI
           path: TesserAPI
-      - name: Build self-hosted example
+      - uses: actions/checkout@v5
+        with:
+          repository: leokeba/NowTP
+          path: NowTP
+      - name: Build the ESP-IDF examples
         uses: espressif/esp-idf-ci-action@v1
         with:
           esp_idf_version: ${{ matrix.idf }}
           target: ${{ matrix.target }}
-          path: examples/idf/self_hosted
-          # Relative to the example directory.
-          command: TESSERAPI_PATH=../../../TesserAPI idf.py build
+          path: examples/idf
+          # Paths relative to each example's directory.
+          command: |
+            for e in self_hosted bluetooth usb_gateway; do
+              TESSERAPI_PATH=../../../TesserAPI NOWTP_PATH=../../../NowTP idf.py -C $e -B $e/build build || exit 1
+            done
 
   arduino:
     runs-on: ubuntu-latest

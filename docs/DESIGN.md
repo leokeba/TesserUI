@@ -431,8 +431,8 @@ The same bundle, published on GitHub Pages by CI from `main` (`https://leokeba.g
 
 | Way | How | Browsers | Use |
 |---|---|---|---|
-| **USB** | Web Serial to a `LineTransport` (`?transport=serial`) | Chromium on desktop | A node with no radio at all; debugging; a **NowTP gateway on USB**: a board that mounts the NowTP nodes around it (`examples/arduino/UsbGateway`), so a laptop reaches a field with no Wi-Fi. |
-| **Bluetooth** | Web Bluetooth to TesserAPI's `BleTransport` (`?transport=ble`, `examples/arduino/Bluetooth`) | Chromium on desktop and Android | A phone next to a node, with no Wi-Fi in common. |
+| **USB** | Web Serial to a `LineTransport` (`?transport=serial`) | Chromium on desktop | A node with no radio at all; debugging; a **NowTP gateway on USB**: a board that mounts the NowTP nodes around it (`examples/arduino/UsbGateway`, `examples/idf/usb_gateway`), so a laptop reaches a field with no Wi-Fi. |
+| **Bluetooth** | Web Bluetooth to TesserAPI's `BleTransport` (`?transport=ble`, `examples/arduino/Bluetooth`, `examples/idf/bluetooth`) | Chromium on desktop and Android | A phone next to a node, with no Wi-Fi in common. |
 | **Network** | An address, opened as `?api=http://<address>/api` | All; the prompt is Chrome's | A node on the network, without flashing the bundle into it. |
 
 - **Mixed content:** an HTTPS page can't reach `http://` or `ws://` devices, except as Chrome's Local Network Access allows: after the user's permission, `fetch` to a private IP literal, a `.local` name, or a request marked `targetAddressSpace: "local"` (which the HTTP client adds for `http://` URLs from an HTTPS page). WebSockets aren't covered, so such a node is polled over HTTP (§9.2), and the node must enable CORS. Loopback (`localhost`, `127.0.0.1`) is trustworthy: a node there, such as `scripts/device.mjs`, is live over its WebSocket.
@@ -440,7 +440,7 @@ The same bundle, published on GitHub Pages by CI from `main` (`https://leokeba.g
 - **Switching:** the header has a button back to the connection screen; leaving the page closes a port or a Bluetooth connection.
 - **Links:** `?api=` makes a node's page shareable: `https://leokeba.github.io/TesserUI/?api=http://192.168.1.20/api#/motor`.
 - **Android:** Chrome on Android has no Web Serial over USB (only Bluetooth serial ports), so phones use Bluetooth or the network.
-- **Bluetooth throughput:** TesserAPI paces replies with confirmed indications: about 6 KB/s from an ESP32 to a Mac, so a node's schema loads in a second or two, and requests take about 120 ms. A Bluetooth client isn't authenticated (anyone in range can connect): it has the `public` level, and the node's authorizer decides what it may change.
+- **Bluetooth throughput,** measured from an ESP32 to a Mac: on ESP-IDF (NimBLE, notifications) about 60 ms per request and 13 KB/s for long replies; on Arduino (confirmed indications) about 120 ms and 6 KB/s. A node's schema loads in a second or two. A Bluetooth client isn't authenticated (anyone in range can connect): it has the `public` level, and the node's authorizer decides what it may change.
 - **On a node's own page**, `serial: true` in `window.TESSER` shows the connection screen without the network way.
 
 ### 9.8 Custom elements
@@ -594,7 +594,7 @@ None blocks the first release; each has a workaround above.
 | 3 | LVGL renderer: pages, widget mapping, `LocalClient` and `PeerClient` | The same node on a 320×240 touchscreen, locally and from a remote handheld. | not started |
 | 4 | Views (§8), charts, forms, conditions | helionext's motors and calibration pages, ported with no hand-written UI: `describe()` plus hints. | implemented; the motors fixture renders without UI code, and views, charts, forms and conditions pass end-to-end tests against the host demo device |
 | 5 | Monochrome profile, color widget, custom pages *(later)* | | web: color widget, custom elements and pages (§9.8), embedding (§9.9), interface text (§9.10) |
-| 6 | Launcher (§9.7): GitHub Pages, USB, Bluetooth and network ways, a NowTP gateway on USB | Any node reachable from a published page, with no UI assets on it. | implemented; the launcher's ways tested end to end against the host node (USB and Bluetooth through fakes cutting lines into pieces among log output). On hardware: the USB gateway driven over serial, mounting a peer over ESP-NOW with live notifications; the Bluetooth example driven from Chrome's Web Bluetooth and from a Mac (`bleak`). The network way from an HTTPS origin in Chrome, local network access granted: the test firmware polled over HTTP (CORS), the mixed content allowed with a console warning. |
+| 6 | Launcher (§9.7): GitHub Pages, USB, Bluetooth and network ways, a NowTP gateway on USB | Any node reachable from a published page, with no UI assets on it. | implemented; the launcher's ways tested end to end against the host node (USB and Bluetooth through fakes cutting lines into pieces among log output). On hardware: the USB gateway driven over serial, mounting a peer over ESP-NOW with live notifications; the Bluetooth example driven from Chrome's Web Bluetooth and from a Mac (`bleak`); the ESP-IDF Bluetooth and USB gateway examples likewise. The network way from an HTTPS origin in Chrome, local network access granted: the test firmware polled over HTTP (CORS), the mixed content allowed with a console warning. |
 
 ## 15. Decisions
 

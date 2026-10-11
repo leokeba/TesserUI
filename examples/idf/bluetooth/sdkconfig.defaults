@@ -1,0 +1,7 @@
+# NimBLE, the host TesserAPI's BleTransport uses on ESP-IDF.
+CONFIG_BT_ENABLED=y
+CONFIG_BT_NIMBLE_ENABLED=y
+CONFIG_BT_NIMBLE_ATT_PREFERRED_MTU=517
+# Buffers for notifications in flight: a long reply streams through them.
+CONFIG_BT_NIMBLE_MSYS_1_BLOCK_COUNT=24
+CONFIG_PARTITION_TABLE_SINGLE_APP_LARGE=y
