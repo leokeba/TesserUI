@@ -170,7 +170,12 @@ export class Session {
     for (const k of Object.keys(this.root)) delete (this.root as unknown as Record<string, unknown>)[k];
     this.root.type = 'object';
     this.schemaVersion++;
-    if (this.client.kind === 'ws') {
+    if (this.line()) {
+      this.authLine().then(async () => {
+        await this.load();
+        this.subs.renew(true);
+      });
+    } else if (this.client.kind === 'ws') {
       this.client.close();
       this.client.connect();
     } else {
@@ -220,12 +225,36 @@ export class Session {
 
   // Web Serial: the port comes from a user gesture (navigator.serial.requestPort()).
   useSerial(port: Parameters<typeof serialLink>[0]) {
-    this.use(new EnvelopeClient('serial', () => serialLink(port)));
+    this.useLine('serial', new EnvelopeClient('serial', () => serialLink(port)));
   }
 
   // Web Bluetooth: the device too (navigator.bluetooth.requestDevice()).
+  // Chrome keeps a device's id across visits: its token is kept by it.
   useBle(device: Parameters<typeof bleLink>[0]) {
-    this.use(new EnvelopeClient('ble', () => bleLink(device)));
+    this.useLine(`ble:${device.id ?? device.name ?? ''}`, new EnvelopeClient('ble', () => bleLink(device)));
+  }
+
+  private useLine(key: string, client: Client) {
+    this.tokenKey = `tesserui:token:${key}`;
+    this.signedIn = !!this.token();
+    this.use(client);
+  }
+
+  private line() {
+    return this.client?.kind === 'serial' || this.client?.kind === 'ble';
+  }
+
+  // A line (serial, Bluetooth) presents its token in an auth envelope
+  // (TesserAPI §10.4), after each connection and after signing in or out:
+  // an empty token signs out. A token the node refuses comes back "public":
+  // it is stale, and forgotten. Older firmware answers bad_request.
+  private async authLine() {
+    const token = this.token() ?? '';
+    const r = await this.patient({ op: 'auth', path: '/', token });
+    if (r.status === 'ok' && token && (r.body as { access?: string } | null)?.access === 'public') {
+      storageSet(this.tokenKey, null);
+      this.signedIn = false;
+    }
   }
 
   // The URL of a path of the API over HTTP: files go there whatever the
@@ -256,19 +285,25 @@ export class Session {
       const wasDown = this.state !== 'open';
       this.state = s;
       if (s !== 'open' || !wasDown) return;
-      if (!this.loaded) this.load();
-      else this.subs.renew();
+      const go = () => (this.loaded ? this.subs.renew() : this.load());
+      // A line forgets its token when it reconnects.
+      if (this.line() && this.token()) this.authLine().then(go);
+      else go();
     });
     client.connect();
   }
 
+  // Opening a serial port resets most boards, which answer once booted (a
+  // Wi-Fi node takes seconds): the first request is asked again, briefly,
+  // until one answers.
+  private async patient(r: Request): Promise<Reply> {
+    let reply = await this.client.request(r, 1500);
+    for (let i = 0; reply.status === 'timeout' && i < 40 && this.state === 'open'; i++) reply = await this.client.request(r, 1500);
+    return reply;
+  }
+
   private async load() {
-    // Opening a serial port resets most boards, which answer once booted (a
-    // Wi-Fi node takes seconds): until one answers, ask again, briefly.
-    let h = await this.client.request({ op: 'get', path: '/', view: 'hash' }, 1500);
-    for (let i = 0; h.status === 'timeout' && i < 40 && this.state === 'open'; i++) {
-      h = await this.client.request({ op: 'get', path: '/', view: 'hash' }, 1500);
-    }
+    const h = await this.patient({ op: 'get', path: '/', view: 'hash' });
     this.rootHash = h.status === 'ok' && typeof h.body === 'string' ? h.body : null;
     if (!(await this.fetchSchema('/', 3))) return;
     this.findAuth();

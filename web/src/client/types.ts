@@ -1,6 +1,7 @@
 // The TesserAPI protocol as the renderer sees it (TesserAPI DESIGN.md §10.1).
 
-export type Op = 'get' | 'set' | 'sub' | 'unsub';
+// auth: lines only (serial, Bluetooth), the token for the line (TesserAPI §10.4).
+export type Op = 'get' | 'set' | 'sub' | 'unsub' | 'auth';
 
 export interface Request {
   op: Op;
@@ -13,6 +14,7 @@ export interface Request {
   interval?: number;
   events?: boolean;
   snapshot?: boolean;
+  token?: string;
   body?: unknown;
 }
 

@@ -70,8 +70,11 @@ export class Subscriptions {
   }
 
   // After a reconnection: the node forgot every subscription.
-  renew() {
+  // fresh: the node still has them, at a lower level (a line that signed
+  // in): replaced.
+  renew(fresh = false) {
     for (const a of this.active.values()) {
+      if (a.mode === 'sub' && fresh && !a.failed) this.client().request({ op: 'unsub', path: a.spec.path });
       if (a.mode === 'sub') this.subscribe(a);
       else this.read(a.spec);
     }

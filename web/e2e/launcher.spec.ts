@@ -106,7 +106,9 @@ function fakeDevices() {
       while ((nl = buf.indexOf('\n')) >= 0) {
         const line = buf.slice(0, nl);
         buf = buf.slice(nl + 1);
-        if (line) ws.send(line);
+        if (!line) continue;
+        ((window as unknown as { sent: string[] }).sent ??= []).push(line);
+        ws.send(line);
       }
     };
   };
@@ -187,3 +189,19 @@ for (const [way, button] of [
     await expect(temperature).not.toHaveText(first!, { timeout: 8000 });
   });
 }
+
+// Lines present the token in an auth envelope (TesserAPI §10.4): the stored
+// one after connecting, an empty one to sign out.
+test('over USB, the token goes in an auth envelope', async ({ page }) => {
+  await page.addInitScript(fakeDevices);
+  await page.addInitScript(() => localStorage.setItem('tesserui:token:serial', 'demo-token'));
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Choose a port' }).click();
+  await expect(page.locator('.brand')).toHaveText('TesserUI demo');
+  const auths = () =>
+    page.evaluate(() => (window as unknown as { sent: string[] }).sent.filter((l) => l.includes('"op":"auth"')).map((l) => JSON.parse(l).token));
+  expect(await auths()).toEqual(['demo-token']);
+  await page.locator('header').getByRole('button', { name: 'Sign out' }).click();
+  await expect.poll(auths).toEqual(['demo-token', '']);
+  await expect(page.locator('.brand')).toHaveText('TesserUI demo');
+});

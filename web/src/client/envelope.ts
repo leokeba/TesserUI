@@ -250,6 +250,8 @@ interface GattCharacteristic extends EventTarget {
   startNotifications(): Promise<unknown>;
 }
 interface BluetoothDeviceLike extends EventTarget {
+  id?: string;
+  name?: string;
   gatt?: {
     connect(): Promise<{ getPrimaryService(uuid: string): Promise<{ getCharacteristic(uuid: string): Promise<GattCharacteristic> }> }>;
     disconnect(): void;
