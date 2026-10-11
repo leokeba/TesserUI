@@ -74,11 +74,17 @@ private:
     detail::Item* last_ = nullptr;
 };
 
-// A view page: {"id": id, "label": label, "items": [...]}. Route #/v/<id>.
+// A view page: {"id": id, "label": label, "icon": icon, "items": [...]}.
+// Route #/v/<id>.
 class Page : public Container {
 public:
     const char* id() const { return id_; }
     const char* label() const { return label_; }
+    // Its menu entry's icon, a name from TesserUI's icon set (DESIGN.md §9.3).
+    Page& icon(const char* name) {
+        icon_ = name;
+        return *this;
+    }
 
 private:
     friend class Views;
@@ -87,6 +93,7 @@ private:
 
     const char* id_;
     const char* label_;
+    const char* icon_ = nullptr;
     Page* next_ = nullptr;
 };
 

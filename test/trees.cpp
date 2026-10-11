@@ -347,7 +347,7 @@ Demo::Demo()
     link.process();
 
     tesserui::Views views(api);
-    auto& overview = views.page("overview", "Overview");
+    auto& overview = views.page("overview", "Overview").icon("eye");
     overview.row().widget("gauge", "/lamp/power").widget("readout", "/sensors/temperature");
     overview.card("Motor").node("/motor");
     overview.text("Live values from **every** node.");

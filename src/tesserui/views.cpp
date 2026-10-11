@@ -89,6 +89,10 @@ struct ViewsState {
                 w.key("label");
                 w.string(p->label_);
             }
+            if (p->icon_) {
+                w.key("icon");
+                w.string(p->icon_);
+            }
             w.key("items");
             p->writeItems(w);
             w.endObject();

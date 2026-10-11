@@ -505,10 +505,12 @@ export function buildPage(s: Schema, path: string, root = '/', t: (text: string)
     depth: depthOf(s),
   };
   if (s.description) page.description = s.description;
-  // A page drawn by a custom element: one card, the element.
-  if (isElement(s.ui?.widget)) {
+  // A page drawn by a custom element, or a list's (a menu sub-entry): one
+  // card, the element or the list, under the page's title.
+  if (isElement(s.ui?.widget) || s.type === 'list' || s.type === 'array') {
     const leaf = buildLeaf(path.slice(path.lastIndexOf('/') + 1) || 'root', path, s, parentPath(path), root, above);
     leaf.label = '';
+    leaf.description = undefined;
     page.cards.push({ ...base('', path, {type: 'object'}, path), kind: 'section', level: 1, items: [leaf], advancedItems: [], lazy: false, tabs: false, inline: false, collapsed: false, form: false });
     return page;
   }

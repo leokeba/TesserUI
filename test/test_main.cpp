@@ -129,6 +129,13 @@ TEST(views_hint_replaces_key) {
     CHECK_EQ(ui(api), "{\"pages\":[{\"id\":\"p\",\"items\":[{\"node\":\"/x\",\"widget\":3,\"max\":\"ten\"}]}]}");
 }
 
+TEST(views_page_icon) {
+    Api api;
+    tesserui::Views views(api);
+    views.page("p", "P").icon("sun").node("/x");
+    CHECK_EQ(ui(api), "{\"pages\":[{\"id\":\"p\",\"label\":\"P\",\"icon\":\"sun\",\"items\":[{\"node\":\"/x\"}]}]}");
+}
+
 TEST(views_hint_applies_to_last_item) {
     Api api;
     tesserui::Views views(api);

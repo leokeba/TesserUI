@@ -39,7 +39,7 @@
   const views = $derived(home === '/' ? session.views : null);
   const route = $derived.by(() => {
     const h = decodeURIComponent(hash.slice(1));
-    if (h.startsWith('/v/') && views) return { view: h.slice(3), path: home };
+    if (h.startsWith('/v/') && home === '/') return { view: h.slice(3), path: home };
     const path = h.replace(/\/+$/, '') || home;
     return { view: null as string | null, path: isUnder(path, home) ? path : home };
   });
@@ -61,7 +61,13 @@
   // Pages come in menu order: an empty route opens the first one, and so
   // does the start page when it has nothing of its own.
   const first = $derived(flat[0]?.href ?? (views?.length ? `#/v/${views[0].id}` : undefined));
-  const landing = $derived(!hash || (!!menu && route.view === null && route.path === home && !flat.some((e) => e.href === `#${home}`)));
+  // A view that no longer exists (renamed, or gone with a firmware update)
+  // lands there too.
+  const landing = $derived(
+    !hash ||
+      (session.loaded && route.view !== null && !views?.some((v) => v.id === route.view)) ||
+      (!!menu && route.view === null && route.path === home && !flat.some((e) => e.href === `#${home}`)),
+  );
   $effect(() => {
     if (!landing || !first) return;
     if (memory) hash = first;

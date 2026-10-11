@@ -28,8 +28,9 @@ function entry(name: string, path: string, s: Schema, sub: boolean): MenuEntry {
   if (icon) e.icon = icon;
   if (s.type === 'remote') e.online = s.online !== false;
   // An object that is a page of its own (/sys) or holds remote nodes
-  // (/peers) lists its objects and nodes as sub-entries, one level deep.
-  const kids = Object.entries(s.children ?? {}).filter(([, c]) => isEntry(c));
+  // (/peers) lists its objects, lists and nodes as sub-entries, one level
+  // deep.
+  const kids = Object.entries(s.children ?? {}).filter(([, c]) => isEntry(c) || (c.type === 'list' && shown(c)));
   if (!sub && kids.length && (s.ui?.page === true || kids.some(([, c]) => c.type === 'remote'))) {
     e.children = kids.map(([n, c]) => entry(n, joinPath(path, n), c, true));
   }
@@ -42,7 +43,7 @@ export function hasOwnItems(s: Schema): boolean {
 }
 
 export function buildMenu(s: Schema, home: string, views: ViewPage[] | null, t: (text: string) => string = (x) => x): MenuEntry[] {
-  const out: MenuEntry[] = (views ?? []).map((v) => ({ label: v.label, href: `#/v/${v.id}` }));
+  const out: MenuEntry[] = (views ?? []).map((v) => (v.icon ? { label: v.label, icon: v.icon, href: `#/v/${v.id}` } : { label: v.label, href: `#/v/${v.id}` }));
   if (hasOwnItems(s)) out.push({ label: t('Status'), icon: 'home', href: `#${home}` });
   // ui.group gathers entries under a heading, where its first one would be.
   const groups = new Map<string, MenuEntry>();

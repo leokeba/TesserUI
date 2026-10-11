@@ -199,11 +199,11 @@ A node's UI is a **menu** of pages rather than one page of every card.
   - the view pages (§8);
   - **Status**: the start page's own values, lists and actions (`#/`), when it has any;
   - one entry per child object and remote node of the start page, in tree order (`#/heliostat`). Hidden objects have none.
-- **Labels and icons** come from `label` and `ui.icon`.
+- **Labels and icons** come from `label` and `ui.icon`; a view's from its page (`views.page("overview", "Overview").icon("eye")`).
 - **Groups:** top-level objects with the same `ui.group` (`"Controllers"`, `"Connections"`) are gathered under that heading, where the first of them would be.
-- **Sub-entries:** an object with `ui.page` (`/sys`), or one holding remote nodes (`/peers`), lists its objects and nodes as sub-entries, one level deep. The web shows them while the entry's page, or one of theirs, is open.
+- **Sub-entries:** an object with `ui.page` (`/sys`), or one holding remote nodes (`/peers`), lists its objects, lists and nodes as sub-entries, one level deep. A list's page is the list alone. The web shows them while the entry's page, or one of theirs, is open.
 - **Pages:** an entry's page follows §6.1 with the object as its root: its own values form the first card, and its child objects are cards. The start page shows its own values only, the rest being entries. A remote node's entry opens its root page (§7.6).
-- **Start:** the first entry opens when the route is empty, or when it is the start page and that has no entry of its own.
+- **Start:** the first entry opens when the route is empty, when it names a view that doesn't exist (renamed by a firmware update), or when it is the start page and that has no entry of its own.
 - **Web:** a sidebar beside the page; below 800 px, a drawer opened from the header's menu button, closed by choosing an entry. The header keeps the device label, the connection state and sign-in. The menu replaces the view tabs. It's on for the node's own page and off when the UI is embedded or has no header (§9.9): those show the start page with every card, and view tabs. The `menu` option (§9.2) decides otherwise.
 
 ### 6.4 LCD
@@ -278,6 +278,8 @@ A chart keeps its own history: each value received for its path (snapshot and no
 
 The vertical axis follows the values shown: their extent, widened around its middle to at least ten units of the displayed precision (`precision` 2: 0.1), so noise in the last digit stays a ripple, and kept within the value's `min` and `max`. The range bounds the axis but doesn't fix it: a target within 0–360° isn't drawn as a flat line at the bottom. Without a precision, a constant value gets an axis of ±1.
 
+The line runs from the first value received to now, and a dot marks the latest value: a value that doesn't change is read once, and its line only grows from when the page opened.
+
 ## 8. Views (tier 2)
 
 Views are explicit pages that combine values from anywhere in a tree, including several peers. They are declared in C++ on the node that serves the UI, usually the UI host, and served as one read-only custom node, `/_ui`, so they travel over every transport like the rest of the tree.
@@ -306,7 +308,7 @@ field.card("Calibration").node("/calib");         // an auto-rendered subtree
 | `{"node": path, ...}` | The subtree at `path`, rendered by the tier 0 and 1 rules. Extra keys are hints that override the schema's. |
 | `{"widget": w, "path": p, "label"?: s, ...}` | One widget for one path. |
 | `{"row": [items]}` | Items side by side (stacked on narrow screens). |
-| `{"card": label, "items": [items]}` | A card. |
+| `{"card": label, "items": [items]}` | A card. A card holding one custom element doesn't repeat the node's label above it, unless the item gives a `label`. |
 | `{"text": s}` | A paragraph. Plain text; `**bold**` is the only markup. |
 | `{"each": path, "item": item}` | The item repeated for each child of the object at `path`, with `$` replaced by the child's path. With `/peers`, one entry per discovered node. |
 
@@ -464,6 +466,8 @@ ui.destroy();
 - **Local devices from public pages:** Chrome's Local Network Access asks the user before a public origin reaches a device on the local network.
 
 ### 9.10 Interface text
+
+Numbers use the decimal separator of the browser's language ("0,25"), which native number inputs show and the page can't change, so readouts match them. Nothing else is localized: no digit grouping.
 
 The renderer's own text ("Advanced", "Apply", "Offline"...) is English, replaced through `strings`, keyed by the English text: `{"Advanced": "Avancé", "{n} modified": "{n} modifiés"}`. `{name}` placeholders are kept. Labels, units and descriptions come from the device, which localizes them itself.
 

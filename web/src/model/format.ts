@@ -27,6 +27,11 @@ export interface NumberFormat {
   unit?: string;
 }
 
+// The decimal separator of the browser's language, which native number
+// inputs show ("0,25"): readouts use it too. A dot outside a browser (tests).
+const DECIMAL = typeof document === 'undefined' ? '.' : (1.5).toLocaleString().charAt(1);
+const decimal = (text: string) => (DECIMAL === '.' ? text : text.replace('.', DECIMAL));
+
 // The number as text: printf-style `format`, else `precision` decimals, else
 // integers as they are and numbers with up to 3 decimals.
 export function formatValue(v: unknown, f: NumberFormat): string {
@@ -38,9 +43,9 @@ export function formatValue(v: unknown, f: NumberFormat): string {
     return f.unit === 'B' ? bytes(v) : duration(v);
   }
   if (typeof v === 'number') {
-    if (f.precision !== undefined) text = v.toFixed(f.precision);
+    if (f.precision !== undefined) text = decimal(v.toFixed(f.precision));
     else if (f.type === 'integer' || Number.isInteger(v)) text = String(v);
-    else text = String(Number(v.toFixed(3)));
+    else text = decimal(String(Number(v.toFixed(3))));
   } else if (typeof v === 'bigint' || typeof v === 'string' || typeof v === 'boolean') {
     text = String(v);
   } else {
@@ -68,7 +73,7 @@ export function chartRange(values: number[], f: { min?: number; max?: number; pr
 // 1536 → "1.5 KB", 2031616 → "1.94 MB".
 export function bytes(n: number): string {
   if (Math.abs(n) < 1024) return `${n} B`;
-  return Math.abs(n) < 1048576 ? `${(n / 1024).toFixed(1)} KB` : `${(n / 1048576).toFixed(2)} MB`;
+  return decimal(Math.abs(n) < 1048576 ? `${(n / 1024).toFixed(1)} KB` : `${(n / 1048576).toFixed(2)} MB`);
 }
 
 // 59 → "59 s", 3725 → "1 h 2 min", 90061 → "1 d 1 h".
@@ -95,11 +100,11 @@ export function printf(format: string, v: unknown): string {
       case 'u':
         return typeof v === 'bigint' ? v.toString() : String(Math.trunc(n) >>> 0);
       case 'f':
-        return n.toFixed(p ?? 6);
+        return decimal(n.toFixed(p ?? 6));
       case 'e':
-        return n.toExponential(p ?? 6).replace(/e([+-])(\d)$/, 'e$10$2');
+        return decimal(n.toExponential(p ?? 6).replace(/e([+-])(\d)$/, 'e$10$2'));
       case 'g':
-        return String(Number(n.toPrecision(p || 6)));
+        return decimal(String(Number(n.toPrecision(p || 6))));
       default:
         return typeof v === 'string' ? v : String(v);
     }

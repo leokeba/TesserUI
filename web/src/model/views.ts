@@ -22,6 +22,7 @@ export interface ViewItemDoc {
 export interface ViewPage {
   id: string;
   label: string;
+  icon?: string;
   items: ViewItemDoc[];
 }
 
@@ -102,6 +103,11 @@ export function buildView(page: ViewPage, root: Schema): View {
       if (docs.length === 1 && (docs[0].node ?? docs[0].path) !== undefined && !docs[0].each) {
         const [only] = build(docs[0], 1);
         if (only?.kind === 'node' && only.item?.kind === 'section') return [{ ...only, item: { ...only.item, label: doc.card || only.item.label } }];
+        // A custom element under a card's title doesn't repeat its node's
+        // label, unless the item gives one.
+        if (only?.kind === 'node' && only.item?.kind === 'leaf' && isElement(only.item.widget) && doc.card && docs[0].label === undefined) {
+          only.item = { ...only.item, label: '', icon: undefined };
+        }
         return [{ kind: 'card', label: doc.card, items: only ? [only] : [] }];
       }
       return [{ kind: 'card', label: doc.card, items: docs.flatMap((d) => build(d, 2)) }];

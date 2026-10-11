@@ -1691,6 +1691,7 @@
  "menu": [
   {
    "label": "Overview",
+   "icon": "eye",
    "href": "#/v/overview"
   },
   {

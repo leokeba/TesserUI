@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
   import { useSession } from './shared.svelte';
   import Icon from './Icon.svelte';
   import { buildPage, placeCards } from './model/model';
@@ -40,9 +41,10 @@
   const n = $derived(page ? Math.max(1, Math.min(page.columns, width < 640 ? 1 : Math.floor((width + 16) / 376))) : 1);
   const columns = $derived(page ? placeCards(page.cards, n) : []);
   const offline = $derived(session.isOffline(path));
-  // A peer that comes back online: load what couldn't be.
+  // A peer that comes back online: load what couldn't be. Only then: a
+  // page that fails for another reason would otherwise reload forever.
   $effect(() => {
-    if (!offline && failed) load();
+    if (!offline) untrack(() => failed && load());
   });
 
   // Back goes to the nearest page above: a node's root, or an object with

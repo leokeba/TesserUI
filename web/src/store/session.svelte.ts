@@ -302,7 +302,8 @@ export class Session {
     void this.schemaVersion;
     const s = this.schemaAt(path);
     const tree = s?.type === 'remote' ? s.tree : s;
-    return tree?.children ? tree : undefined;
+    // A list is a page of its own as a menu sub-entry (DESIGN.md §6.3).
+    return tree?.children || s?.type === 'list' || s?.type === 'array' ? tree : undefined;
   }
 
   // The root of the node `path` belongs to: '/' or a remote node's path.
@@ -333,7 +334,7 @@ export class Session {
   // lists there in full.
   async ensure(path: string, depth = 3): Promise<boolean> {
     const known = this.schemaAt(path);
-    if (known && known.type !== 'object' && known.type !== 'remote') return true;
+    if (known && known.type !== 'object' && known.type !== 'remote') return this.completeLists(path, 0);
     if (this.pageSchema(path)) {
       const s = this.schemaAt(path)!;
       if (!hasLazyChildren(s.type === 'remote' ? s.tree! : s, depth)) return this.completeLists(path, depth);

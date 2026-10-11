@@ -168,7 +168,7 @@ describe('menu (DESIGN §6.3)', () => {
       elevation: { type: 'object', ui: { group: 'Controllers' }, children: {} },
       secret: { type: 'object', ui: { hidden: true }, children: {} },
       peers: { type: 'object', label: 'Nodes', children: { lamp: { type: 'remote', online: false, schema: 'ab' } } },
-      sys: { type: 'object', label: 'System', ui: { page: true }, children: { network: { type: 'object', children: {} }, reboot: { type: 'action' } } },
+      sys: { type: 'object', label: 'System', ui: { page: true }, children: { network: { type: 'object', children: {} }, timers: { type: 'list', key: 'name', items: { type: 'object', children: {} } }, reboot: { type: 'action' } } },
       _ui: { type: 'custom', ui: { hidden: true } },
     },
   };
@@ -180,12 +180,18 @@ describe('menu (DESIGN §6.3)', () => {
       { label: 'Controllers', children: [{ label: 'Azimuth', href: '#/azimuth' }, { label: 'Elevation', href: '#/elevation' }] },
       { label: 'Connections', children: [{ label: 'Art-Net', href: '#/artnet' }] },
       { label: 'Nodes', href: '#/peers', children: [{ label: 'lamp', href: '#/peers/lamp', online: false }] },
-      { label: 'System', href: '#/sys', children: [{ label: 'Network', href: '#/sys/network' }] },
+      { label: 'System', href: '#/sys', children: [{ label: 'Network', href: '#/sys/network' }, { label: 'Timers', href: '#/sys/timers' }] },
     ]);
   });
   it('has no status entry without values of its own, and starts from a subtree', () => {
     const sub: Schema = { type: 'object', children: { a: { type: 'object', children: { b: { type: 'object', children: {} } } } } };
     expect(buildMenu(sub, '/motor', null)).toEqual([{ label: 'A', href: '#/motor/a' }]);
+  });
+  it("makes a list's page one card", () => {
+    const page = buildPage(root.children!.sys.children!.timers, '/sys/timers');
+    expect(page.label).toBe('Timers');
+    expect(page.cards).toHaveLength(1);
+    expect(page.cards[0].items[0]).toMatchObject({ path: '/sys/timers', label: '', key: 'name' });
   });
   it("shows the start page's own values only", () => {
     const page = buildPage(root, '/', '/', undefined, undefined, true);
@@ -212,7 +218,7 @@ describe('columns (DESIGN §6.2)', () => {
     },
     '/',
   );
-  const [system, heliostat, azimuth, elevation, settings] = page.cards;
+  const [system, , azimuth, , settings] = page.cards;
   it('weighs cards by their rows', () => {
     expect(weight(system)).toBe(2);
     expect(weight(azimuth)).toBe(1 + 3 + 10);

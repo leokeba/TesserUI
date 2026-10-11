@@ -43,8 +43,17 @@
     g.lineJoin = 'round';
     g.beginPath();
     points.forEach(([t, v], i) => (i ? g.lineTo(x(t), y(v)) : g.moveTo(x(t), y(v))));
-    if (!array) g.lineTo(w, y(points[points.length - 1][1]));
+    const last = y(points[points.length - 1][1]);
+    if (!array) g.lineTo(w, last);
     g.stroke();
+    // The latest value, at "now": a steady value is read once and draws as
+    // a line growing from when it was, which starts out tiny.
+    if (!array) {
+      g.fillStyle = css.getPropertyValue('--accent');
+      g.beginPath();
+      g.arc(w - 3 * devicePixelRatio, last, 3 * devicePixelRatio, 0, 7);
+      g.fill();
+    }
     g.fillStyle = css.getPropertyValue('--muted');
     g.font = `${11 * devicePixelRatio}px system-ui`;
     // Bytes keep their unit: it scales them (KB, MB).
