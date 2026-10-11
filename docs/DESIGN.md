@@ -367,6 +367,7 @@ web/
   | `header` | `false` hides the top bar; a lost connection still shows a banner. |
   | `menu` | The navigation menu (§6.3). Default: on for the node's own page, off when embedded; always off without the header. |
   | `routing` | `hash` (default) follows `location.hash`; `memory` keeps the route inside the UI, for pages that own the URL. |
+  | `launcher` | `true`: the page is a launcher (§9.7) despite having a configuration. |
 
   For development, the query string overrides the page's: `?api=http://<ip>/api`, `?ws=` (empty: HTTP only), `?transport=serial`.
 - **Fallback:** if the WebSocket never opens, the client switches to HTTP for good. Once it has opened, it reconnects with backoff (§7.5).
@@ -427,7 +428,7 @@ web.serveStub(http.handle(), "https://cdn.jsdelivr.net/npm/tesserui@1.0.0/dist/u
 
 ### 9.7 Launcher (GitHub Pages)
 
-The same bundle, published on GitHub Pages by CI from `main` (`https://leokeba.github.io/TesserUI/`), connects to nodes the user picks. A page without `window.TESSER` is a launcher: every node's page sets it, so this means Pages, a CDN's `index.html`, or the dev server. Without `?api=`, it shows a connection screen:
+The same bundle, published on GitHub Pages by CI from `main` (`https://leokeba.github.io/TesserUI/`), connects to nodes the user picks. A page without `window.TESSER` is a launcher: every node's page sets it, so this means Pages, a CDN's `index.html`, or the dev server. A page that sets `window.TESSER = {launcher: true, ...}` is a launcher too, with the rest of its configuration (`title`, `theme`, `strings`...): another project's launcher on its own Pages. Without `?api=`, it shows a connection screen:
 
 | Way | How | Browsers | Use |
 |---|---|---|---|

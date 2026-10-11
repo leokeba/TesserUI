@@ -71,6 +71,23 @@ test('the bridge serves the launcher, which lists its nodes at once', async ({ p
   await expect(page.locator('a.recent', { hasText: 'TesserUI demo' })).toBeVisible();
 });
 
+// Another project's launcher: a configuration of its own, still a launcher.
+test('a page can be a launcher with its own title', async ({ page }) => {
+  const dist = new URL('../dist/', import.meta.url);
+  await page.route('https://pages.kit.test/**', (route) => {
+    const js = new URL(route.request().url()).pathname.endsWith('ui.js');
+    route.fulfill(
+      js
+        ? { body: readFileSync(new URL('ui.js', dist)), contentType: 'text/javascript' }
+        : { body: '<!doctype html><body><script>window.TESSER={launcher:true,title:"TesserKIT"}</script><script src="ui.js"></script></body>', contentType: 'text/html' },
+    );
+  });
+  await page.goto('https://pages.kit.test/');
+  await expect(page.locator('h2')).toHaveText('Connect to a node');
+  await expect(page.locator('.brand')).toHaveText('TesserKIT');
+  await expect(page).toHaveTitle('TesserKIT');
+});
+
 // A fake navigator.serial and navigator.bluetooth, relaying to the device.
 function fakeDevices() {
   const enc = new TextEncoder();

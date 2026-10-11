@@ -6,8 +6,9 @@ import { mountUi, type Options } from './embed';
 const q = new URLSearchParams(location.search);
 const t = window.TESSER;
 // A page that no node served (GitHub Pages, the dev server) is a launcher:
-// it connects to ?api=, or to the node the user picks (DESIGN.md §9.7).
-const launcher = !t;
+// it connects to ?api=, or to the node the user picks (DESIGN.md §9.7). A
+// page can be one with a configuration of its own: {launcher: true, title}.
+const launcher = !t || t.launcher === true;
 const options: Options = { ...t, api: q.get('api') ?? t?.api ?? '/api', launcher };
 if (q.has('ws')) options.ws = q.get('ws') || null;
 else if (!t || !('ws' in t)) delete options.ws;
