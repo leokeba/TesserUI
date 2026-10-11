@@ -4,7 +4,9 @@
 // built bundle at /ui.js, the API at /api and WebSocket at /ws.
 //
 //   node scripts/device.mjs [demo|motors] [--port 8090] [--isolated] [--exe path/to/node]
-//   (/ext/<name>.js serves examples/elements/: the demo's custom elements)
+//                           [--elements dir]...
+//   (/ext/<name>.js serves the custom elements: from each --elements
+//   directory in turn, then examples/elements/, the demo's)
 //   then open http://localhost:8090/            (the built bundle: pnpm build)
 //   or        http://localhost:5173/?api=http://localhost:8090/api   (pnpm dev)
 //
@@ -13,22 +15,28 @@
 // fresh from the demo tree's initial state (end-to-end tests).
 
 import { spawn } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { createInterface } from 'node:readline';
 import { WebSocketServer } from 'ws';
 
 const args = process.argv.slice(2);
-const tree = args.find((a, i) => !a.startsWith('--') && args[i - 1] !== '--port' && args[i - 1] !== '--exe') ?? 'demo';
+const valued = ['--port', '--exe', '--elements'];
+const tree = args.find((a, i) => !a.startsWith('--') && !valued.includes(args[i - 1])) ?? 'demo';
+const fromCwd = (p) => new URL(p, `file://${process.cwd()}/`);
 const port = Number(args[args.indexOf('--port') + 1]) || 8090;
 const isolated = args.includes('--isolated');
 // --exe: another node speaking the same protocol (TesserKIT's tesserkit_demo).
 const exe = args.includes('--exe')
-  ? new URL(args[args.indexOf('--exe') + 1], `file://${process.cwd()}/`).pathname
+  ? fromCwd(args[args.indexOf('--exe') + 1]).pathname
   : new URL('../../build/tesserui_demo', import.meta.url).pathname;
 const dist = new URL('../dist/', import.meta.url);
-// Custom elements the demo tree uses (DESIGN.md §9.8), served at /ext/.
-const elements = new URL('../../examples/elements/', import.meta.url);
+// Custom elements (DESIGN.md §9.8), served at /ext/: an application's own
+// (--elements, the first that has the file wins), then the demo tree's.
+const elements = [
+  ...args.flatMap((a, i) => (args[i - 1] === '--elements' ? [fromCwd(a.endsWith('/') ? a : a + '/')] : [])),
+  new URL('../../examples/elements/', import.meta.url),
+];
 const { version } = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
 
 function node(extra, onLine) {
@@ -78,8 +86,9 @@ const server = createServer((req, res) => {
     return res.writeHead(200, { 'Content-Type': 'application/javascript', 'Content-Encoding': 'gzip', 'Cache-Control': 'no-cache' }).end(readFileSync(gz));
   }
   if (url.pathname.startsWith('/ext/')) {
-    const file = new URL(url.pathname.slice(5).replace(/[^\w.-]/g, ''), elements);
-    if (!existsSync(file)) return res.writeHead(404, cors).end();
+    const name = url.pathname.slice(5).replace(/[^\w.-]/g, '');
+    const file = elements.map((dir) => new URL(name, dir)).find((f) => existsSync(f) && statSync(f).isFile());
+    if (!file) return res.writeHead(404, cors).end();
     return res.writeHead(200, { ...cors, 'Content-Type': 'text/javascript' }).end(readFileSync(file));
   }
   if (!url.pathname.startsWith('/api')) return res.writeHead(404, cors).end();
