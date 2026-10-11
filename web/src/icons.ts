@@ -36,6 +36,7 @@ export const ICONS: Record<string, string> = {
   eye: 'M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12zM12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z',
   trash: 'M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3',
   edit: 'M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4',
+  bluetooth: 'M7 7l10 10-5 5V2l5 5L7 17',
   usb: 'M12 2v15M9 5l3-3 3 3M12 17a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM12 13l-5-3V8M12 11l5-3V6',
   target: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM12 11.5v1',
   motor: 'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM12 2v3M12 19v3M2 12h3M19 12h3',

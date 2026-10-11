@@ -27,7 +27,7 @@ TesserUI renders user interfaces for [TesserAPI](https://github.com/leokeba/Tess
 | Item | Decision |
 |---|---|
 | Device side | C++17 and TesserAPI's rules: no exceptions, no RTTI, ESP-IDF ≥ 5.1 and Arduino-ESP32 ≥ 3.0. |
-| Web bundle | ≤ 52 KB gzipped for everything (JS and CSS), measured in CI. Evergreen browsers only. (Raised from 40 KB once phases 1, 2 and 4 were in: they measured 40.2 KB with every saving taken. Raised from 50 KB for the navigation menu, §6.3.) |
+| Web bundle | ≤ 54 KB gzipped for everything (JS and CSS), measured in CI. Evergreen browsers only. (Raised from 40 KB once phases 1, 2 and 4 were in: they measured 40.2 KB with every saving taken. Raised from 50 KB for the navigation menu, §6.3, and from 52 KB for the launcher and Bluetooth, §9.7.) |
 | Web stack | Svelte 5 + TypeScript + Vite, without a CSS framework or chart library. |
 | LCD stack | LVGL 9.x. Display and touch drivers are the application's: TesserUI receives an `lv_display_t*`. |
 | Smallest node | A NowTP-only node with no Wi-Fi and no UI assets: its tree and its hint literals are all it stores. |
@@ -56,7 +56,7 @@ The two renderers share the model and its rules, not code: the web renderer is T
 | **Self-hosted** | The node itself (about 40–50 KB of flash) | `http://node/` | §9.4 |
 | **UI host** | One ESP with spare flash, also a gateway | `http://host/#/peers/<node>`: requests forwarded over NowTP | §9.5 |
 | **Stub** | A CDN or the UI host; the node serves a 300-byte page | `http://node/`, script from elsewhere | §9.6 |
-| **USB** | GitHub Pages | Web Serial to the node's `LineTransport` (Chromium browsers) | §9.7 |
+| **Launcher** | GitHub Pages | The user picks the node: USB (Web Serial), Bluetooth (Web Bluetooth), or an address on the network | §9.7 |
 | **LCD, local** | n/a | `LocalClient` on the same chip | §10 |
 | **LCD, remote** | n/a | `PeerClient` over NowTP, e.g. a handheld remote for a heliostat field | §10 |
 
@@ -330,7 +330,7 @@ field.card("Calibration").node("/calib");         // an auto-rendered subtree
 
 ```
 web/
-  src/client/      envelope client: WebSocket, HTTP, Web Serial transports
+  src/client/      envelope client: WebSocket, HTTP, Web Serial and Web Bluetooth transports
   src/model/       schema → UI model (§4, §5), conditions, formatting, views
   src/store/       values, pending writes, merge patches, subscriptions, the session
   src/widgets/     one Svelte component per semantic widget; registry.ts maps names to them
@@ -351,12 +351,13 @@ web/
   - writes with `PUT`
   - no subscriptions: the visible page is polled once per second
 - **Web Serial** (§9.7): newline-delimited envelopes. Lines that don't start with `{"` are ignored, and parsing starts at the first `{"` of a line, since ESP log output can interleave. A bare `\n` is sent after opening, because opening the port resets most devkits.
+- **Web Bluetooth** (§9.7): the same lines over the Nordic UART Service. Writes go to its RX characteristic with a response, in chunks of up to 512 bytes, one at a time (longer than the MTU, they become long writes). Replies come as indications on TX, in pieces of the MTU that the same line reader joins.
 - **Configuration:** `window.TESSER` in the page, or the defaults `/api` and `/ws` on the page's origin. The same options are `mount()`'s (§9.9):
 
   | Key | Meaning |
   |---|---|
   | `api`, `ws` | API base and WebSocket URL; `ws: null`: HTTP only. The WebSocket defaults to `/ws` on the API's host. |
-  | `transport` | `ws`, `http` or `serial` (§9.7). |
+  | `transport` | `ws`, `http`, or `serial` and `ble`, which wait for the user to choose a device (§9.7). |
   | `minVersion` | The oldest bundle the node accepts: older ones show a warning. |
   | `title` | The page title until the device's label is known. |
   | `scripts` | Module scripts defining custom elements, resolved against the page (§9.8). |
@@ -424,9 +425,22 @@ web.serveStub(http.handle(), "https://cdn.jsdelivr.net/npm/tesserui@1.0.0/dist/u
 - **Offline fallback:** if the script doesn't load (no internet), the stub shows a one-line explanation and links to the raw API.
 - **Pinning:** the CDN URL pins an exact version, so the bundle stays compatible with the node's TesserUI version.
 
-### 9.7 USB (Web Serial)
+### 9.7 Launcher (GitHub Pages)
 
-The same bundle, published on GitHub Pages, connects to a node over USB with Web Serial (Chromium-based browsers only; Pages provides the secure context it needs). It works for a node with no radio at all, and serves as the debugging tool. An HTTPS page can't talk to `http://` or `ws://` devices (mixed content), so on Pages, Web Serial is the only transport offered.
+The same bundle, published on GitHub Pages by CI from `main` (`https://leokeba.github.io/TesserUI/`), connects to nodes the user picks. A page without `window.TESSER` is a launcher: every node's page sets it, so this means Pages, a CDN's `index.html`, or the dev server. Without `?api=`, it shows a connection screen:
+
+| Way | How | Browsers | Use |
+|---|---|---|---|
+| **USB** | Web Serial to a `LineTransport` (`?transport=serial`) | Chromium on desktop | A node with no radio at all; debugging; a **NowTP gateway on USB**: a board that mounts the NowTP nodes around it (`examples/arduino/UsbGateway`), so a laptop reaches a field with no Wi-Fi. |
+| **Bluetooth** | Web Bluetooth to TesserAPI's `BleTransport` (`?transport=ble`) *(device side: later)* | Chromium on desktop and Android | A phone next to a node, with no Wi-Fi in common. |
+| **Network** | An address, opened as `?api=http://<address>/api` | All; the prompt is Chrome's | A node on the network, without flashing the bundle into it. |
+
+- **Mixed content:** an HTTPS page can't reach `http://` or `ws://` devices, except as Chrome's Local Network Access allows: after the user's permission, `fetch` to a private IP literal, a `.local` name, or a request marked `targetAddressSpace: "local"` (which the HTTP client adds for `http://` URLs from an HTTPS page). WebSockets aren't covered, so such a node is polled over HTTP (§9.2), and the node must enable CORS. Loopback (`localhost`, `127.0.0.1`) is trustworthy: a node there, such as `scripts/device.mjs`, is live over its WebSocket.
+- **Recent nodes:** the nodes reached by address are remembered in the browser, most recent first, and listed on the connection screen. Tokens are kept per node (by API URL), since one origin talks to all of them.
+- **Switching:** the header has a button back to the connection screen; leaving the page closes a port or a Bluetooth connection.
+- **Links:** `?api=` makes a node's page shareable: `https://leokeba.github.io/TesserUI/?api=http://192.168.1.20/api#/motor`.
+- **Android:** Chrome on Android has no Web Serial over USB (only Bluetooth serial ports), so phones use Bluetooth or the network.
+- **On a node's own page**, `serial: true` in `window.TESSER` shows the connection screen without the network way.
 
 ### 9.8 Custom elements
 

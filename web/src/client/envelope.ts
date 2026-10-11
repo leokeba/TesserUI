@@ -1,5 +1,5 @@
-// Envelope client over a message link: WebSocket or Web Serial (DESIGN.md
-// §9.2). Numeric ids, a timeout per request, reconnection with backoff.
+// Envelope client over a message link: WebSocket, Web Serial or Web Bluetooth
+// (DESIGN.md §9.2). Numeric ids, a timeout per request, reconnection with backoff.
 
 import { isObject, parse, stringify } from './json';
 import { REQUEST_TIMEOUT_MS, type Client, type ConnState, type Notification, type Reply, type Request } from './types';
@@ -33,7 +33,7 @@ export class EnvelopeClient implements Client {
   opened = 0;
 
   constructor(
-    readonly kind: 'ws' | 'serial',
+    readonly kind: 'ws' | 'serial' | 'ble',
     private makeLink: () => Link,
   ) {}
 
@@ -142,7 +142,12 @@ export function webSocketLink(url: string): Link {
           reject(new Error('closed'));
           onClose();
         };
-        ws = new WebSocket(url);
+        // Throws on an HTTPS page for a ws:// URL (mixed content).
+        try {
+          ws = new WebSocket(url);
+        } catch {
+          return setTimeout(end);
+        }
         ws.onopen = () => resolve();
         ws.onmessage = (e) => typeof e.data === 'string' && onMessage(e.data);
         ws.onclose = end;
@@ -158,9 +163,24 @@ export function webSocketLink(url: string): Link {
   };
 }
 
-// Newline-delimited envelopes over Web Serial. Lines that don't contain an
-// envelope are log output; parsing starts at the first {" of a line, since
-// ESP log lines interleave (DESIGN.md §9.7).
+// Newline-delimited envelopes over a byte stream (Web Serial, Bluetooth).
+// Lines that don't contain an envelope are log output; parsing starts at the
+// first {" of a line, since ESP log lines interleave (DESIGN.md §9.7).
+function lineReader(onMessage: (text: string) => void) {
+  const dec = new TextDecoder();
+  let buf = '';
+  return (bytes: Uint8Array) => {
+    buf += dec.decode(bytes, { stream: true });
+    let nl: number;
+    while ((nl = buf.indexOf('\n')) >= 0) {
+      const line = buf.slice(0, nl);
+      buf = buf.slice(nl + 1);
+      const start = line.indexOf('{"');
+      if (start >= 0) onMessage(line.slice(start));
+    }
+  };
+}
+
 interface SerialPortLike {
   open(o: { baudRate: number }): Promise<void>;
   close(): Promise<void>;
@@ -185,21 +205,13 @@ export function serialLink(port: SerialPortLike, baudRate = 115200): Link {
       // Opening the port resets most devkits; a bare newline flushes any
       // garbage the board received while booting.
       writer.write(enc.encode('\n'));
-      const dec = new TextDecoder();
-      let buf = '';
+      const lines = lineReader(onMessage);
       (async () => {
         try {
           for (;;) {
             const { value, done } = await reader!.read();
             if (done) break;
-            buf += dec.decode(value, { stream: true });
-            let nl: number;
-            while ((nl = buf.indexOf('\n')) >= 0) {
-              const line = buf.slice(0, nl);
-              buf = buf.slice(nl + 1);
-              const start = line.indexOf('{"');
-              if (start >= 0) onMessage(line.slice(start));
-            }
+            lines(value);
           }
         } catch {
           // device unplugged
@@ -219,6 +231,71 @@ export function serialLink(port: SerialPortLike, baudRate = 115200): Link {
     },
     close() {
       reader?.cancel().catch(() => {});
+    },
+  };
+}
+
+// The same lines over Bluetooth LE (DESIGN.md §9.7): TesserAPI's
+// BleTransport serves the Nordic UART Service. Writes go to RX, with a
+// response so that each chunk is acknowledged; a chunk longer than the MTU
+// becomes a long write. Replies come as indications on TX, in MTU-sized
+// pieces that the line reader joins.
+export const NUS_SERVICE = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
+const NUS_RX = '6e400002-b5a3-f393-e0a9-e50e24dcca9e';
+const NUS_TX = '6e400003-b5a3-f393-e0a9-e50e24dcca9e';
+
+interface GattCharacteristic extends EventTarget {
+  value?: DataView;
+  writeValueWithResponse(data: Uint8Array): Promise<void>;
+  startNotifications(): Promise<unknown>;
+}
+interface BluetoothDeviceLike extends EventTarget {
+  gatt?: {
+    connect(): Promise<{ getPrimaryService(uuid: string): Promise<{ getCharacteristic(uuid: string): Promise<GattCharacteristic> }> }>;
+    disconnect(): void;
+  };
+}
+
+export function bleLink(device: BluetoothDeviceLike): Link {
+  let rx: GattCharacteristic | null = null;
+  let queue = Promise.resolve();
+  const enc = new TextEncoder();
+  return {
+    async open(onMessage, onClose) {
+      let ended = false;
+      const end = () => {
+        if (ended) return;
+        ended = true;
+        device.removeEventListener('gattserverdisconnected', end);
+        onClose();
+      };
+      device.addEventListener('gattserverdisconnected', end);
+      try {
+        const service = await (await device.gatt!.connect()).getPrimaryService(NUS_SERVICE);
+        rx = await service.getCharacteristic(NUS_RX);
+        const tx = await service.getCharacteristic(NUS_TX);
+        const lines = lineReader(onMessage);
+        tx.addEventListener('characteristicvaluechanged', () => {
+          const v = tx.value!;
+          lines(new Uint8Array(v.buffer, v.byteOffset, v.byteLength));
+        });
+        await tx.startNotifications();
+      } catch (e) {
+        device.gatt?.disconnect();
+        end();
+        throw e;
+      }
+    },
+    send(text) {
+      const bytes = enc.encode(text + '\n');
+      // One write at a time: Web Bluetooth refuses overlapping operations.
+      for (let i = 0; i < bytes.length; i += 512) {
+        const chunk = bytes.subarray(i, i + 512);
+        queue = queue.then(() => rx?.writeValueWithResponse(chunk)).catch(() => {});
+      }
+    },
+    close() {
+      device.gatt?.disconnect();
     },
   };
 }

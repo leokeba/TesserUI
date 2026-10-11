@@ -1,5 +1,6 @@
 <script lang="ts">
   import { untrack } from 'svelte';
+  import Connect from './Connect.svelte';
   import { compareVersions, provideSession } from './shared.svelte';
   import Icon from './Icon.svelte';
   import { humanize } from './model/format';
@@ -92,7 +93,7 @@
 
   const stateText = $derived(
     session.state === 'open'
-      ? t({ ws: 'Live', http: 'Polling', serial: 'USB' }[session.kind ?? 'ws'])
+      ? t({ ws: 'Live', http: 'Polling', serial: 'USB', ble: 'Bluetooth' }[session.kind ?? 'ws'])
       : t(session.state === 'connecting' ? 'Connecting…' : 'Disconnected'),
   );
   const tooOld = $derived(!!config.minVersion && compareVersions(__VERSION__, config.minVersion) < 0);
@@ -112,16 +113,6 @@
     loginError = (await session.signIn(creds)) ?? '';
     if (!loginError) creds = {};
   }
-  let serialError = $state('');
-  const hasSerial = 'serial' in navigator;
-  async function connectUsb() {
-    try {
-      const port = await (navigator as unknown as { serial: { requestPort(): Promise<never> } }).serial.requestPort();
-      session.useSerial(port);
-    } catch (e) {
-      serialError = e instanceof Error ? e.message : String(e);
-    }
-  }
 </script>
 
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
@@ -140,7 +131,11 @@
           <a href="#/" aria-current={route.view === null ? 'page' : undefined}>{t('Device')}</a>
         </nav>
       {/if}
-      <span class="state {session.state}" role="status"><i></i>{stateText}</span>
+      {#if session.kind}<span class="state {session.state}" role="status"><i></i>{stateText}</span>{/if}
+      {#if config.launcher && session.kind}
+        <!-- Back to the launcher: leaving the page closes a port. -->
+        <a class="quiet switch" href={location.pathname} title={t('Another node')} aria-label={t('Another node')}><Icon name="x" /></a>
+      {/if}
       {#if session.signedIn}
         <button type="button" class="quiet" onclick={() => session.signOut()}><Icon name="lock" /> {t('Sign out')}</button>
       {:else if session.login}
@@ -175,17 +170,8 @@
     {#if drawer}<div class="scrim drawer" onclick={() => (drawer = false)}></div>{/if}
   {/if}
   <main>
-    {#if config.transport === 'serial' && !session.kind}
-      <section class="card connect">
-        <h2><Icon name="usb" /> {t('Connect a node over USB')}</h2>
-        {#if hasSerial}
-          <p>{t('Plug in a board running TesserAPI with a serial transport, then choose its port.')}</p>
-          <button class="primary" onclick={connectUsb}>{t('Choose a port')}</button>
-          {#if serialError}<p class="error">{serialError}</p>{/if}
-        {:else}
-          <p>{t('Web Serial needs a Chromium-based browser (Chrome, Edge, Opera).')}</p>
-        {/if}
-      </section>
+    {#if !session.kind && (config.transport === 'serial' || config.transport === 'ble')}
+      <Connect />
     {:else if !session.loaded || (landing && first)}
       <p class="muted center">{session.state === 'open' ? t('Loading…') : stateText}</p>
     {:else if route.view !== null}
@@ -598,15 +584,10 @@
       box-shadow: 0 10px 40px #0005;
     }
   }
-  .connect {
-    max-width: 440px;
-    margin: 48px auto;
-    display: grid;
-    gap: 12px;
-    justify-items: start;
-  }
-  .connect p {
-    margin: 0;
+  .switch {
+    color: inherit;
+    display: inline-flex;
+    padding: 6px;
   }
   .scrim {
     position: fixed;

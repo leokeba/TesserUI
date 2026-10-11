@@ -1,7 +1,7 @@
 // One connection to a node (or a UI host and the peers behind it): the
 // client, the schema tree fetched so far, the store and the subscriptions.
 
-import { EnvelopeClient, serialLink, webSocketLink } from '../client/envelope';
+import { bleLink, EnvelopeClient, serialLink, webSocketLink } from '../client/envelope';
 import { HttpClient } from '../client/http';
 import { isObject } from '../client/json';
 import { errorText, type Client, type ConnState, type Notification, type Reply, type Request } from '../client/types';
@@ -14,7 +14,8 @@ import { commonAncestor, Subscriptions, type SubSpec } from './subs';
 export interface Config {
   api: string;
   ws: string | null;
-  transport: 'ws' | 'http' | 'serial';
+  // serial and ble wait for the user to choose a device (DESIGN.md §9.7).
+  transport: 'ws' | 'http' | 'serial' | 'ble';
   minVersion?: string;
   // The page title until the node's label is known.
   title?: string;
@@ -34,9 +35,10 @@ export interface Config {
   // 'hash' follows location.hash; 'memory' keeps the route to itself, for
   // UIs embedded in a page that owns the URL.
   routing?: 'hash' | 'memory';
+  // A page that no node served (GitHub Pages, DESIGN.md §9.7): it connects
+  // to the node the user picks, and remembers them.
+  launcher?: boolean;
 }
-
-const TOKEN_KEY = 'tesserui:token';
 
 function storageGet(key: string): string | null {
   try {
@@ -55,6 +57,21 @@ function storageSet(key: string, value: string | null) {
   }
 }
 
+// The nodes a launcher reached by address, most recent first.
+const RECENT_KEY = 'tesserui:recent';
+export interface RecentNode {
+  api: string;
+  label: string;
+}
+
+export function recentNodes(): RecentNode[] {
+  try {
+    return JSON.parse(storageGet(RECENT_KEY) ?? '[]');
+  } catch {
+    return [];
+  }
+}
+
 const LEVELS: Level[] = ['public', 'user', 'admin'];
 const asLevel = (v: unknown): Level | null => (LEVELS.includes(v as Level) ? (v as Level) : null);
 
@@ -68,7 +85,7 @@ export class Session {
   // This client's access level, when the node says (a `whoami` action); null
   // while unknown: nothing is disabled for it then.
   level: Level | null = $state(null);
-  signedIn = $state(!!storageGet(TOKEN_KEY));
+  signedIn = $state(false);
   // Actions with ui.auth: "login" signs in with its object argument and
   // replies with a token; "whoami" replies with the client's level
   // (DESIGN.md §7.4).
@@ -85,7 +102,12 @@ export class Session {
   private stubRefresh = new Map<string, ReturnType<typeof setTimeout>>();
   private remotePaths: string[] = [];
 
+  // A launcher talks to many nodes from one origin: each has its token.
+  private tokenKey: string;
+
   constructor(readonly config: Config) {
+    this.tokenKey = 'tesserui:token' + (config.launcher ? ':' + this.apiUrl() : '');
+    this.signedIn = !!this.token();
     this.store = new Store(() => this.client);
     this.store.onUnauthorized = () => (this.needToken = true);
     this.store.t = (text) => this.t(text);
@@ -103,16 +125,15 @@ export class Session {
     return vars ? s.replace(/\{(\w+)\}/g, (m, k) => (k in vars ? String(vars[k]) : m)) : s;
   }
 
-  get kind() {
-    return this.client?.kind;
-  }
+  // The transport in use, once there is one: reactive, for the launcher.
+  kind: Client['kind'] | undefined = $state();
 
   token(): string | null {
-    return storageGet(TOKEN_KEY);
+    return storageGet(this.tokenKey);
   }
 
   setToken(token: string | null) {
-    storageSet(TOKEN_KEY, token);
+    storageSet(this.tokenKey, token);
     this.signedIn = !!token;
     this.needToken = false;
     this.reload();
@@ -156,7 +177,8 @@ export class Session {
   }
 
   start() {
-    if (this.config.transport === 'serial') return; // waits for useSerial()
+    const t = this.config.transport;
+    if (t === 'serial' || t === 'ble') return; // waits for useSerial() or useBle()
     if (this.config.transport === 'http' || !this.config.ws) return this.use(this.httpClient());
     const ws = new EnvelopeClient('ws', () => webSocketLink(this.wsUrl()));
     // A node without enableWebSocket(), or one that wasn't reachable yet
@@ -175,7 +197,12 @@ export class Session {
   private probe(delay: number) {
     setTimeout(() => {
       if (this.client?.kind !== 'http') return;
-      const p = new WebSocket(this.wsUrl());
+      let p: WebSocket;
+      try {
+        p = new WebSocket(this.wsUrl());
+      } catch {
+        return;
+      }
       p.onopen = () => {
         p.close();
         if (this.client?.kind === 'http') this.start();
@@ -192,6 +219,11 @@ export class Session {
   // Web Serial: the port comes from a user gesture (navigator.serial.requestPort()).
   useSerial(port: Parameters<typeof serialLink>[0]) {
     this.use(new EnvelopeClient('serial', () => serialLink(port)));
+  }
+
+  // Web Bluetooth: the device too (navigator.bluetooth.requestDevice()).
+  useBle(device: Parameters<typeof bleLink>[0]) {
+    this.use(new EnvelopeClient('ble', () => bleLink(device)));
   }
 
   // The URL of a path of the API over HTTP: files go there whatever the
@@ -215,6 +247,7 @@ export class Session {
 
   private use(client: Client) {
     this.client = client;
+    this.kind = client.kind;
     client.onNotify((n) => this.notify(n));
     client.onState((s) => {
       if (this.client !== client) return;
@@ -240,6 +273,12 @@ export class Session {
       if (r.status === 'ok' && isObject(r.body) && Array.isArray(r.body.pages)) this.views = r.body.pages as unknown as ViewPage[];
     }
     this.loaded = true;
+    // A node reached by address goes to the top of the launcher's list.
+    if (this.config.launcher && (this.client.kind === 'ws' || this.client.kind === 'http')) {
+      const api = this.apiUrl();
+      const label = this.root.label ?? new URL(api).host;
+      storageSet(RECENT_KEY, JSON.stringify([{ api, label }, ...recentNodes().filter((n) => n.api !== api)].slice(0, 6)));
+    }
   }
 
   private findAuth() {

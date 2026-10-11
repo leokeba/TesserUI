@@ -93,7 +93,7 @@ jobs:
         run: pnpm check
       - name: Model and store tests
         run: pnpm test
-      - name: Bundle within budget (52 KB gzipped)
+      - name: Bundle within budget (54 KB gzipped)
         run: pnpm build
       - name: Generated files are up to date (bundle header, embedded element)
         run: git diff --exit-code -- ../src/tesserui/bundle/tesserui_bundle.h ../examples/arduino/CustomWidget/sun_dial.h
@@ -106,3 +106,26 @@ jobs:
         run: |
           npx playwright install --with-deps chromium
           pnpm e2e
+      # The launcher on GitHub Pages (DESIGN.md §9.7): the bundle that just
+      # passed, from main only.
+      - name: Pages site
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: mkdir -p _site && cp dist/index.html dist/ui.js _site/
+      - uses: actions/upload-pages-artifact@v3
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        with:
+          path: web/_site
+
+  pages:
+    needs: web
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4

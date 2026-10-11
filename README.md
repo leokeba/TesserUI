@@ -52,9 +52,11 @@ The full vocabulary is in [DESIGN.md §5](docs/DESIGN.md#5-hints-tier-1).
 | Self-hosted | The node (~41 KB of flash) | `web.serve(http.handle())` |
 | UI host | One ESP with spare flash, also a NowTP gateway | `nowApi.mountPeers(api.object("peers"))`: every nearby node gets a page at `#/peers/<name>`, forwarded over ESP-NOW |
 | Stub | A CDN or the UI host | `web.serveStub(http.handle(), "https://cdn.jsdelivr.net/npm/tesserui@0.1.0/dist/ui.js")`: a 300-byte page |
-| USB | GitHub Pages | Web Serial to the node's serial transport (Chromium browsers) |
+| Launcher | GitHub Pages | Pick a node: USB (Web Serial), Bluetooth (Web Bluetooth), or its address on the network |
 
 A NowTP-only node with no Wi-Fi needs nothing but its tree and `nowApi.advertise()`: the UI host renders it.
+
+The launcher is at <https://leokeba.github.io/TesserUI/>. Plug a board into USB, pair one over Bluetooth, or type a node's address: `?api=http://192.168.1.20/api` opens that node directly. A board running `examples/arduino/UsbGateway` brings the NowTP nodes around it along over the one USB cable.
 
 ## Views
 
@@ -111,7 +113,7 @@ node web/scripts/device.mjs demo                      # the demo node on the hos
 ## Requirements
 
 - TesserAPI (same requirements: ESP-IDF ≥ 5.1 or Arduino-ESP32 ≥ 3.0, C++17, ArduinoJson 7)
-- Evergreen browsers; Web Serial needs a Chromium-based browser
+- Evergreen browsers; Web Serial and Web Bluetooth need a Chromium-based browser
 
 ## License
 

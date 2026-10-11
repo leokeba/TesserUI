@@ -47,11 +47,11 @@ test('secrets are never shown, and sign-in goes through the login action', async
   await expect(dialog).toBeHidden();
   await expect(page.locator('header').getByRole('button', { name: 'Sign out' })).toBeVisible();
   await expect(page.locator('.state')).toHaveText('Live');
-  expect(await page.evaluate(() => localStorage.getItem('tesserui:token'))).toBe('demo-token');
+  expect(await page.evaluate(() => localStorage.getItem('tesserui:token:http://localhost:8091/api'))).toBe('demo-token');
 
   await page.locator('header').getByRole('button', { name: 'Sign out' }).click();
   await expect(page.locator('header').getByRole('button', { name: 'Sign in' })).toBeVisible();
-  expect(await page.evaluate(() => localStorage.getItem('tesserui:token'))).toBeNull();
+  expect(await page.evaluate(() => localStorage.getItem('tesserui:token:http://localhost:8091/api'))).toBeNull();
 
   // The login action's own fields, in its card, sign in too.
   await page.locator('nav.side').getByRole('link', { name: 'Account' }).click();

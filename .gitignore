@@ -11,6 +11,7 @@ compile_commands.json
 __pycache__/
 node_modules/
 web/dist/
+web/_site/
 web/test-results/
 web/playwright-report/
 secrets.h

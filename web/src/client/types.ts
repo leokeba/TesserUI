@@ -40,7 +40,7 @@ export interface Notification {
 export type ConnState = 'connecting' | 'open' | 'down';
 
 export interface Client {
-  readonly kind: 'ws' | 'http' | 'serial';
+  readonly kind: 'ws' | 'http' | 'serial' | 'ble';
   // false for plain HTTP: the store polls instead.
   readonly subscribes: boolean;
   // timeoutMs: REQUEST_TIMEOUT_MS by default; longer for deferred actions.

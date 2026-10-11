@@ -13,8 +13,12 @@ export interface Mounted {
 }
 
 // The WebSocket defaults to /ws on the API's host; null means HTTP only.
+// An HTTPS page can't open ws:// to a node on the network (mixed content,
+// which Chrome's local network access doesn't lift for WebSockets): it polls.
 export function resolve(o: Options): Config {
-  const ws = o.ws !== undefined ? o.ws : new URL('/ws', new URL(o.api, location.href)).href;
+  const api = new URL(o.api, location.href);
+  const mixed = location.protocol === 'https:' && api.protocol === 'http:' && !/^(localhost|127\.|\[::1\])/.test(api.host);
+  const ws = o.ws !== undefined ? o.ws : mixed ? null : new URL('/ws', api).href;
   return { ...o, ws, transport: o.transport ?? (ws ? 'ws' : 'http') };
 }
 
