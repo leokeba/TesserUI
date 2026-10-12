@@ -18,7 +18,7 @@ const RETRY_MS = 5000;
 
 // Events from the whole tree, for those that toast wherever the user is
 // (DESIGN.md §7.8): a fourth subscription (TesserAPI allows 4 per client),
-// without changes. Firmware that predates `changes` ignores it: the interval
+// without changes, or a streamed GET over HTTP. Firmware that predates `changes` ignores it: the interval
 // keeps the tree's changes to one notification a minute there.
 export const EVENTS: Request = { op: 'sub', path: '/', changes: false, snapshot: false, interval: 60000 };
 
@@ -169,8 +169,8 @@ export class Subscriptions {
     }
   }
 
+  // Over HTTP, a stream (HttpClient): the page's values are still polled.
   private async subscribeEvents() {
-    if (!this.client().subscribes) return;
     this.events = 'on';
     const r = await this.client().request(EVENTS);
     if (this.events !== 'on' || r.status === 'ok') return;

@@ -180,7 +180,8 @@ export class Session {
       this.client.close();
       this.client.connect();
     } else {
-      this.load();
+      // The events stream opens again with the new token.
+      this.load().then(() => this.subs.renew(true));
     }
   }
 
@@ -213,7 +214,10 @@ export class Session {
       }
       p.onopen = () => {
         p.close();
-        if (this.client?.kind === 'http') this.start();
+        const http = this.client;
+        if (http?.kind !== 'http') return;
+        this.start();
+        http.close();
       };
       p.onerror = () => this.probe(Math.min(delay * 2, 60000));
     }, delay);

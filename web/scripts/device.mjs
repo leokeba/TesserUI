@@ -92,6 +92,7 @@ const server = createServer((req, res) => {
     return res.writeHead(200, { ...cors, 'Content-Type': 'text/javascript' }).end(readFileSync(file));
   }
   if (!url.pathname.startsWith('/api')) return res.writeHead(404, cors).end();
+  if (req.method === 'GET' && /^(1|true|)$/.test(url.searchParams.get('sub') ?? 'no')) return stream(url, res);
   let body = '';
   req.on('data', (c) => (body += c));
   req.on('end', () => {
@@ -110,6 +111,34 @@ const server = createServer((req, res) => {
     sendShared(0, line);
   });
 });
+
+// A streamed subscription (TesserAPI's HttpServer, GET ?sub): a client of
+// its own on the shared node, its notifications one per line, a newline
+// after 15 s of silence, and the subscription gone with the connection.
+function stream(url, res) {
+  const client = nextClient++;
+  const env = { id: 1, op: 'sub', path: url.pathname.slice(4) || '/' };
+  for (const k of ['events', 'changes', 'snapshot', 'interval', 'depth', 'keys', 'exclude', 'remotes']) {
+    const v = url.searchParams.get(k);
+    if (v !== null) env[k] = ['depth', 'interval'].includes(k) ? Number(v) : ['keys', 'exclude'].includes(k) ? v : /^(1|true)$/.test(v);
+  }
+  let keepalive;
+  clients.set(client, (line) => {
+    const m = /^\{"id":1,"status":"(\w+)"(?:,"body":)?/.exec(line);
+    if (!m) return res.write(line + '\n');
+    if (m[1] !== 'ok') return res.writeHead(STATUS[m[1]] ?? 500, { ...cors, 'Content-Type': 'application/json' }).end(line.slice(m[0].length, -1));
+    res.writeHead(200, { ...cors, 'Content-Type': 'application/x-ndjson', 'Cache-Control': 'no-store' });
+    if (env.snapshot !== false) res.write(`{"op":"change","path":${JSON.stringify(env.path)},"body":${line.slice(m[0].length, -1)}}\n`);
+    else res.flushHeaders();
+    keepalive = setInterval(() => res.write('\n'), 15000);
+  });
+  res.on('close', () => {
+    clearInterval(keepalive);
+    clients.delete(client);
+    sendShared(client, 'close');
+  });
+  sendShared(client, JSON.stringify(env));
+}
 
 new WebSocketServer({ server, path: '/ws' }).on('connection', (ws) => {
   const deliver = (line) => ws.readyState === ws.OPEN && ws.send(line);

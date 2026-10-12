@@ -143,19 +143,26 @@ const server = createServer(async (req, res) => {
     const n = nodes.get(decodeURIComponent(m[1]));
     if (!n) return res.writeHead(404, h).end();
     const body = ['GET', 'HEAD'].includes(req.method) ? undefined : Buffer.concat(await Array.fromAsync(req));
+    // The node has 30 s to answer; the body then flows as long as it lasts
+    // (a streamed subscription: hours), until the browser goes away.
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), 30000);
+    res.on('close', () => ctl.abort());
     try {
       const r = await fetch(`http://${n.id}${n.api}${m[2] ?? ''}${url.search}`, {
         method: req.method,
         headers: Object.fromEntries(['authorization', 'content-type'].filter((k) => req.headers[k]).map((k) => [k, req.headers[k]])),
         body,
-        signal: AbortSignal.timeout(30000),
+        signal: ctl.signal,
       });
-      const pass = Object.fromEntries(['content-type', 'content-length', 'content-disposition'].filter((k) => r.headers.get(k)).map((k) => [k, r.headers.get(k)]));
+      clearTimeout(timer);
+      const pass = Object.fromEntries(['content-type', 'content-length', 'content-disposition', 'cache-control'].filter((k) => r.headers.get(k)).map((k) => [k, r.headers.get(k)]));
       res.writeHead(r.status, { ...h, ...pass });
-      if (r.body) Readable.fromWeb(r.body).pipe(res);
+      if (r.body) Readable.fromWeb(r.body).on('error', () => res.destroy()).pipe(res);
       else res.end();
     } catch {
-      res.writeHead(502, h).end();
+      clearTimeout(timer);
+      if (!res.headersSent) res.writeHead(502, h).end();
     }
     return;
   }

@@ -257,6 +257,16 @@ test('HTTP fallback polls', async ({ page }) => {
   await live(page);
 });
 
+test('HTTP fallback streams the events', async ({ page }) => {
+  await open(page, '#/sensors', '&ws=');
+  await expect(page.locator('.state')).toHaveText('Polling');
+  await expect(row(page, 'Pressed').locator('li').first()).toBeVisible({ timeout: 7000 });
+  await page.locator('nav.side').getByRole('link', { name: 'Motor' }).click();
+  await page.getByRole('button', { name: /^Home/ }).click();
+  await page.locator('nav.side').getByRole('link', { name: 'Lamp' }).click();
+  await expect(page.locator('.toast[data-kind=ok]')).toHaveText(/Motor › Homed: at 0°/, { timeout: 5000 });
+});
+
 test('phone width: no horizontal scroll, 44 px controls, the menu in a drawer', async ({ page }) => {
   await page.setViewportSize({ width: 360, height: 780 });
   await open(page, '#/lamp');
