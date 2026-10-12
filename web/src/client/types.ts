@@ -1,7 +1,8 @@
 // The TesserAPI protocol as the renderer sees it (TesserAPI DESIGN.md §10.1).
 
 // auth: lines only (serial, Bluetooth), the token for the line (TesserAPI §10.4).
-export type Op = 'get' | 'set' | 'sub' | 'unsub' | 'auth';
+// upload and download: file nodes, in chunks (TesserAPI §10.1.1).
+export type Op = 'get' | 'set' | 'sub' | 'unsub' | 'auth' | 'upload' | 'download';
 
 export interface Request {
   op: Op;
@@ -16,6 +17,12 @@ export interface Request {
   changes?: boolean;
   snapshot?: boolean;
   token?: string;
+  // File transfers: where the chunk starts, the base64 bytes, and the
+  // upload's size and name when it opens.
+  offset?: number;
+  data?: string;
+  size?: number;
+  filename?: string;
   body?: unknown;
 }
 

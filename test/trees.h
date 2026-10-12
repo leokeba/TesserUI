@@ -191,6 +191,7 @@ struct Demo {
     int days = 0x1f;  // Monday to Friday
     std::string tz = "<+01>-1<+02>,M3.5.0,M10.5.0/3";
     int64_t clockSetMs = 0;
+    std::string backup;  // /system/backup, a text file node
     // tables: scalar arrays
     float offsets[16] = {};
     std::vector<int> gains{10, 40, 80};

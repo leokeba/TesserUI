@@ -1,8 +1,23 @@
 import { expect, test, type Route } from '@playwright/test';
+import { readFileSync } from 'node:fs';
 
-// File nodes in a list's elements (DESIGN.md §4): TesserKIT's file browser
-// (/sys/files/entries). The host demo node can't serve files, so this node
-// is faked, over HTTP only.
+// Files over HTTP (DESIGN.md §4): the raw bytes both ways, from the host
+// demo node (scripts/device.mjs moves them as TesserAPI's HttpServer does).
+test('files over HTTP, the raw bytes', async ({ page }) => {
+  await page.goto('/?api=http://localhost:8091/api#/system');
+  const backup = page.locator('.row', { has: page.locator('label span:text-is("Backup")') });
+  await backup.locator('input[type=file]').setInputFiles({ name: 'mine.json', mimeType: 'application/json', buffer: Buffer.from('{"mine":1}') });
+  await backup.getByRole('button', { name: 'Upload' }).click();
+  await expect(backup.locator('output')).toHaveText('Uploaded: 10');
+  const download = page.waitForEvent('download');
+  await backup.getByRole('button', { name: 'Download' }).click();
+  const d = await download;
+  expect(d.suggestedFilename()).toBe('backup.json');  // Chrome adds the type's extension
+  expect(readFileSync(await d.path(), 'utf8')).toBe('{"mine":1}');
+});
+
+// File nodes in a list's elements: TesserKIT's file browser
+// (/sys/files/entries), faked over HTTP.
 const schema = {
   type: 'object',
   children: {

@@ -93,9 +93,13 @@ const server = createServer((req, res) => {
   }
   if (!url.pathname.startsWith('/api')) return res.writeHead(404, cors).end();
   if (req.method === 'GET' && /^(1|true|)$/.test(url.searchParams.get('sub') ?? 'no')) return stream(url, res);
-  let body = '';
-  req.on('data', (c) => (body += c));
+  const chunks = [];
+  req.on('data', (c) => chunks.push(c));
   req.on('end', () => {
+    const raw = Buffer.concat(chunks);
+    const body = raw.toString();
+    // An upload: bytes that aren't JSON, or a file's name.
+    if (req.method !== 'GET' && (url.searchParams.has('filename') || !isJson(body))) return file(url, req, res, raw);
     const id = nextId++;
     const env = { id, op: req.method === 'GET' ? 'get' : 'set', path: url.pathname.slice(4) || '/' };
     for (const k of ['depth', 'keys', 'exclude', 'view', 'remotes']) {
@@ -106,11 +110,70 @@ const server = createServer((req, res) => {
     // The body is spliced in as text, so 64-bit integers stay exact.
     if (body) line = line.slice(0, -1) + `,"body":${body}}`;
     waiting.set(id, (status, text) => {
+      // A file node refuses JSON requests, saying so: its bytes move instead.
+      if (status === 'not_allowed' && /files over HTTP/.test(text)) return file(url, req, res, raw);
       res.writeHead(STATUS[status] ?? 500, { ...cors, 'Content-Type': 'application/json' }).end(text);
     });
     sendShared(0, line);
   });
 });
+
+function isJson(text) {
+  try {
+    JSON.parse(text);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// A file node, whose raw bytes TesserAPI's HttpServer moves (GET, and PUT
+// ?filename=): a client of its own moves them in download or upload
+// envelopes (TesserAPI §10.1.1).
+async function file(url, req, res, raw) {
+  const client = nextClient++;
+  const path = url.pathname.slice(4) || '/';
+  const op = req.method === 'GET' ? 'download' : 'upload';
+  let id = 0;
+  const ask = (env) =>
+    new Promise((resolve) => {
+      clients.set(client, (line) => {
+        const m = /^\{"id":\d+,"status":"(\w+)"(?:,"body":)?/.exec(line);
+        if (!m) return;
+        const text = line.length > m[0].length ? line.slice(m[0].length, -1) : 'null';
+        resolve({ status: m[1], text, body: JSON.parse(text) });
+      });
+      sendShared(client, JSON.stringify({ id: ++id, op, path, ...env }));
+    });
+  const end = (r, headers = { 'Content-Type': 'application/json' }, body = r.text) =>
+    res.writeHead(STATUS[r.status] ?? 500, { ...cors, ...headers }).end(body);
+  try {
+    if (op === 'download') {
+      const parts = [];
+      let r = await ask({ offset: 0 });
+      const head = r.body;
+      for (let offset = 0; r.status === 'ok'; r = await ask({ offset })) {
+        parts.push(Buffer.from(r.body.data, 'base64'));
+        offset += parts.at(-1).length;
+        if (r.body.end) {
+          const headers = { 'Content-Type': head.contentType, 'Content-Disposition': `attachment; filename="${head.filename}"`, 'Access-Control-Expose-Headers': 'Content-Disposition' };
+          return end(r, headers, Buffer.concat(parts));
+        }
+      }
+      return end(r);
+    }
+    const filename = url.searchParams.get('filename') ?? undefined;
+    let r = await ask({ size: raw.length, filename });
+    const chunk = r.body?.chunk;
+    for (let at = 0; r.status === 'ok' && at < raw.length; at += chunk) {
+      r = await ask({ offset: at, data: raw.subarray(at, at + chunk).toString('base64') });
+    }
+    end(r);
+  } finally {
+    clients.delete(client);
+    sendShared(client, 'close');
+  }
+}
 
 // A streamed subscription (TesserAPI's HttpServer, GET ?sub): a client of
 // its own on the shared node, its notifications one per line, a newline

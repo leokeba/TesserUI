@@ -262,8 +262,14 @@ export class Session {
     }
   }
 
-  // The URL of a path of the API over HTTP: files go there whatever the
-  // transport (DESIGN.md §4).
+  // Files go over HTTP, raw and faster, wherever there is one; with none
+  // (a line, or a serial port through the bridge, whose api is its /s),
+  // in envelopes through the client returned here (DESIGN.md §4).
+  fileClient(): Client | null {
+    return this.line() || /\/s$/.test(this.config.api) ? this.client : null;
+  }
+
+  // The URL of a path of the API over HTTP.
   apiUrl(path = '') {
     return new URL(this.config.api, location.href).href.replace(/\/$/, '') + path;
   }

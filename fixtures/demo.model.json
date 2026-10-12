@@ -1638,6 +1638,21 @@
       "value": "$now"
      },
      {
+      "name": "backup",
+      "path": "/system/backup",
+      "label": "Backup",
+      "advanced": false,
+      "hidden": false,
+      "access": "admin",
+      "kind": "leaf",
+      "widget": "file",
+      "type": "file",
+      "editable": true,
+      "readable": true,
+      "maxSize": 16384,
+      "contentType": "application/json"
+     },
+     {
       "name": "scan",
       "path": "/system/scan",
       "label": "Scan",
@@ -3735,6 +3750,21 @@
        "deferred": false,
        "submit": false,
        "value": "$now"
+      },
+      {
+       "name": "backup",
+       "path": "/system/backup",
+       "label": "Backup",
+       "advanced": false,
+       "hidden": false,
+       "access": "admin",
+       "kind": "leaf",
+       "widget": "file",
+       "type": "file",
+       "editable": true,
+       "readable": true,
+       "maxSize": 16384,
+       "contentType": "application/json"
       }
      ],
      "advancedItems": [],

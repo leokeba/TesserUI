@@ -1,10 +1,11 @@
 <script lang="ts">
   // Files (DESIGN.md §4): downloaded with a GET, uploaded with the file as
-  // a PUT's raw body, with progress. Over HTTP only, whatever the transport.
-  // Compact (a list's line): icon buttons, a chosen file uploads at once, and
-  // the outcome is a toast.
+  // a PUT's raw body, with progress; in envelopes on a client with no HTTP
+  // (serial, Bluetooth). Compact (a list's line): icon buttons, a chosen
+  // file uploads at once, and the outcome is a toast.
+  import { download, upload as send } from '../client/files';
   import { fileUrl } from '../client/http';
-  import { parse } from '../client/json';
+  import { parse, stringify } from '../client/json';
   import { errorText } from '../client/types';
   import Icon from '../Icon.svelte';
   import { bytes } from '../model/format';
@@ -23,11 +24,20 @@
   const accept = $derived(
     leaf.schema.accept ?? hint('accept') ?? (leaf.contentType !== 'application/octet-stream' ? leaf.contentType : undefined),
   );
-  // The name the device gives the download (Content-Disposition), else one
-  // from the hints or the node's name.
-  function filename(x: XMLHttpRequest) {
-    const m = /filename="?([^";]+)"?/.exec(x.getResponseHeader('Content-Disposition') ?? '');
-    return m?.[1] ?? hint('filename') ?? leaf.name + (extensions[leaf.contentType ?? ''] ?? '.bin');
+  // Saves a download under the device's name (Content-Disposition, or the
+  // envelope's filename), else one from the hints or the node's name.
+  function save(blob: Blob, name = (blob as File).name) {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = name || hint('filename') || leaf.name + (extensions[leaf.contentType ?? ''] ?? '.bin');
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    done(true, '');
+  }
+
+  function uploaded(text: string) {
+    file = null;
+    done(true, text && text !== 'null' && text.length < 300 ? `${t('Uploaded')}: ${text}` : t('Uploaded'));
   }
 
   function done(ok: boolean, text: string) {
@@ -37,7 +47,17 @@
     if (compact && text) session.store.toasts.show(`${leaf.label}: ${text}`, ok ? 'ok' : 'error');
   }
 
-  function transfer(method: 'GET' | 'PUT', body?: File) {
+  async function transfer(method: 'GET' | 'PUT', body?: File) {
+    progress = 0;
+    message = '';
+    const client = session.fileClient();
+    if (client) {
+      const p = (f: number) => (progress = Math.round(f * 100));
+      const r = body ? await send(client, leaf.path, body, p) : await download(client, leaf.path, p);
+      if (r.status === 'unauthorized') session.store.onUnauthorized?.();
+      if (r.status !== 'ok') return done(false, errorText(r, t));
+      return body ? uploaded(stringify(r.body)) : save(r.body as File);
+    }
     const x = new XMLHttpRequest();
     x.open(method, fileUrl(session.apiUrl(), leaf.path, body?.name));
     const token = session.token();
@@ -58,20 +78,10 @@
         if (x.status === 403) session.store.onUnauthorized?.();
         return done(false, errorText({ status: `http_${x.status}`, body: reply }, t));
       }
-      if (method === 'PUT') {
-        file = null;
-        return done(true, text && text !== 'null' && text.length < 300 ? `${t('Uploaded')}: ${text}` : t('Uploaded'));
-      }
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(x.response as Blob);
-      a.download = filename(x);
-      a.click();
-      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-      done(true, '');
+      if (method === 'PUT') return uploaded(text);
+      save(x.response as Blob, /filename="?([^";]+)"?/.exec(x.getResponseHeader('Content-Disposition') ?? '')?.[1]);
     };
     x.onerror = () => done(false, t('Transfer failed'));
-    progress = 0;
-    message = '';
     x.send(body ?? null);
   }
 
@@ -84,48 +94,42 @@
 </script>
 
 {#if compact}
-  {#if session.kind !== 'serial'}
-    {#if progress !== null}<progress class="mini" max="100" value={progress}></progress>{/if}
-    {#if leaf.readable}
-      <button type="button" class="quiet" disabled={disabled || progress !== null} aria-label="{t('Download')} {leaf.label}" title={t('Download')} onclick={() => transfer('GET')}><Icon name="download" /></button>
-    {/if}
-    {#if leaf.editable}
-      <input
-        class="sr"
-        {id}
-        type="file"
-        {accept}
-        disabled={disabled || progress !== null}
-        aria-label="{t('Upload')} {leaf.label}"
-        onchange={(e) => {
-          file = e.currentTarget.files?.[0] ?? null;
-          e.currentTarget.value = '';
-          upload();
-        }}
-      />
-      <label for={id} class="up" class:off={disabled || progress !== null} title={t('Upload')}><Icon name="upload" /></label>
-    {/if}
+  {#if progress !== null}<progress class="mini" max="100" value={progress}></progress>{/if}
+  {#if leaf.readable}
+    <button type="button" class="quiet" disabled={disabled || progress !== null} aria-label="{t('Download')} {leaf.label}" title={t('Download')} onclick={() => transfer('GET')}><Icon name="download" /></button>
+  {/if}
+  {#if leaf.editable}
+    <input
+      class="sr"
+      {id}
+      type="file"
+      {accept}
+      disabled={disabled || progress !== null}
+      aria-label="{t('Upload')} {leaf.label}"
+      onchange={(e) => {
+        file = e.currentTarget.files?.[0] ?? null;
+        e.currentTarget.value = '';
+        upload();
+      }}
+    />
+    <label for={id} class="up" class:off={disabled || progress !== null} title={t('Upload')}><Icon name="upload" /></label>
   {/if}
 {:else}
 <div class="file">
-  {#if session.kind === 'serial'}
-    <span class="muted">{t('Files need a network connection')}</span>
-  {:else}
-    {#if leaf.readable}
-      <button type="button" disabled={disabled || progress !== null} onclick={() => transfer('GET')}><Icon name="download" /> {t('Download')}</button>
-    {/if}
-    {#if leaf.editable}
-      <!-- The input is hidden; its label is the button. -->
-      <input class="sr" {id} type="file" {accept} disabled={disabled || progress !== null} onchange={(e) => (file = e.currentTarget.files?.[0] ?? null)} />
-      <label for={id} class="pick" class:off={disabled || progress !== null}>{file ? t('Change…') : t('Choose a file…')}</label>
-      {#if file}
-        <span class="name" title={file.name}>{file.name} <span class="muted">{bytes(file.size)}</span></span>
-        <button type="button" class={leaf.style ?? 'primary'} disabled={disabled || progress !== null} onclick={upload}>{t('Upload')}</button>
-      {/if}
-    {/if}
-    {#if progress !== null}<progress max="100" value={progress}></progress>{/if}
-    {#if message}<output class:error={failed} role={failed ? 'alert' : undefined}>{message}</output>{/if}
+  {#if leaf.readable}
+    <button type="button" disabled={disabled || progress !== null} onclick={() => transfer('GET')}><Icon name="download" /> {t('Download')}</button>
   {/if}
+  {#if leaf.editable}
+    <!-- The input is hidden; its label is the button. -->
+    <input class="sr" {id} type="file" {accept} disabled={disabled || progress !== null} onchange={(e) => (file = e.currentTarget.files?.[0] ?? null)} />
+    <label for={id} class="pick" class:off={disabled || progress !== null}>{file ? t('Change…') : t('Choose a file…')}</label>
+    {#if file}
+      <span class="name" title={file.name}>{file.name} <span class="muted">{bytes(file.size)}</span></span>
+      <button type="button" class={leaf.style ?? 'primary'} disabled={disabled || progress !== null} onclick={upload}>{t('Upload')}</button>
+    {/if}
+  {/if}
+  {#if progress !== null}<progress max="100" value={progress}></progress>{/if}
+  {#if message}<output class:error={failed} role={failed ? 'alert' : undefined}>{message}</output>{/if}
 </div>
 {/if}
 

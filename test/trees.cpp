@@ -332,6 +332,20 @@ Demo::Demo()
     system.value("tz", tz).label("Time zone").ui("widget", "timezone");
     system.value("clockSet", [this] { return clockSetMs; }).unit("ms").label("Clock set to").watch();
     system.action("setClock", [this](int64_t ms) { clockSetMs = ms; }).label("Set from this device").ui("value", "$now");
+    // A file node: over a line, downloaded and uploaded in chunks
+    // (TesserAPI §10.1.1); the default backup spans two download chunks.
+    backup = "{\"entries\":[";
+    for (int i = 0; i < 400; i++) backup += (i ? ",\"entry " : "\"entry ") + std::to_string(i) + "\"";
+    backup += "]}";
+    system.file("backup")
+        .text([this] { return backup; },
+              [this](std::string_view text, tesser::JsonWriter& reply) {
+                  backup.assign(text.data(), text.size());
+                  reply.uinteger(backup.size());
+                  return tesser::Check::ok();
+              })
+        .contentType("application/json")
+        .label("Backup");
     // A typed deferred action: its argument, then a reply later.
     system.action("scan", [](std::string prefix, tesser::Call& call) {
         tesser::Pending p = call.defer();

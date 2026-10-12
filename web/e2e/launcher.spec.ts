@@ -205,3 +205,39 @@ test('over USB, the token goes in an auth envelope', async ({ page }) => {
   await expect.poll(auths).toEqual(['demo-token', '']);
   await expect(page.locator('.brand')).toHaveText('TesserUI demo');
 });
+
+// Files over a line move in download and upload envelopes (TesserAPI
+// §10.1.1), chunk by chunk, through the demo node's own FileSession: the
+// backup spans two download chunks, the upload three.
+for (const [way, button] of [
+  ['USB', 'Choose a port'],
+  ['Bluetooth', 'Choose a device'],
+] as const) {
+  test(`over ${way}: files in envelopes`, async ({ page }) => {
+    await page.addInitScript(fakeDevices);
+    await page.goto('/');
+    await page.getByRole('button', { name: button }).click();
+    await menu(page).getByRole('link', { name: 'System' }).click();
+    const backup = page.locator('.row', { has: page.locator('label span:text-is("Backup")') });
+    const fetch = async () => {
+      const download = page.waitForEvent('download');
+      await backup.getByRole('button', { name: 'Download' }).click();
+      const d = await download;
+      return { name: d.suggestedFilename(), bytes: readFileSync(await d.path()) };
+    };
+    const first = await fetch();
+    expect(first.name).toBe('backup.json');  // the device's name; Chrome adds the extension
+    expect(first.bytes.toString()).toMatch(/^\{"entries":\["entry 0",.*,"entry 399"\]\}$/);
+
+    const bytes = Buffer.from(Array.from({ length: 7000 }, (_, i) => (i * 37) & 0xff));
+    await backup.locator('input[type=file]').setInputFiles({ name: 'mine.bin', mimeType: 'application/octet-stream', buffer: bytes });
+    await backup.getByRole('button', { name: 'Upload' }).click();
+    await expect(backup.locator('output')).toHaveText('Uploaded: 7000');
+    const uploads = await page.evaluate(() =>
+      (window as unknown as { sent: string[] }).sent.filter((l) => l.includes('"op":"upload"')).map((l) => JSON.parse(l)),
+    );
+    expect(uploads[0]).toMatchObject({ path: '/system/backup', size: 7000, filename: 'mine.bin' });
+    expect(uploads.slice(1).map((u) => u.offset)).toEqual([0, 2880, 5760]);
+    expect((await fetch()).bytes.equals(bytes)).toBe(true);
+  });
+}
