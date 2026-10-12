@@ -103,5 +103,4 @@ test('file nodes in list elements, and uploads naming their file', async ({ page
   expect(puts[1].url).toBe('http://files.test/api/files/entries/notes%201.txt/content?filename=b.txt');
   await line('logs').locator('.head').click();
   await expect(line('logs').locator('.detail').getByRole('button', { name: 'Open' })).toBeVisible();
-  await page.screenshot({ path: '/private/tmp/claude-501/-Users-leo-Dev-TesserUI/b904df6f-7d3a-410a-93e0-b3be8d5bce4d/scratchpad/files.png' });
 });

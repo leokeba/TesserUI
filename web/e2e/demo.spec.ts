@@ -7,10 +7,12 @@ const row = (page: Page, label: string) => page.locator('.row', { has: page.loca
 const card = (page: Page, title: string) => page.locator('fieldset.card', { has: page.locator(`.title:text-is("${title}")`) });
 const main = (page: Page) => page.locator('main');
 // A value the demo animates, read on its page.
+// The temperature is 21.5 + 1.5 sin(t / 20 s): at a peak or a trough its
+// readout holds for about 10 s (the shared node's first peak is ~31 s in).
 async function live(page: Page) {
   const temperature = row(page, 'Temperature').locator('output');
   const first = await temperature.textContent();
-  await expect(temperature).not.toHaveText(first!, { timeout: 8000 });
+  await expect(temperature).not.toHaveText(first!, { timeout: 12000 });
 }
 
 test('renders the tree, live, one page per menu entry', async ({ page }) => {
