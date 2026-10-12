@@ -363,6 +363,37 @@
     "inline": false,
     "collapsed": false,
     "form": true
+   },
+   {
+    "name": "diagnostics",
+    "path": "/diagnostics",
+    "label": "Diagnostics",
+    "advanced": false,
+    "hidden": false,
+    "kind": "section",
+    "level": 1,
+    "items": [
+     {
+      "name": "log",
+      "path": "/diagnostics/log",
+      "label": "Log",
+      "advanced": false,
+      "hidden": false,
+      "kind": "leaf",
+      "widget": "file",
+      "type": "file",
+      "editable": true,
+      "readable": true,
+      "maxSize": 16384,
+      "contentType": "text/plain"
+     }
+    ],
+    "advancedItems": [],
+    "lazy": false,
+    "tabs": false,
+    "inline": false,
+    "collapsed": false,
+    "form": false
    }
   ],
   "actions": [],
@@ -381,6 +412,10 @@
   {
    "label": "Calibration",
    "href": "#/calibration"
+  },
+  {
+   "label": "Diagnostics",
+   "href": "#/diagnostics"
   }
  ],
  "pages": {
@@ -734,6 +769,46 @@
      "inline": false,
      "collapsed": false,
      "form": true
+    }
+   ],
+   "actions": [],
+   "columns": 3,
+   "depth": 1
+  },
+  "/diagnostics": {
+   "path": "/diagnostics",
+   "label": "Diagnostics",
+   "cards": [
+    {
+     "name": "",
+     "path": "/diagnostics",
+     "label": "",
+     "advanced": false,
+     "hidden": false,
+     "kind": "section",
+     "level": 1,
+     "items": [
+      {
+       "name": "log",
+       "path": "/diagnostics/log",
+       "label": "Log",
+       "advanced": false,
+       "hidden": false,
+       "kind": "leaf",
+       "widget": "file",
+       "type": "file",
+       "editable": true,
+       "readable": true,
+       "maxSize": 16384,
+       "contentType": "text/plain"
+      }
+     ],
+     "advancedItems": [],
+     "lazy": false,
+     "tabs": false,
+     "inline": false,
+     "collapsed": false,
+     "form": false
     }
    ],
    "actions": [],

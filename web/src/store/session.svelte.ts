@@ -263,10 +263,13 @@ export class Session {
   }
 
   // Files go over HTTP, raw and faster, wherever there is one; with none
-  // (a line, or a serial port through the bridge, whose api is its /s),
-  // in envelopes through the client returned here (DESIGN.md §4).
-  fileClient(): Client | null {
-    return this.line() || /\/s$/.test(this.config.api) ? this.client : null;
+  // (a line, or a serial port through the bridge, whose api is its /s), in
+  // envelopes through the client returned here. So do those below a remote
+  // node over a WebSocket: a gateway relaying one over HTTP serves nothing
+  // else meanwhile, the WebSocket included (TesserAPI §14; DESIGN.md §4).
+  fileClient(path: string): Client | null {
+    const ws = this.client.kind === 'ws' && remoteOf(this.root, path);
+    return ws || this.line() || /\/s$/.test(this.config.api) ? this.client : null;
   }
 
   // The URL of a path of the API over HTTP.

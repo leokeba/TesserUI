@@ -16,6 +16,48 @@ test('files over HTTP, the raw bytes', async ({ page }) => {
   expect(readFileSync(await d.path(), 'utf8')).toBe('{"mine":1}');
 });
 
+// Below a remote node, files go in WebSocket envelopes: a gateway relaying
+// an HTTP transfer serves nothing else meanwhile (TesserAPI §14). The demo's
+// heliostat-3 is a peer behind TesserAPI's real relay; its log spans two
+// download chunks.
+test('files below a remote node, relayed in WebSocket envelopes', async ({ page }) => {
+  const sent: { op: string; path: string }[] = [];
+  page.on('websocket', (ws) =>
+    ws.on('framesent', (f) => {
+      const m = JSON.parse(String(f.payload));
+      if (m.op === 'upload' || m.op === 'download') sent.push(m);
+    }),
+  );
+  await page.goto('/?api=http://localhost:8091/api#/peers/heliostat-3');
+  await expect(page.locator('.state')).toHaveText('Live');
+  const log = page.locator('.row', { has: page.locator('label span:text-is("Log")') });
+  const fetch = async () => {
+    const download = page.waitForEvent('download');
+    await log.getByRole('button', { name: 'Download' }).click();
+    return readFileSync(await (await download).path(), 'utf8');
+  };
+  const first = await fetch();
+  expect(first.startsWith('tracking: azimuth 0\n')).toBe(true);
+  expect(first.split('\n')).toHaveLength(201);
+
+  const text = 'moved by hand\n'.repeat(500);
+  await log.locator('input[type=file]').setInputFiles({ name: 'log.txt', mimeType: 'text/plain', buffer: Buffer.from(text) });
+  await log.getByRole('button', { name: 'Upload' }).click();
+  await expect(log.locator('output')).toHaveText(`Uploaded: ${text.length}`);
+  expect(await fetch()).toBe(text);
+  expect(new Set(sent.map((m) => `${m.op} ${m.path}`))).toEqual(new Set(['download /peers/heliostat-3/diagnostics/log', 'upload /peers/heliostat-3/diagnostics/log']));
+});
+
+// With HTTP only, it goes over HTTP, which the gateway relays too.
+test('files below a remote node over HTTP only', async ({ page }) => {
+  await page.goto('/?api=http://localhost:8091/api&ws=#/peers/heliostat-3');
+  await expect(page.locator('.state')).toHaveText('Polling');
+  const log = page.locator('.row', { has: page.locator('label span:text-is("Log")') });
+  const download = page.waitForEvent('download');
+  await log.getByRole('button', { name: 'Download' }).click();
+  expect(readFileSync(await (await download).path(), 'utf8')).toMatch(/^(tracking: azimuth \d+\n|moved by hand\n)+$/);
+});
+
 // File nodes in a list's elements: TesserKIT's file browser
 // (/sys/files/entries), faked over HTTP.
 const schema = {

@@ -67,6 +67,18 @@ Motors::Motors() {
     cal.value("az", calib.az).range(0, 360).step(0.1).unit("°").label("Azimuth target");
     cal.value("el", calib.el).range(0, 90).step(0.1).unit("°").label("Elevation target");
     cal.action("go", [this] { calib.moving = true; }).label("Go").ui("style", "primary");
+    // A file node, which the demo's gateway relays (TesserAPI §14): the log
+    // spans two download chunks.
+    for (int i = 0; i < 200; i++) log += "tracking: azimuth " + std::to_string(i) + "\n";
+    api.object("diagnostics").label("Diagnostics").file("log")
+        .text([this] { return log; },
+              [this](std::string_view text, tesser::JsonWriter& reply) {
+                  log.assign(text.data(), text.size());
+                  reply.uinteger(log.size());
+                  return tesser::Check::ok();
+              })
+        .contentType("text/plain")
+        .label("Log");
 }
 
 // ---- porch lamp --------------------------------------------------------------

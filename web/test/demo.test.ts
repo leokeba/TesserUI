@@ -190,8 +190,9 @@ describe('demo: custom pages', () => {
 describe('motors: helionext ported with no hand-written UI', () => {
   const m = fixture('motors');
   const p = buildPage(m.schema, '/');
-  it('renders both motors and the calibration form', () => {
-    expect(p.cards.map((c) => c.label)).toEqual(['Azimuth motor', 'Elevation motor', 'Calibration']);
+  it('renders both motors, the calibration form and the log file', () => {
+    expect(p.cards.map((c) => c.label)).toEqual(['Azimuth motor', 'Elevation motor', 'Calibration', 'Diagnostics']);
+    expect(p.cards[3].items[0]).toMatchObject({ path: '/diagnostics/log', widget: 'file', readable: true, editable: true });
     const az = p.cards[0];
     const control = az.items[0] as Section;
     expect(control.items.map((i) => (i as Leaf).label)).toEqual(['Speed', 'Duty cycle', 'Direction']);

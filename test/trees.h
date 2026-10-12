@@ -46,6 +46,7 @@ struct Motors {
     Motor azimuth;
     Motor elevation;
     Calibration calib;
+    std::string log;  // /diagnostics/log, a text file node: relayed when mounted as a peer
 
     Motors();
 };

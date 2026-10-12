@@ -1,7 +1,7 @@
 <script lang="ts">
   // Files (DESIGN.md §4): downloaded with a GET, uploaded with the file as
   // a PUT's raw body, with progress; in envelopes on a client with no HTTP
-  // (serial, Bluetooth). Compact (a list's line): icon buttons, a chosen
+  // (serial, Bluetooth), and below a remote node over a WebSocket. Compact (a list's line): icon buttons, a chosen
   // file uploads at once, and the outcome is a toast.
   import { download, upload as send } from '../client/files';
   import { fileUrl } from '../client/http';
@@ -50,7 +50,7 @@
   async function transfer(method: 'GET' | 'PUT', body?: File) {
     progress = 0;
     message = '';
-    const client = session.fileClient();
+    const client = session.fileClient(leaf.path);
     if (client) {
       const p = (f: number) => (progress = Math.round(f * 100));
       const r = body ? await send(client, leaf.path, body, p) : await download(client, leaf.path, p);

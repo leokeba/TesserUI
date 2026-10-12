@@ -1,7 +1,8 @@
 // File transfers in envelopes (TesserAPI DESIGN.md §10.1.1), for clients
-// with no HTTP: serial and Bluetooth lines, a bridge's serial port. One
-// envelope per chunk, the bytes in base64. A chunk whose reply doesn't come
-// is sent again at the same offset, which the device makes harmless.
+// with no HTTP (serial and Bluetooth lines, a bridge's serial port) and for
+// files below a remote node over a WebSocket. One envelope per chunk, the
+// bytes in base64. A chunk whose reply doesn't come is sent again at the
+// same offset, which the device makes harmless.
 
 import { DEFERRED_TIMEOUT_MS, type Client, type Reply, type Request } from './types';
 
@@ -11,12 +12,19 @@ const base64 = (bytes: Uint8Array) => {
   return btoa(s);
 };
 
-// Asked again while it times out.
-async function ask(client: Client, r: Request, tries = 4, timeoutMs?: number) {
-  let reply: Reply;
-  do reply = await client.request(r, timeoutMs);
-  while (reply.status === 'timeout' && --tries);
-  return reply;
+// Longer than a gateway relaying a chunk to a remote node tries it itself
+// (three times its 3 s timeout, TesserAPI §14), after which it answers
+// `timeout`.
+const CHUNK_TIMEOUT_MS = 10000;
+
+// Asked again while it times out, or a moment later while it is `busy`: a
+// gateway still relaying the try given up on, or at its maxPending.
+async function ask(client: Client, r: Request, tries = 4, timeoutMs = CHUNK_TIMEOUT_MS) {
+  for (;;) {
+    const reply = await client.request(r, timeoutMs);
+    if (!--tries || (reply.status !== 'timeout' && reply.status !== 'busy')) return reply;
+    if (reply.status === 'busy') await new Promise((done) => setTimeout(done, 1000));
+  }
 }
 
 // The body of a successful download is a File named by the device (empty
@@ -55,7 +63,7 @@ export async function upload(client: Client, path: string, file: File, progress:
     // The last chunk's reply can't be asked again: the upload is over once
     // the device has it. Its handler's finish() may take long too.
     const last = end === size;
-    r = await ask(client, { op: 'upload', path, offset: received, data }, last ? 1 : 4, last ? DEFERRED_TIMEOUT_MS : undefined);
+    r = await ask(client, { op: 'upload', path, offset: received, data }, last ? 1 : 4, last ? DEFERRED_TIMEOUT_MS : CHUNK_TIMEOUT_MS);
     if (r.status !== 'ok' || last) return r;
     received = (r.body as { received: number }).received;
     progress(received / size);

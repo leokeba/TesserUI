@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { download, upload } from '../src/client/files';
 import type { Client, Reply, Request } from '../src/client/types';
 
@@ -116,6 +116,23 @@ describe('uploads in envelopes', () => {
     expect((await upload(d, '/f', file(10), () => {})).status).toBe('ok');
     expect(d.stored).toEqual([...bytes(10)]);
     expect(d.sent.slice(1).map((s) => s.offset)).toEqual([0, 4, 4, 8]);
+  });
+
+  // A gateway relaying the chunk to a remote node: the try given up on is
+  // still on its way, and the next is busy until its reply comes.
+  it('waits while a gateway is busy relaying, then sends again', async () => {
+    const d = new Device(new Uint8Array(), 4);
+    let busy = 1;
+    const relayed = Object.assign(d, {
+      request: async (r: Request): Promise<Reply> =>
+        r.offset === 4 && busy-- > 0 ? { status: 'busy', body: { error: 'busy', message: 'the last chunk is still on its way' } } : Device.prototype.request.call(d, r),
+    });
+    vi.useFakeTimers();
+    const done = upload(relayed, '/peers/lamp/f', file(10), () => {});
+    await vi.runAllTimersAsync();
+    vi.useRealTimers();
+    expect((await done).status).toBe('ok');
+    expect(d.stored).toEqual([...bytes(10)]);
   });
 
   it("doesn't ask the opening or the last chunk again", async () => {
