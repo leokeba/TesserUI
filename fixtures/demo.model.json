@@ -4158,6 +4158,29 @@
      }
     },
     {
+     "kind": "card",
+     "label": "Sequence",
+     "items": [
+      {
+       "kind": "node",
+       "path": "/sequence",
+       "item": {
+        "name": "sequence",
+        "path": "/sequence",
+        "label": "",
+        "advanced": false,
+        "hidden": false,
+        "kind": "leaf",
+        "widget": "x-keyframes",
+        "type": "object",
+        "editable": false,
+        "script": "/ext/keyframes.js"
+       }
+      }
+     ],
+     "wide": true
+    },
+    {
      "kind": "text",
      "text": "Live values from **every** node."
     },
@@ -4184,8 +4207,7 @@
    ],
    "specs": [
     {
-     "path": "/",
-     "depth": 3
+     "path": "/"
     }
    ]
   },

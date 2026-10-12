@@ -241,6 +241,11 @@ test('views come first and combine peers', async ({ page }) => {
   await expect(page.getByText('Live values from')).toBeVisible();
   await expect(row(page, 'Porch lamp').locator('input[role=switch]')).toBeVisible({ timeout: 10000 });
   await expect(page.getByText('/peers/kitchen-lamp/lamp/on: offline')).toBeVisible({ timeout: 10000 });
+  // A wide card spans every column of the grid.
+  const width = (sel: string) => page.locator(sel).first().evaluate((e) => e.getBoundingClientRect().width);
+  await expect(page.locator('.card.wide h2')).toHaveText('Sequence');
+  expect(await width('.card.wide')).toBe(await width('.grid'));
+  expect(await width('.grid > .card:not(.wide)')).toBeLessThan((await width('.grid')) / 2);
 });
 
 test('peer pages go through the gateway', async ({ page }) => {

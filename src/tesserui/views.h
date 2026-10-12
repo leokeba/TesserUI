@@ -47,7 +47,9 @@ public:
     Container& each(const char* path, const char* nodePath);
     // {"row": [...]}: items side by side. Returns the row.
     Container& row();
-    // {"card": label, "items": [...]}: a card. Returns the card.
+    // {"card": label, "items": [...]}: a card. Returns the card. Hints on
+    // the card itself go on its container afterwards, the card being its
+    // last item: page.card("Recorder")...; page.hint("wide", true);
     Container& card(const char* label);
 
     // A hint on the last item added to this container: an extra key on its

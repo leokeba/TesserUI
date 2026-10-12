@@ -371,6 +371,8 @@ Demo::Demo()
     auto& overview = views.page("overview", "Overview").icon("eye");
     overview.row().widget("gauge", "/lamp/power").widget("readout", "/sensors/temperature");
     overview.card("Motor").node("/motor");
+    overview.card("Sequence").widget("x-keyframes", "/sequence");
+    overview.hint("wide", true);  // the timeline wants the width
     overview.text("Live values from **every** node.");
     overview.each("/peers", "$/lamp/on");
     // A view whose only item is a custom element: a custom page.

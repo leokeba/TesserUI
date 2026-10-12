@@ -140,19 +140,41 @@ describe('demo: views (DESIGN §8)', () => {
     expect(v.items[0]).toMatchObject({ kind: 'row', items: [{ kind: 'node', item: { widget: 'gauge' } }, { kind: 'node', item: { widget: 'readout' } }] });
     // A card around one subtree is that subtree's card.
     expect(v.items[1]).toMatchObject({ kind: 'node', item: { kind: 'section', level: 1, label: 'Motor', path: '/motor' } });
-    expect(v.items[2]).toEqual({ kind: 'text', text: 'Live values from **every** node.' });
+    // A wide card around a custom element, without the node's label.
+    expect(v.items[2]).toMatchObject({ kind: 'card', label: 'Sequence', wide: true, items: [{ item: { widget: 'x-keyframes', label: '' } }] });
+    expect(v.items[3]).toEqual({ kind: 'text', text: 'Live values from **every** node.' });
     // `each` over the peers: their trees aren't fetched yet.
     expect(v.missing).toEqual(['/peers/heliostat-3/lamp/on', '/peers/kitchen-lamp/lamp/on', '/peers/porch-lamp/lamp/on']);
-    expect(v.specs).toEqual([{ path: '/', depth: 3 }]);
-    expect(viewModelItems(v.items).map((i) => i.path)).toEqual(['/lamp/power', '/sensors/temperature', '/motor']);
+    // The element wants its whole subtree.
+    expect(v.specs).toEqual([{ path: '/', depth: undefined }]);
+    expect(viewModelItems(v.items).map((i) => i.path)).toEqual(['/lamp/power', '/sensors/temperature', '/motor', '/sequence']);
   });
   it('labels repeated items with the peer and subscribes per node', () => {
     const root = structuredClone(demo.schema) as Schema;
     const peer: Schema = { type: 'object', label: 'Heliostat 3', children: { lamp: { type: 'object', children: { on: { type: 'boolean', writable: true } } } } };
     mergeSchema(root, '/peers/heliostat-3', peer);
     const v = buildView(view, root);
-    expect(v.items[3]).toMatchObject({ kind: 'node', item: { path: '/peers/heliostat-3/lamp/on', label: 'Heliostat 3', widget: 'toggle' } });
+    expect(v.items[4]).toMatchObject({ kind: 'node', item: { path: '/peers/heliostat-3/lamp/on', label: 'Heliostat 3', widget: 'toggle' } });
     expect(v.specs).toContainEqual({ path: '/peers/heliostat-3/lamp/on', depth: 0 });
+  });
+});
+
+describe('demo: wide cards', () => {
+  it('carries wide to cards and to a card around one subtree', () => {
+    const page: ViewPage = {
+      id: 'w',
+      label: 'W',
+      items: [
+        { card: 'Lamp', items: [{ node: '/lamp/on' }, { node: '/lamp/brightness' }], wide: true },
+        { card: 'Motor', items: [{ node: '/motor' }], wide: true },
+        { card: 'Sky', items: [{ widget: 'x-sun-dial', path: '/sky' }] },
+      ],
+    };
+    const v = buildView(page, demo.schema);
+    expect(v.items[0]).toMatchObject({ kind: 'card', label: 'Lamp', wide: true });
+    expect(v.items[1]).toMatchObject({ kind: 'node', item: { kind: 'section', label: 'Motor' }, wide: true });
+    expect(v.items[2]).toMatchObject({ kind: 'card', label: 'Sky' });
+    expect('wide' in v.items[2] && v.items[2].wide).toBeFalsy();
   });
 });
 

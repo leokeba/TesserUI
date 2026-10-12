@@ -26,10 +26,11 @@ export interface ViewPage {
   items: ViewItemDoc[];
 }
 
+// wide: a card across the page's full width.
 export type ViewItem =
-  | { kind: 'node'; path: string; item: Item | null }
+  | { kind: 'node'; path: string; item: Item | null; wide?: boolean }
   | { kind: 'row'; items: ViewItem[] }
-  | { kind: 'card'; label: string; items: ViewItem[] }
+  | { kind: 'card'; label: string; items: ViewItem[]; wide?: boolean }
   | { kind: 'text'; text: string };
 
 export interface View {
@@ -99,18 +100,19 @@ export function buildView(page: ViewPage, root: Schema): View {
     if (doc.row) return [{ kind: 'row', items: doc.row.flatMap((d) => build(d, level + 1)) }];
     if (doc.card !== undefined) {
       const docs = doc.items ?? [];
+      const wide = doc.wide === true || undefined;
       // A card around one subtree is that subtree's card, under the card's label.
       if (docs.length === 1 && (docs[0].node ?? docs[0].path) !== undefined && !docs[0].each) {
         const [only] = build(docs[0], 1);
-        if (only?.kind === 'node' && only.item?.kind === 'section') return [{ ...only, item: { ...only.item, label: doc.card || only.item.label } }];
+        if (only?.kind === 'node' && only.item?.kind === 'section') return [{ ...only, item: { ...only.item, label: doc.card || only.item.label }, wide }];
         // A custom element under a card's title doesn't repeat its node's
         // label, unless the item gives one.
         if (only?.kind === 'node' && only.item?.kind === 'leaf' && isElement(only.item.widget) && doc.card && docs[0].label === undefined) {
           only.item = { ...only.item, label: '', icon: undefined };
         }
-        return [{ kind: 'card', label: doc.card, items: only ? [only] : [] }];
+        return [{ kind: 'card', label: doc.card, items: only ? [only] : [], wide }];
       }
-      return [{ kind: 'card', label: doc.card, items: docs.flatMap((d) => build(d, 2)) }];
+      return [{ kind: 'card', label: doc.card, items: docs.flatMap((d) => build(d, 2)), wide }];
     }
     if (doc.each !== undefined && doc.item) {
       const parent = resolved(doc.each);

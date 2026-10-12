@@ -101,6 +101,17 @@ TEST(views_every_item_kind) {
     CHECK_EQ(p.size(), size_t(7));
 }
 
+TEST(views_card_hint) {
+    Api api;
+    tesserui::Views views(api);
+    auto& p = views.page("p");
+    p.card("Recorder").widget("x-recorder", "/recorder");
+    p.hint("wide", true);  // on the card, the page's last item
+    CHECK_EQ(ui(api),
+             "{\"pages\":[{\"id\":\"p\",\"items\":["
+             "{\"card\":\"Recorder\",\"items\":[{\"widget\":\"x-recorder\",\"path\":\"/recorder\"}],\"wide\":true}]}]}");
+}
+
 TEST(views_hint_types) {
     Api api;
     tesserui::Views views(api);

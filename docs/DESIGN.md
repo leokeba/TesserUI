@@ -339,7 +339,7 @@ field.card("Calibration").node("/calib");         // an auto-rendered subtree
 | `{"node": path, ...}` | The subtree at `path`, rendered by the tier 0 and 1 rules. Extra keys are hints that override the schema's. |
 | `{"widget": w, "path": p, "label"?: s, ...}` | One widget for one path. |
 | `{"row": [items]}` | Items side by side (stacked on narrow screens). |
-| `{"card": label, "items": [items]}` | A card. A card holding one custom element doesn't repeat the node's label above it, unless the item gives a `label`. |
+| `{"card": label, "items": [items]}` | A card. A card holding one custom element doesn't repeat the node's label above it, unless the item gives a `label`. With `"wide": true`, the card spans the page's full width, on a row of its own; otherwise cards share columns at least 360 px wide. In C++, a hint on the page right after the card: `page.card("Recorder").widget("x-recorder", "/recorder"); page.hint("wide", true);`. |
 | `{"text": s}` | A paragraph. Plain text; `**bold**` is the only markup. |
 | `{"each": path, "item": item}` | The item repeated for each child of the object at `path`, with `$` replaced by the child's path. With `/peers`, one entry per discovered node. |
 

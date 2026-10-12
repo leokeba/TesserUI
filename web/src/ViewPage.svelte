@@ -28,12 +28,12 @@
   $effect(() => session.show(viewModelItems(view.items), view.specs, '/'));
 
   // Top-level subtrees are cards; other consecutive items share one.
-  type Block = { card: string; items: ViewItem[] } | { section: SectionModel };
+  type Block = ({ card: string; items: ViewItem[] } | { section: SectionModel }) & { wide?: boolean };
   const blocks = $derived.by(() => {
     const out: Block[] = [];
     for (const i of view.items) {
-      if (i.kind === 'card') out.push({ card: i.label, items: i.items });
-      else if (i.kind === 'node' && i.item?.kind === 'section') out.push({ section: { ...i.item, level: 1 } });
+      if (i.kind === 'card') out.push({ card: i.label, items: i.items, wide: i.wide });
+      else if (i.kind === 'node' && i.item?.kind === 'section') out.push({ section: { ...i.item, level: 1 }, wide: i.wide });
       else {
         const last = out[out.length - 1];
         if (last && 'card' in last && last.card === '') last.items.push(i);
@@ -76,10 +76,12 @@
 {:else}
 <div class="grid">
   {#each blocks as b, n (n)}
-    {#if 'section' in b}
+    {#if 'section' in b && b.wide}
+      <div class="wide"><Section sec={b.section} /></div>
+    {:else if 'section' in b}
       <Section sec={b.section} />
     {:else}
-      <section class="card">
+      <section class="card" class:wide={b.wide}>
         {#if b.card}<h2>{b.card}</h2>{/if}
         {@render items(b.items)}
       </section>
@@ -97,6 +99,9 @@
   }
   .card {
     container-type: inline-size;
+  }
+  .wide {
+    grid-column: 1 / -1;
   }
   .custom {
     container-type: inline-size;
