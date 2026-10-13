@@ -29,6 +29,14 @@ describe('widget inference (DESIGN §4)', () => {
     expect(leaf({ type: 'event', ui: { toast: 'loud' } }).toast).toBeUndefined();
     expect(leaf({ type: 'event' }).toast).toBeUndefined();
   });
+  it('shows an event as a log with ui.widget "log", keeping ui.lines', () => {
+    expect(leaf({ type: 'event', ui: { widget: 'log' } })).toMatchObject({ widget: 'log', lines: 100 });
+    expect(leaf({ type: 'event', ui: { widget: 'log', lines: 200 } }).lines).toBe(200);
+    expect(leaf({ type: 'event', ui: { lines: 30 } })).toMatchObject({ widget: 'events', lines: 30 });
+    expect(leaf({ type: 'event' }).lines).toBeUndefined();
+    // Only events: elsewhere the hint doesn't fit.
+    expect(leaf({ type: 'string', ui: { widget: 'log' } }).widget).toBe('readout');
+  });
   it('edits a list only when it says writable', () => {
     // TesserAPI a2b0002: a list the device fills (scan results) has no "writable".
     const items = { type: 'object' as const, children: { ssid: { type: 'string' as const } } };

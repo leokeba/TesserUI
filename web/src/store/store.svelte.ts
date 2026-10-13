@@ -8,6 +8,8 @@ import { isUnder, parentPath, segments } from '../model/schema';
 import { Toasts } from './toasts.svelte';
 
 export interface EventEntry {
+  // Unique: a burst of events shares one millisecond.
+  n: number;
   t: number;
   path: string;
   body: unknown;
@@ -16,6 +18,7 @@ export interface EventEntry {
 type Tree = Record<string, unknown> | unknown[];
 
 const MAX_EVENTS = 8;
+let eventCount = 0;
 
 export class Store {
   values: Record<string, unknown> = $state({});
@@ -31,6 +34,8 @@ export class Store {
   visible = new Set<string>();
   // Chart paths and their history length, in seconds.
   charts = new Map<string, number>();
+  // Event paths keeping more than MAX_EVENTS (ui.lines), and how many.
+  lines = new Map<string, number>();
   // Keyed lists (TesserAPI §4.4), by path: their key field. A path goes
   // through such a list by key (/sys/timers/morning/time), through other
   // arrays by index.
@@ -250,8 +255,10 @@ export class Store {
       this.apply(n.path, n.body);
       return;
     }
+    // Oldest first.
     const at = this.nearestVisible(n.path);
-    this.events[at] = [{ t: Date.now(), path: n.path, body: n.body }, ...(this.events[at] ?? [])].slice(0, MAX_EVENTS);
+    const e = { n: ++eventCount, t: Date.now(), path: n.path, body: n.body };
+    this.events[at] = [...(this.events[at] ?? []), e].slice(-(this.lines.get(at) ?? MAX_EVENTS));
   }
 
   // Errors are cleared by navigation (DESIGN.md §7.1).

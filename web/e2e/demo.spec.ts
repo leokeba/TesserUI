@@ -134,6 +134,18 @@ test('events log on their page, and toast wherever the user is', async ({ page }
   await expect(toast).toHaveCount(0);
 });
 
+test('a log shows its lines oldest first, coloured by level, until cleared', async ({ page }) => {
+  // The demo's /system/log: an ESP-IDF line every 3 s, the third a warning.
+  await open(page, '#/system');
+  const lines = page.getByRole('log').locator('div');
+  await expect(lines).toHaveCount(3, { timeout: 11000 });
+  await expect(lines.nth(0)).toHaveText(/^I \(\d+\) demo: tick$/);
+  await expect(lines.nth(2)).toHaveText(/^W \(\d+\) mqtt: can't resolve the broker's name$/);
+  await expect(lines.nth(2)).toHaveClass(/\bW\b/);
+  await page.getByRole('button', { name: 'Clear' }).click();
+  await expect(page.getByRole('log')).toHaveText('No events yet');
+});
+
 test('an error with no place on screen toasts, until a write there succeeds', async ({ page }) => {
   // The reply to the first write of /lamp/on is held, and comes back an
   // error once the page has changed.

@@ -1666,6 +1666,19 @@
       "deferred": true,
       "submit": false,
       "field": "text"
+     },
+     {
+      "name": "log",
+      "path": "/system/log",
+      "label": "Log",
+      "advanced": false,
+      "hidden": false,
+      "access": "admin",
+      "kind": "leaf",
+      "widget": "log",
+      "type": "event",
+      "editable": false,
+      "lines": 200
      }
     ],
     "advancedItems": [],
@@ -3765,6 +3778,19 @@
        "readable": true,
        "maxSize": 16384,
        "contentType": "application/json"
+      },
+      {
+       "name": "log",
+       "path": "/system/log",
+       "label": "Log",
+       "advanced": false,
+       "hidden": false,
+       "access": "admin",
+       "kind": "leaf",
+       "widget": "log",
+       "type": "event",
+       "editable": false,
+       "lines": 200
       }
      ],
      "advancedItems": [],

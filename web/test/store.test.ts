@@ -142,6 +142,20 @@ describe('store: events and charts', () => {
     store.notify({ op: 'event', path: '/demo/fired', body: 3 });
     expect(store.events['/demo']?.[0]).toMatchObject({ path: '/demo/fired', body: 3 });
   });
+  it('keeps the last 8 events, or ui.lines, oldest first', () => {
+    const { store } = setup();
+    store.visible.add('/e').add('/log');
+    store.lines.set('/log', 20);
+    for (let i = 0; i < 30; i++) {
+      store.notify({ op: 'event', path: '/e', body: i });
+      store.notify({ op: 'event', path: '/log', body: `I (${i}) line` });
+    }
+    expect(store.events['/e'].map((e) => e.body)).toEqual([22, 23, 24, 25, 26, 27, 28, 29]);
+    expect(store.events['/log'].length).toBe(20);
+    expect(store.events['/log'][19].body).toBe('I (29) line');
+    // Distinct, though they share a millisecond.
+    expect(new Set(store.events['/log'].map((e) => e.n)).size).toBe(20);
+  });
   it('keeps chart history', () => {
     const { store } = setup();
     store.charts.set('/t', 60);
@@ -333,7 +347,7 @@ describe('session: events (DESIGN §7.8)', () => {
     client.push({ op: 'event', path: '/lamp/pressed', body: 1 });
     client.push({ op: 'event', path: '/lamp/blinked', body: 2 });
     await tick();
-    expect(s.store.events['/lamp'].map((e) => e.path)).toEqual(['/lamp/blinked', '/lamp/pressed']);
+    expect(s.store.events['/lamp'].map((e) => e.path)).toEqual(['/lamp/pressed', '/lamp/blinked']);
     expect(s.store.toasts.list).toMatchObject([{ kind: 'warn', text: '2', path: '/lamp/blinked' }]);
 
     // Off the page and below what was loaded: its schema is read first. A

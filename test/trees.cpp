@@ -363,6 +363,8 @@ Demo::Demo()
         tesser::Pending p = call.defer();
         p.reply(std::string(prefix) + "-net");
     });
+    // A log, like TesserKIT's /sys/log: one ESP-IDF line per event.
+    log = &system.event("log").label("Log").ui("widget", "log").ui("lines", 200);
     // Public: a node requires its ancestors' levels, so sign-in can't live
     // below the admins' object.
     auto& auth = api.object("account").label("Account");
@@ -407,7 +409,7 @@ Demo::Demo()
 }
 
 void Demo::tick(uint32_t nowMs) {
-    if (!startMs_) startMs_ = lastMs_ = lastPressMs_ = nowMs;
+    if (!startMs_) startMs_ = lastMs_ = lastPressMs_ = lastLogMs_ = nowMs;
     double dt = (nowMs - lastMs_) / 1000.0;
     double t = (nowMs - startMs_) / 1000.0;
     lastMs_ = nowMs;
@@ -465,6 +467,13 @@ void Demo::tick(uint32_t nowMs) {
     if (reached(nowMs, lastPressMs_ + 5000)) {
         lastPressMs_ = nowMs;
         pressed->emit(++presses);
+    }
+    if (reached(nowMs, lastLogMs_ + 3000)) {
+        lastLogMs_ = nowMs;
+        static const char* const kLines[] = {"I demo: tick", "I wifi: rssi -52", "W mqtt: can't resolve the broker's name", "I demo: tick",
+                                             "E sensor: read timed out"};
+        const char* text = kLines[logLines++ % 5];
+        log->emit(std::string(1, text[0]) + " (" + std::to_string(nowMs - startMs_) + ") " + (text + 2));
     }
 
     porch.tick(nowMs);

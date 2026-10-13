@@ -537,6 +537,7 @@ export class Session {
     store.visible = visiblePaths({ cards: items.filter((i): i is Section => i.kind === 'section') });
     for (const i of items) store.visible.add(i.path);
     store.charts.clear();
+    store.lines.clear();
     // Paths followed though not shown: conditions', option lists'.
     const followed: string[] = [];
     const peers: string[] = [];
@@ -545,6 +546,7 @@ export class Session {
       if (i.kind === 'leaf') {
         if (i.optionsFrom) followed.push(i.optionsFrom);
         if (i.history) store.charts.set(i.path, i.history);
+        if (i.lines) store.lines.set(i.path, i.lines);
       } else if (i.kind === 'link' && i.remote && i.online && !this.schemaAt(i.path)?.tree) {
         peers.push(i.path);
       }

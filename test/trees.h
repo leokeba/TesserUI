@@ -148,6 +148,8 @@ struct Demo {
     int presses = 0;
     tesser::EventNode* pressed = nullptr;
     tesser::EventNode* homed = nullptr;
+    tesser::EventNode* log = nullptr;  // /system/log, ESP-IDF lines
+    int logLines = 0;
     // settings
     std::string ssid = "heliostat-net";
     std::string password = "hunter2";
@@ -217,6 +219,7 @@ private:
     uint32_t startMs_ = 0;
     uint32_t lastMs_ = 0;
     uint32_t lastPressMs_ = 0;
+    uint32_t lastLogMs_ = 0;
 };
 
 }  // namespace trees

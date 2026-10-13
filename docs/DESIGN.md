@@ -27,7 +27,7 @@ TesserUI renders user interfaces for [TesserAPI](https://github.com/leokeba/Tess
 | Item | Decision |
 |---|---|
 | Device side | C++17 and TesserAPI's rules: no exceptions, no RTTI, ESP-IDF ≥ 5.1 and Arduino-ESP32 ≥ 3.0. |
-| Web bundle | ≤ 57.5 KB gzipped for everything (JS and CSS), measured in CI. Evergreen browsers only. (Raised from 40 KB once phases 1, 2 and 4 were in: they measured 40.2 KB with every saving taken. Raised from 50 KB for the navigation menu, §6.3, from 52 KB for the launcher and Bluetooth, §9.7, from 54 KB for notifications, §7.8, from 55.5 KB for file nodes in list elements, §4, from 56.5 KB for events over HTTP, §9.2, and from 57 KB for files over serial and Bluetooth, §4.) |
+| Web bundle | ≤ 58 KB gzipped for everything (JS and CSS), measured in CI. Evergreen browsers only. (Raised from 40 KB once phases 1, 2 and 4 were in: they measured 40.2 KB with every saving taken. Raised from 50 KB for the navigation menu, §6.3, from 52 KB for the launcher and Bluetooth, §9.7, from 54 KB for notifications, §7.8, from 55.5 KB for file nodes in list elements, §4, from 56.5 KB for events over HTTP, §9.2, from 57 KB for files over serial and Bluetooth, §4, and from 57.5 KB for the log widget, §4.) |
 | Web stack | Svelte 5 + TypeScript + Vite, without a CSS framework or chart library. |
 | LCD stack | LVGL 9.x. Display and touch drivers are the application's: TesserUI receives an `lv_display_t*`. |
 | Smallest node | A NowTP-only node with no Wi-Fi and no UI assets: its tree and its hint literals are all it stores. |
@@ -82,7 +82,7 @@ Without any hint, each schema node maps to one semantic widget. The table is nor
 | `action`, `arg: "any"` | `json` + `button` | Raw JSON entry, shown only under "Advanced"; hidden on LCD. |
 | `action`, `deferred` | as above, with a busy state until the reply | A deferred action taking `tesser::Call&` alone reports `arg: "any"`: it is a plain button, no JSON entry. Typed deferred actions (`(T, Call&)`) get their input. Their reply may take up to TesserAPI's `deferTimeoutMs`: the request timeout is 15 s. |
 | `action`, `returns` | as above; the result is shown next to the button | Any reply other than `null` is shown, since a deferred action's reply has no declared type. |
-| `event` | `events` | The last occurrences with their payloads (web), or a toast (LCD). |
+| `event` | `events` | The last 8 occurrences (`ui.lines`), newest first, each with its time and payload (web), or a toast (LCD). |
 | `list` of at most 3 short fields, without actions or files | `table` | Fields are short when they are top-level values drawn as `text`, `password`, `number`, `slider`, `select`, `segmented`, `toggle`, `readout` or `led`, without conditions. Columns are the leaves of `items`. Rows can be edited, added (up to `maxSize`) and removed: each edit writes the whole array (TesserAPI §4.4), without its read-only fields, which the device would refuse, and the `secret` fields it couldn't read. Each item patches its element, keeping the fields it leaves out; a keyed list (`key`) is matched by key, not index, so those survive removals and reordering; its rows are named by their key column instead of an index. |
 | any other `list` | `list` | One line per element: its name (the key, else its first value), up to three short values (flags by their labels), its first writable boolean as a switch, a download and an upload button for each of its file nodes (below), and a remove button. A boolean field with `ui.icon` marks the line with that icon while true (a folder in a file browser). A line opens into the element's own controls, built like a section at the element's path (`/sys/timers/morning`), so every widget, nested object and condition works, and each control writes its own path; a keyed list's paths go through it by key, each name percent-encoded in URLs (`/api/sys/files/entries/my%20notes.txt/content`). Adding to a keyed list asks for the new element's key first, and sends only the keys, which keeps the other elements whole (TesserAPI §4.4). `ui.widget` `table` or `list` chooses. |
 | `list` without `writable` | `table` or `list`, read-only | A list the device fills (TesserAPI's `ListNode::readOnly()`: scan results, peers nearby): no add or remove buttons, and its elements' values come without `writable`, so they are readouts. Actions and file nodes in its elements still work. Lists have said `writable` since TesserAPI a2b0002; older firmware's lists read as read-only (no fallback, before 1.0). |
@@ -125,6 +125,7 @@ m.object("pid").ui("advanced");
 | `timezone` | string | The IANA time zones the browser knows; choosing one writes its POSIX TZ string (`<+01>-1<+02>,M3.5.0,M10.5.0/3`), derived from the zone's offsets over the current year, which is what `tzset()` reads on the device. |
 | `readout`, `bar`, `gauge` | number | `bar` and `gauge` need `min`/`max`, which a read-only value may declare with `.range()`. |
 | `chart` | number, numeric array | A time series of the value, kept by the renderer (§7.7); for an array, its values by index. |
+| `log` | event | Payloads as lines of a log, such as ESP-IDF's (TesserKIT's `/sys/log/line`): a string as it is, any other payload as JSON, in monospace, one line each without wrapping and without a time (the device's line has its own). The last `ui.lines` (default 100), oldest at the top, in a box of fixed height that scrolls; it stays at the end as lines arrive unless the user scrolled up. A line starting with ESP-IDF's `E (` is red, `W (` amber. A button clears it, on this screen only. On LCD, an `events` widget. |
 | `hold` | action with a boolean `arg` | Called with `true` on press, again every `ui.keepalive` ms while held (default 300), and `false` on release: jog buttons behind a dead-man timer (§7.4). |
 | `button` | action | Explicitly a button (e.g. a typed action whose argument comes from `ui.value`). |
 | any name with a hyphen (`x-sun-dial`) | any node, objects included | A custom element (§9.8), web only. Other renderers use the tier 0 widget; on an object, its section. |
@@ -147,6 +148,7 @@ m.object("pid").ui("advanced");
 | `value` | number or string | action | The argument the action's button sends, instead of an input: `o.action("preset", ...).ui("value", 3)`. `"$now"` sends the browser's clock (milliseconds since 1970). |
 | `auth` | string | action | `"login"`: the action signing clients in (§7.4). `"whoami"`: the action telling a client its access level. |
 | `history` | number | chart | Seconds of history (default 60). |
+| `lines` | number | event | How many occurrences the renderer keeps: default 8 for `events`, 100 for `log`. |
 | `keepalive` | number | writable number or boolean, `hold` action | Milliseconds between keep-alives for a device's dead-man timer (§7.4). A `hold` action repeats every 300 ms without it. |
 | `advanced` | flag | any | Shown under a collapsed "Advanced" group of its section. |
 | `hidden` | flag | any | Not shown. Its value is still read and usable in conditions. |
@@ -189,7 +191,7 @@ Layout follows the tree. Children render in declaration order, which is TesserAP
 
 - **Columns:** one below 640 px of page width, then as many as fit at 360 px minimum, capped by `ui.columns` (default 3).
 - **Placement:** each card, in order, goes to the column whose cards weigh least so far, so reading order stays roughly row by row and columns end level. Placement comes from the model, not from measured heights: cards move only when the number of columns changes, never when a group opens or a value grows.
-- **Weight:** a card's rows, roughly. A value or an action is 1; a chart, an events log 3; a table or a list 4; a gauge, a knob, a text area 2; a custom element 8; a link 1.5; a heading or a title 1. A collapsed card or group is 1, an "Advanced" group 1, tabs their heaviest tab, hidden items 0. The gap between cards counts 1.
+- **Weight:** a card's rows, roughly. A value or an action is 1; a chart, an events log 3; a log 6; a table or a list 4; a gauge, a knob, a text area 2; a custom element 8; a link 1.5; a heading or a title 1. A collapsed card or group is 1, an "Advanced" group 1, tabs their heaviest tab, hidden items 0. The gap between cards counts 1.
 - Rows are a two-column grid (label, control), stacked below 300 px of card content width, so that phones (about 320 px) keep two columns.
 - Phone width: no horizontal scroll, 16 px gutters, controls at least 44 px tall.
 
@@ -246,7 +248,7 @@ TesserAPI allows 4 subscriptions per client (default `maxSubscriptionsPerClient`
 
 The page subscription leaves out mirrored remote children (their copies would come along) and `ui.page` sub-pages (they subscribe themselves). Specs for the same path are merged into one subscription, since `unsub` removes every subscription of a client at a path. Beyond 3 subscriptions, or when the node answers `busy` or `not_allowed`, the rest is polled once per second; a subscribe that times out (an offline peer) is retried every 5 s.
 
-Notifications are merge patches: apply them to `values` exactly as TesserAPI applies a `set` body. On `"overflow": true`, re-read the page with a get. Events (`op: "event"`) under what the page watches go to the `events` widget of their path, or to its nearest ancestor section, unless `ui.hidden`. Whatever their path, those with `ui.toast` are also a toast; one whose schema isn't loaded yet (below the depth read so far) has it read first.
+Notifications are merge patches: apply them to `values` exactly as TesserAPI applies a `set` body. On `"overflow": true`, re-read the page with a get. Events (`op: "event"`) under what the page watches go to the `events` or `log` widget of their path, or to its nearest ancestor section, unless `ui.hidden`; each keeps its last `ui.lines` (§5.2). Whatever their path, those with `ui.toast` are also a toast; one whose schema isn't loaded yet (below the depth read so far) has it read first.
 
 ### 7.4 Writes
 

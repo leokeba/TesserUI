@@ -16,6 +16,7 @@ import Flags from './Flags.svelte';
 import Gauge from './Gauge.svelte';
 import JsonView from './JsonView.svelte';
 import Knob from './Knob.svelte';
+import Log from './Log.svelte';
 import Num from './Num.svelte';
 import Range from './Range.svelte';
 import Readout from './Readout.svelte';
@@ -62,6 +63,7 @@ export const WIDGETS: Record<string, Def> = {
   hold: { component: c(Action), layout: 'bare' },
   json: { component: c(JsonView), layout: 'wide' },
   events: { component: c(Events), layout: 'wide' },
+  log: { component: c(Log), layout: 'wide' },
   table: { component: c(Table), layout: 'wide' },
   list: { component: c(Table), layout: 'wide' },
   file: { component: c(File), layout: 'wide' },

@@ -6,7 +6,8 @@
 </script>
 
 <ul class="events" aria-live="polite">
-  {#each entries as e (e.t + e.path)}
+  <!-- Newest first. -->
+  {#each entries.toReversed() as e (e.n)}
     <li>
       <time>{time(e.t)}</time>
       {#if e.path !== base}<span class="muted">{e.path.slice(base.length + 1)}</span>{/if}

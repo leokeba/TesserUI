@@ -31,6 +31,7 @@ export type Widget =
   | 'hold'
   | 'json'
   | 'events'
+  | 'log'
   | 'table'
   | 'list'
   | 'file'
@@ -104,6 +105,8 @@ export interface Leaf extends Base {
   script?: string;
   // Charts, events, tables
   history?: number;
+  // Events: how many are kept (ui.lines).
+  lines?: number;
   toast?: ToastKind;
   columns?: Leaf[];
   maxSize?: number;
@@ -295,7 +298,9 @@ export function buildLeaf(name: string, path: string, s: Schema, parent: string,
     case 'action':
       return action(leaf, s, parent);
     case 'event':
-      leaf.widget = 'events';
+      // A log (ui.widget "log"): payloads as lines of text, the last 100.
+      leaf.widget = uiStr(s, 'widget') === 'log' ? 'log' : 'events';
+      leaf.lines = uiNum(s, 'lines') ?? (leaf.widget === 'log' ? 100 : undefined);
       leaf.toast = toastKind(ui(s, 'toast'));
       return leaf;
     case 'list': {
@@ -620,7 +625,7 @@ export function weight(i: Item): number {
     return 1 + (i.tabs ? Math.max(0, ...inner) : inner.reduce((a, b) => a + b, 0)) + (i.advancedItems.length ? 1 : 0);
   }
   if (isElement(i.widget)) return 8;
-  return { chart: 3, table: 4, list: 4, events: 3, gauge: 2, knob: 2, textarea: 2, json: 2.5 }[i.widget as string] ?? 1;
+  return { chart: 3, table: 4, list: 4, events: 3, log: 6, gauge: 2, knob: 2, textarea: 2, json: 2.5 }[i.widget as string] ?? 1;
 }
 
 // Cards in `n` columns: each, in order, goes to the lightest column so far,
