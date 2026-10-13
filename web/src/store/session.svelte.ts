@@ -502,8 +502,9 @@ export class Session {
   }
 
   // Makes sure the schema at `path` is known `depth` levels down, with the
-  // lists there in full.
-  async ensure(path: string, depth = 3): Promise<boolean> {
+  // lists there in full. `quiet`: a failure isn't reported, since the
+  // caller shows it (a view's item: "unavailable", DESIGN.md §7.8).
+  async ensure(path: string, depth = 3, quiet = false): Promise<boolean> {
     const known = this.schemaAt(path);
     if (known && known.type !== 'object' && known.type !== 'remote') return this.completeLists(path, 0);
     if (this.pageSchema(path)) {
@@ -518,10 +519,10 @@ export class Session {
       const s = this.schemaAt(p);
       if (!s) return false;
       if ((s.type === 'object' && !s.children) || (s.type === 'remote' && !s.tree?.children)) {
-        if (!(await this.fetchSchema(p, 1))) return false;
+        if (!(await this.fetchSchema(p, 1, quiet))) return false;
       }
     }
-    return (await this.fetchSchema(path, depth)) && this.completeLists(path, depth);
+    return (await this.fetchSchema(path, depth, quiet)) && this.completeLists(path, depth);
   }
 
   // A table needs its list's whole element schema, which depth may have cut
@@ -557,7 +558,7 @@ export class Session {
   // holds (a peer's advertised one, else the node's view=hash; DESIGN.md
   // §7.2), else from the node, in pieces when it is too large for one
   // response.
-  async fetchSchema(path: string, depth: number): Promise<boolean> {
+  async fetchSchema(path: string, depth: number, quiet = false): Promise<boolean> {
     const remote = remoteOf(this.root, path);
     const hash = remote ? remote.stub.schema : this.rootHash;
     const cacheKey = hash && `tesserui:schema:${location.origin}:${hash}:${path.slice(remote?.path.length ?? 0) || '/'}:${depth}`;
@@ -570,16 +571,16 @@ export class Session {
     }
     const r = await this.ask({ op: 'get', path, view: 'schema', depth });
     if (r.status === 'too_large' && depth > 1) {
-      if (!(await this.fetchSchema(path, 1))) return false;
+      if (!(await this.fetchSchema(path, 1, quiet))) return false;
       const s = this.schemaAt(path);
       const tree = s?.type === 'remote' ? s.tree : s;
       for (const [name, c] of Object.entries(tree?.children ?? {})) {
-        if (c.type === 'object') await this.fetchSchema(joinPath(path, name), depth - 1);
+        if (c.type === 'object') await this.fetchSchema(joinPath(path, name), depth - 1, quiet);
       }
       return true;
     }
     if (r.status !== 'ok') {
-      if (r.status !== 'timeout' && r.status !== 'disconnected') this.store.fail(path, r);
+      if (!quiet && r.status !== 'timeout' && r.status !== 'disconnected') this.store.fail(path, r);
       return false;
     }
     this.merge(path, r.body as Schema);

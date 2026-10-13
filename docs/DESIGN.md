@@ -339,6 +339,7 @@ Toasts tell what has no place on screen. Inline errors stay the rule: a toast ne
 | An event with `ui.toast`, on any page | A toast of its kind, led by the event's parent's and own labels ("Wi-Fi › Joined") linking to the page that shows it, then its payload. With `ui.hidden`, nothing else shows it. |
 | The connection lost | The banner (§7.5): a state, not a moment. |
 | The connection back, signing in or out | An `ok` toast. |
+| A view's item whose schema can't be read (a peer without that path, under an `each`) | Inline only: the item says "unavailable". |
 | Subscription fallbacks, `too_large` retries | Nothing. |
 
 - **Kinds:** `info` and `ok` stay 3 s, `warn` 6 s. An `error` stays until dismissed, or until a successful write or call at its path or above it, like inline errors (§7.1). Navigation doesn't clear toasts.

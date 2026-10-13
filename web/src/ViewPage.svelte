@@ -23,7 +23,8 @@
     for (const p of view.missing) {
       if (tried.has(p)) continue;
       tried.add(p);
-      session.ensure(p).then((ok) => ok || (failed[p] = true));
+      // Unavailable shows on the item: no toast says it again.
+      session.ensure(p, 3, true).then((ok) => ok || (failed[p] = true));
     }
   });
   $effect(() => session.show(viewModelItems(view.items), view.specs, node));

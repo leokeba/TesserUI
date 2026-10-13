@@ -360,3 +360,24 @@ describe('session: events (DESIGN §7.8)', () => {
     s.close();
   });
 });
+
+describe("session: a view's item a peer lacks", () => {
+  // TesserKIT's overview repeats $/led over /peers; the Gledopto has none.
+  it('is unavailable on the item, without a toast (DESIGN §7.8)', async () => {
+    const { Session } = await import('../src/store/session.svelte');
+    const client = new FakeClient();
+    client.answer = (r) => {
+      if (r.path === '/') return { status: 'ok', body: { type: 'object', children: { peers: { type: 'object', children: { gled: { type: 'remote', id: '20500d1b02bc' } } } } } };
+      if (r.path === '/peers/gled') return { status: 'ok', body: { type: 'object', children: { outputs: { type: 'object' } } } };
+      return { status: 'not_found', body: { error: 'not_found', path: r.path, message: 'no such node' } };
+    };
+    const s = new Session({ api: '/api', ws: '/ws', transport: 'ws' });
+    (s as unknown as { use(c: FakeClient): void }).use(client);
+    expect(await s.ensure('/peers/gled/led', 3, true)).toBe(false);
+    expect(client.sent.at(-1)).toMatchObject({ path: '/peers/gled/led', view: 'schema' });
+    expect(s.store.toasts.list).toEqual([]);
+    // A page's read still says why it failed.
+    expect(await s.ensure('/peers/gled/led')).toBe(false);
+    expect(s.store.toasts.list).toMatchObject([{ kind: 'error', text: 'no such node', path: '/peers/gled/led' }]);
+  });
+});

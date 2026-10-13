@@ -310,6 +310,9 @@ test('views come first and combine peers', async ({ page }) => {
   await expect(page.getByText('Live values from')).toBeVisible();
   await expect(row(page, 'Porch lamp').locator('input[role=switch]')).toBeVisible({ timeout: 10000 });
   await expect(page.getByText('/peers/kitchen-lamp/lamp/on: offline')).toBeVisible({ timeout: 10000 });
+  // The heliostat has no lamp: said on its item, and only there (§7.8).
+  await expect(page.getByText('/peers/heliostat-3/lamp/on: unavailable')).toBeVisible();
+  await expect(page.locator('.toast')).toHaveCount(0);
   // A wide card spans every column of the grid.
   const width = (sel: string) => page.locator(sel).first().evaluate((e) => e.getBoundingClientRect().width);
   await expect(page.locator('.card.wide h2')).toHaveText('Sequence');
