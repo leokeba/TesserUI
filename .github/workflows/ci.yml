@@ -150,7 +150,7 @@ jobs:
         run: pnpm check
       - name: Model and store tests
         run: pnpm test
-      - name: Bundle within budget (58 KB gzipped)
+      - name: Bundle within budget (58.5 KB gzipped)
         run: pnpm build
       - name: Generated files are up to date (bundle header, embedded element)
         run: git diff --exit-code -- ../src/tesserui/bundle/tesserui_bundle.h ../examples/arduino/CustomWidget/sun_dial.h
@@ -167,25 +167,72 @@ jobs:
           npx playwright install --with-deps chromium
           pnpm e2e
       # The launcher on GitHub Pages (DESIGN.md §9.7): the bundle that just
-      # passed, from main only.
+      # passed and the flasher, from main only. The pages job adds the
+      # firmware.
       - name: Pages site
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-        run: mkdir -p _site && cp dist/index.html dist/ui.js _site/
-      - uses: actions/upload-pages-artifact@v3
+        run: mkdir -p _site && cp pages/index.html dist/ui.js _site/ && cp -R dist/flash _site/flash
+      - uses: actions/upload-artifact@v4
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         with:
+          name: site
           path: web/_site
+          retention-days: 1
 
-  pages:
-    needs: web
+  # Each push to main that passes: a release of the ESP-IDF examples a board
+  # runs as they are, which the launcher installs (DESIGN.md §9.7.1). The
+  # self-hosted example isn't one: its Wi-Fi network is built in. TesserKIT's
+  # reusable workflow numbers the release (library.json's version at least)
+  # and builds each chip's images.
+  firmware:
+    needs: [host-tests, esp-idf, web]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    # One release at a time, so two pushes never take the same version.
+    concurrency:
+      group: release
+      cancel-in-progress: false
+    permissions:
+      contents: write
+    uses: leokeba/TesserKIT/.github/workflows/firmware.yml@main
+    with:
+      projects: |
+        [{"project": "examples/idf/usb_gateway", "name": "tesserui-usb-gateway"},
+         {"project": "examples/idf/bluetooth", "name": "tesserui-bluetooth"}]
+      targets: '["esp32", "esp32c3", "esp32s3"]'
+      version-command: jq -r .version library.json
+      dependencies: |
+        leokeba/TesserAPI
+        leokeba/NowTP
+
+  # The site, with the latest three releases' images copied in: a page can't
+  # read release assets from GitHub (no CORS). Deployed even when a release
+  # failed, with the releases there are.
+  pages:
+    needs: [web, firmware]
+    if: ${{ !cancelled() && needs.web.result == 'success' && github.ref == 'refs/heads/main' && github.event_name == 'push' }}
     runs-on: ubuntu-latest
     permissions:
+      contents: read
       pages: write
       id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deploy.outputs.page_url }}
     steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@v4
+        with:
+          name: site
+          path: _site
+      - name: The firmware the launcher installs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node web/scripts/firmware.mjs "$GITHUB_REPOSITORY" _site/firmware --releases 3
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
       - id: deploy
         uses: actions/deploy-pages@v4

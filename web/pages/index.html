@@ -1,0 +1,37 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="description" content="Reach a TesserAPI node over USB, Bluetooth or the network, or install one on a board: TesserUI's launcher." />
+    <title>TesserUI</title>
+    <link rel="icon" href="data:," />
+  </head>
+  <body>
+    <!-- The launcher on GitHub Pages (docs/DESIGN.md section 9.7), published
+         by .github/workflows/ci.yml with flash/ and the firmware it copies
+         from this repository's latest releases (section 9.7.1). -->
+    <script>
+      window.TESSER = {
+        launcher: true,
+        title: 'TesserUI',
+        firmware: {
+          images: [
+            {
+              label: 'USB gateway',
+              asset: 'tesserui-usb-gateway-{target}-factory.bin',
+              description: 'Mounts the TesserAPI nodes it hears over ESP-NOW, on channel 6, and serves them on its serial port.',
+            },
+            {
+              label: 'Bluetooth node',
+              asset: 'tesserui-bluetooth-{target}-factory.bin',
+              description: 'A lamp served over Bluetooth LE, for a phone nearby.',
+              transport: 'ble',
+            },
+          ],
+        },
+      };
+    </script>
+    <script src="ui.js"></script>
+  </body>
+</html>

@@ -64,7 +64,7 @@ The full vocabulary is in [DESIGN.md §5](docs/DESIGN.md#5-hints-tier-1).
 | Self-hosted | The node (~58 KB of flash) | `web.serve(http.handle())` |
 | UI host | One ESP with spare flash, also a NowTP gateway | `nowApi.mountPeers(api.object("peers"))`: every nearby node gets a page at `#/peers/<name>`, forwarded over ESP-NOW |
 | Stub | A CDN or the UI host | `web.serveStub(http.handle(), "https://cdn.jsdelivr.net/npm/tesserui@0.1.0/dist/ui.js")`: a 300-byte page |
-| Launcher | GitHub Pages | Pick a node: USB (Web Serial), Bluetooth (Web Bluetooth), or its address on the network |
+| Launcher | GitHub Pages | Pick a node: USB (Web Serial), Bluetooth (Web Bluetooth), or its address on the network; or install firmware |
 
 A NowTP-only node with no Wi-Fi needs nothing but its tree and `nowApi.advertise()`: the UI host renders it.
 
@@ -75,6 +75,7 @@ The launcher at <https://leokeba.github.io/TesserUI/> opens any node, with no UI
 - **USB:** plug a board in and pick its port (Web Serial). A board running the USB gateway ([Arduino](examples/arduino/UsbGateway), [ESP-IDF](examples/idf/usb_gateway)) brings the NowTP nodes around it along over the one cable.
 - **Bluetooth:** pair a board running the Bluetooth example ([Arduino](examples/arduino/Bluetooth), [ESP-IDF](examples/idf/bluetooth)) from a phone or a laptop.
 - **Network:** type a node's address; `?api=http://192.168.1.20/api` opens it directly.
+- **Install:** put the USB gateway or the Bluetooth example on a board, from this repository's latest releases, over USB (Chrome, Edge). Another project's launcher can offer its own firmware the same way, and set up a TesserKIT device's Wi-Fi right after ([DESIGN.md §9.7.1](docs/DESIGN.md#971-installing-firmware)).
 
 To find the nodes on your network, run the bridge next to it: `node bridge/bridge.mjs` (`npx tesserui-bridge` once published). It lists the nodes that announce themselves over mDNS (`http.advertise("name", "name")`), serves them live in any browser, brings serial ports to browsers without Web Serial, and serves the launcher itself at <http://localhost:8765/>.
 
