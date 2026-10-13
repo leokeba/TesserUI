@@ -42,8 +42,12 @@ export function hasOwnItems(s: Schema): boolean {
   return Object.values(s.children ?? {}).some((c) => !isEntry(c) && shown(c) && c.type !== 'custom');
 }
 
+// A view's route: #/v/<id> for the node's, #<node>/_ui/<id> for a remote
+// node's (DESIGN.md §6.5).
+export const viewHref = (node: string, id: string) => (node === '/' ? `#/v/${id}` : `#${node}/_ui/${id}`);
+
 export function buildMenu(s: Schema, home: string, views: ViewPage[] | null, t: (text: string) => string = (x) => x): MenuEntry[] {
-  const out: MenuEntry[] = (views ?? []).map((v) => (v.icon ? { label: v.label, icon: v.icon, href: `#/v/${v.id}` } : { label: v.label, href: `#/v/${v.id}` }));
+  const out: MenuEntry[] = (views ?? []).map((v) => (v.icon ? { label: v.label, icon: v.icon, href: viewHref(home, v.id) } : { label: v.label, href: viewHref(home, v.id) }));
   if (hasOwnItems(s)) out.push({ label: t('Status'), icon: 'home', href: `#${home}` });
   // ui.group gathers entries under a heading, where its first one would be.
   const groups = new Map<string, MenuEntry>();

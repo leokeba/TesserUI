@@ -91,6 +91,10 @@ PorchLamp::PorchLamp() {
     l.action("toggle", [this] { on = !on; });
     auto& s = api.object("sensors");
     s.value("temperature", [this] { return temperature; }).unit("°C").ui("precision", 1).watch();
+    // A view of its own, read through the gateway and shown in its tab
+    // (DESIGN.md §6.5): its paths are the lamp's.
+    tesserui::Views views(api);
+    views.page("porch", "Porch").icon("eye").node("/lamp");
 }
 
 void PorchLamp::tick(uint32_t nowMs) {

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildMenu } from '../src/model/menu';
+import { relocate } from '../src/model/views';
 import { buildLeaf, buildPage, depthOf, inferWidget, placeCards, visiblePaths, weight, type Leaf, type Section } from '../src/model/model';
 import { isCut, mergeSchema, remoteOf, schemaAt, type Schema } from '../src/model/schema';
 import { fixture } from './fixtures';
@@ -230,6 +231,12 @@ describe('menu (DESIGN §6.3)', () => {
   it('has no status entry without values of its own, and starts from a subtree', () => {
     const sub: Schema = { type: 'object', children: { a: { type: 'object', children: { b: { type: 'object', children: {} } } } } };
     expect(buildMenu(sub, '/motor', null)).toEqual([{ label: 'A', href: '#/motor/a' }]);
+  });
+  it("gives a remote node's views routes below it, its paths moved there (DESIGN §6.5)", () => {
+    const views = relocate([{ id: 'porch', label: 'Porch', items: [{ node: '/lamp' }, { each: '/peers', item: { node: '$/on' } }, { row: [{ widget: 'gauge', path: '/' }] }] }], '/peers/lamp');
+    expect(views[0].items).toEqual([{ node: '/peers/lamp/lamp' }, { each: '/peers/lamp/peers', item: { node: '$/on' } }, { row: [{ widget: 'gauge', path: '/peers/lamp' }] }]);
+    const sub: Schema = { type: 'object', children: { lamp: { type: 'object', children: {} } } };
+    expect(buildMenu(sub, '/peers/lamp', views)[0]).toEqual({ label: 'Porch', href: '#/peers/lamp/_ui/porch' });
   });
   it("makes a list's page one card", () => {
     const page = buildPage(root.children!.sys.children!.timers, '/sys/timers');

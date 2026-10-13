@@ -8,7 +8,7 @@ import { errorText, type Client, type ConnState, type Notification, type Reply, 
 import type { Firmware } from '../flash/firmware';
 import { toastKind, visiblePaths, type Item, type Leaf, type Page, type Section } from '../model/model';
 import { isCut, isUnder, joinPath, mergeSchema, parentPath, rank, remoteOf, schemaAt, segments, type Level, type Schema } from '../model/schema';
-import type { ViewPage } from '../model/views';
+import { relocate, type ViewPage } from '../model/views';
 import { Store } from './store.svelte';
 import { commonAncestor, Subscriptions, type SubSpec } from './subs';
 
@@ -33,6 +33,9 @@ export interface Config {
   // The navigation menu (DESIGN.md §6.3): one page per entry. Default: on
   // for the node's own page, off when embedded or without the header.
   menu?: boolean;
+  // Nodes as tabs (DESIGN.md §6.5): the node, then each remote node of its
+  // tree, each with its own menu. Default: on with the menu.
+  tabs?: boolean;
   // 'hash' follows location.hash; 'memory' keeps the route to itself, for
   // UIs embedded in a page that owns the URL.
   routing?: 'hash' | 'memory';
@@ -43,7 +46,7 @@ export interface Config {
   firmware?: Firmware;
 }
 
-function storageGet(key: string): string | null {
+export function storageGet(key: string): string | null {
   try {
     return localStorage.getItem(key);
   } catch {
@@ -51,7 +54,7 @@ function storageGet(key: string): string | null {
   }
 }
 
-function storageSet(key: string, value: string | null) {
+export function storageSet(key: string, value: string | null) {
   try {
     if (value === null) localStorage.removeItem(key);
     else localStorage.setItem(key, value);
@@ -84,7 +87,9 @@ export class Session {
   state: ConnState = $state('connecting');
   // Bumped whenever the schema tree changes: models derive from it.
   schemaVersion = $state(0);
-  views: ViewPage[] | null = $state(null);
+  // Each node's view pages, by its root ('/', or a remote node's path),
+  // once read: [] when it has none.
+  views: Record<string, ViewPage[]> = $state({});
   loaded = $state(false);
   needToken = $state(false);
   // This client's access level, when the node says (a `whoami` action); null
@@ -171,6 +176,7 @@ export class Session {
   private reload() {
     if (!this.client) return;
     this.loaded = false;
+    this.views = {};
     for (const k of Object.keys(this.root)) delete (this.root as unknown as Record<string, unknown>)[k];
     this.root.type = 'object';
     this.schemaVersion++;
@@ -329,11 +335,7 @@ export class Session {
     this.findAuth();
     await this.whoami();
     // Views first: they decide the landing page.
-    const ui = this.root.children?._ui;
-    if (ui?.type === 'custom') {
-      const r = await this.client.request({ op: 'get', path: '/_ui' });
-      if (r.status === 'ok' && isObject(r.body) && Array.isArray(r.body.pages)) this.views = r.body.pages as unknown as ViewPage[];
-    }
+    await this.loadViews('/');
     this.loaded = true;
     // A node reached by address goes to the top of the launcher's list.
     if (this.config.launcher && (this.client.kind === 'ws' || this.client.kind === 'http')) {
@@ -342,6 +344,20 @@ export class Session {
       const node: RecentNode = { api, ws: this.config.ws, label };
       storageSet(RECENT_KEY, JSON.stringify([node, ...recentNodes().filter((n) => n.api !== api)].slice(0, 6)));
     }
+  }
+
+  // A node's views (DESIGN.md §8), at its /_ui; a remote node's are read
+  // through the gateway and moved below it.
+  async loadViews(node: string) {
+    const r = this.pageSchema(node)?.children?._ui ? await this.client.request({ op: 'get', path: joinPath(node, '_ui') }) : null;
+    this.views[node] = r?.status === 'ok' && isObject(r.body) && Array.isArray(r.body.pages) ? relocate(r.body.pages as unknown as ViewPage[], node) : [];
+  }
+
+  // The remote nodes of the node's own tree, not those inside another
+  // remote node: the UI's tabs after the node itself (DESIGN.md §6.5).
+  nodes(): string[] {
+    void this.schemaVersion;
+    return this.remotePaths.filter((p) => !remoteOf(this.root, parentPath(p)));
   }
 
   private findAuth() {

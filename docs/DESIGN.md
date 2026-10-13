@@ -27,7 +27,7 @@ TesserUI renders user interfaces for [TesserAPI](https://github.com/leokeba/Tess
 | Item | Decision |
 |---|---|
 | Device side | C++17 and TesserAPI's rules: no exceptions, no RTTI, ESP-IDF ≥ 5.1 and Arduino-ESP32 ≥ 3.0. |
-| Web bundle | ≤ 59 KB gzipped for everything (JS and CSS), measured in CI. Evergreen browsers only. (Raised from 40 KB once phases 1, 2 and 4 were in: they measured 40.2 KB with every saving taken. Raised from 50 KB for the navigation menu, §6.3, from 52 KB for the launcher and Bluetooth, §9.7, from 54 KB for notifications, §7.8, from 55.5 KB for file nodes in list elements, §4, from 56.5 KB for events over HTTP, §9.2, from 57 KB for files over serial and Bluetooth, §4, from 57.5 KB for the log widget, §4, from 58 KB for installing firmware from the launcher, §9.7.1 (its flasher is a script of its own, outside the budget), and from 58.5 KB for moving rows and choosing a node, §5.2.) |
+| Web bundle | ≤ 59.5 KB gzipped for everything (JS and CSS), measured in CI. Evergreen browsers only. (Raised from 40 KB once phases 1, 2 and 4 were in: they measured 40.2 KB with every saving taken. Raised from 50 KB for the navigation menu, §6.3, from 52 KB for the launcher and Bluetooth, §9.7, from 54 KB for notifications, §7.8, from 55.5 KB for file nodes in list elements, §4, from 56.5 KB for events over HTTP, §9.2, from 57 KB for files over serial and Bluetooth, §4, from 57.5 KB for the log widget, §4, from 58 KB for installing firmware from the launcher, §9.7.1 (its flasher is a script of its own, outside the budget), from 58.5 KB for moving rows and choosing a node, §5.2, and from 59 KB for nodes as tabs, §6.5.) |
 | Web stack | Svelte 5 + TypeScript + Vite, without a CSS framework or chart library. |
 | LCD stack | LVGL 9.x. Display and touch drivers are the application's: TesserUI receives an `lv_display_t*`. |
 | Smallest node | A NowTP-only node with no Wi-Fi and no UI assets: its tree and its hint literals are all it stores. |
@@ -210,13 +210,27 @@ A node's UI is a **menu** of pages rather than one page of every card.
 - **Sub-entries:** an object with `ui.page` (`/sys`), or one holding remote nodes (`/peers`), lists its objects, lists and nodes as sub-entries, one level deep. A list's page is the list alone. The web shows them while the entry's page, or one of theirs, is open.
 - **Pages:** an entry's page follows §6.1 with the object as its root: its own values form the first card, and its child objects are cards. The start page shows its own values only, the rest being entries. A remote node's entry opens its root page (§7.6).
 - **Start:** the first entry opens when the route is empty, when it names a view that doesn't exist (renamed by a firmware update), or when it is the start page and that has no entry of its own.
-- **Web:** a sidebar beside the page; below 800 px, a drawer opened from the header's menu button, closed by choosing an entry. The header keeps the device label, the connection state and sign-in. The menu replaces the view tabs. It's on for the node's own page and off when the UI is embedded or has no header (§9.9): those show the start page with every card, and view tabs. The `menu` option (§9.2) decides otherwise.
+- **Web:** a sidebar beside the page; below 800 px, a drawer opened from the header's menu button, closed by choosing an entry. The header keeps the device label (or the node tabs, §6.5), the connection state and sign-in. The menu replaces the view tabs. It's on for the node's own page and off when the UI is embedded or has no header (§9.9): those show the start page with every card, and view tabs. The `menu` option (§9.2) decides otherwise.
 
 ### 6.4 LCD
 
 - The menu (§6.3) is the root screen. Selecting an entry opens its page full-screen. On screens ≥ 800 px wide, cards may be shown side by side like the web.
 - Sub-sections are headings on the scrolling page; collapsible groups and `tabs` become sub-pages.
 - A header shows the page label, a back button and the connection state.
+
+### 6.5 Nodes as tabs (web)
+
+A gateway's UI reaches other nodes: the remote nodes of its tree (TesserKIT's `/peers`, mounted over NowTP and UDP, TesserAPI §14.1). With the menu on, they are tabs in the header, so the user moves between whole UIs without leaving the page.
+
+- **Tabs:** the node itself first, then each remote node of its own tree, in tree order. Remote nodes inside another remote node aren't tabs: a peer's peers are in its own menu.
+- **A tab's label** is the stub's label, else the label of the peer's root (read at depth 0, and cached under its advertised hash), else its name. An offline node has a dot, and the tooltip gives its `id` and `route`.
+- **A tab is a node's whole UI:**
+  - its menu (§6.3), built from the remote node's root;
+  - its pages;
+  - its views (§8), read from its `/_ui` through the gateway, their paths moved below the node.
+- **Routes** stay the node's paths (`#/peers/<name>/...`; a remote node's view is `#<node>/_ui/<id>`). The tab follows from the route, so links, the back button and shared URLs keep working.
+- **Opening a tab** opens its node's root: its status, or its first entry when it has none (§6.3, *Start*). The menu waits for the node's views, which come first.
+- **On or off:** tabs are on by default with the menu, when the node has remote nodes. A header button switches them off and back, and the browser remembers it; `tabs: false` (§9.2) makes off the default. Off, remote nodes are entries of the device's menu (§6.3), and a peer's root page shows all its cards.
 
 ## 7. Data and reactivity
 
@@ -348,7 +362,7 @@ field.card("Calibration").node("/calib");         // an auto-rendered subtree
 | `{"each": path, "item": item}` | The item repeated for each child of the object at `path`, with `$` replaced by the child's path. With `/peers`, one entry per discovered node. |
 
 - A `widget` item may name a custom element (§9.8) over any path, an object included. A view whose only item is one is a **custom page**: the element alone, the page's full width.
-- The renderer shows view pages first, before the node's own tree: the first menu entries (§6.3), or tabs without the menu. Route: `#/v/<id>`.
+- The renderer shows view pages first, before the node's own tree: the first menu entries (§6.3), or tabs without the menu. Route: `#/v/<id>`. A remote node's views show in its tab (§6.5), at `#<node>/_ui/<id>`.
 - A view's subscriptions follow §7.3: one per distinct remote node involved, plus one local, within the budget of 4. When a page involves more than 3 nodes, the renderer subscribes to the nodes on screen and falls back to polling (one get per second) for the rest.
 - `Views` stores its declaration as C++ structures of string literals and renders the JSON on request: no JSON document at rest. A UI host may instead serve a JSON file from its filesystem through a `custom` node with the same name and format.
 
@@ -395,6 +409,7 @@ web/
   | `path` | The path the UI starts from and doesn't go above: a subtree, or a peer. View pages show only when it is `/`. |
   | `header` | `false` hides the top bar; a lost connection still shows a banner. |
   | `menu` | The navigation menu (§6.3). Default: on for the node's own page, off when embedded; always off without the header. |
+  | `tabs` | Remote nodes as tabs (§6.5), with the menu. Default: on; the header's button overrides it in the browser. |
   | `routing` | `hash` (default) follows `location.hash`; `memory` keeps the route inside the UI, for pages that own the URL. |
   | `launcher` | `true`: the page is a launcher (§9.7) despite having a configuration. |
   | `firmware` | Firmware the launcher installs over USB (§9.7.1): `{images, wifi, manifest, flasher}`. |

@@ -8,7 +8,8 @@
   import { buildView, viewModelItems, type ViewItem, type ViewPage } from './model/views';
   import Section from './Section.svelte';
 
-  let { page }: { page: ViewPage } = $props();
+  // node: the node whose view it is ('/', or a remote node's path).
+  let { page, node = '/' }: { page: ViewPage; node?: string } = $props();
   const session = useSession();
 
   const view = $derived.by(() => {
@@ -25,7 +26,7 @@
       session.ensure(p).then((ok) => ok || (failed[p] = true));
     }
   });
-  $effect(() => session.show(viewModelItems(view.items), view.specs, '/'));
+  $effect(() => session.show(viewModelItems(view.items), view.specs, node));
 
   // Top-level subtrees are cards; other consecutive items share one.
   type Block = ({ card: string; items: ViewItem[] } | { section: SectionModel }) & { wide?: boolean };

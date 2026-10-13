@@ -60,6 +60,8 @@ export interface Schema {
   mirror?: boolean;
   online?: boolean;
   schema?: string;
+  id?: string; // the device's MAC
+  route?: string; // the transport in use: "udp", "nowtp"
   // Renderer-side: the remote node's own tree, once fetched through it.
   tree?: Schema;
 }

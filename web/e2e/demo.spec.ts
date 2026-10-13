@@ -218,7 +218,7 @@ test("a select of a keyed list's keys", async ({ page }) => {
 test('a select of the nodes under /peers', async ({ page }) => {
   await open(page, '#/widgets');
   const select = row(page, 'Node').locator('select');
-  await expect(select.locator('option')).toHaveText(['heliostat-3', 'kitchen-lamp (offline)', 'porch-lamp']);
+  await expect(select.locator('option')).toHaveText(['Heliostat', 'kitchen-lamp (offline)', 'Porch lamp']);
   await expect(select).toHaveValue('porch-lamp');
   await select.selectOption('heliostat-3');
   await expect(row(page, 'Node').locator('.busy')).toHaveCount(0);
@@ -230,11 +230,12 @@ test('a select of the nodes under /peers', async ({ page }) => {
 test('a select of the nodes under /peers, by device id', async ({ page }) => {
   await open(page, '#/widgets');
   const select = row(page, 'Node id').locator('select');
-  await expect(select.locator('option')).toHaveText(['246f280a0b0c (not found)', 'heliostat-3', 'kitchen-lamp (offline)', 'porch-lamp']);
-  await select.selectOption('porch-lamp');
+  // Labelled from the peers' roots, which the node tabs read.
+  await expect(select.locator('option')).toHaveText(['246f280a0b0c (not found)', 'Heliostat', 'kitchen-lamp (offline)', 'Porch lamp']);
+  await select.selectOption('Porch lamp');
   await expect(row(page, 'Node id').locator('.busy')).toHaveCount(0);
   await expect(select).toHaveValue('246f28070809');
-  await expect(select.locator('option')).toHaveText(['heliostat-3', 'kitchen-lamp (offline)', 'porch-lamp']);
+  await expect(select.locator('option')).toHaveText(['Heliostat', 'kitchen-lamp (offline)', 'Porch lamp']);
 });
 
 // ui.reorder: rows move up and down, the whole array written each time
@@ -317,9 +318,11 @@ test('views come first and combine peers', async ({ page }) => {
 });
 
 test('peer pages go through the gateway', async ({ page }) => {
+  // With the node tabs, a peer's root opens its first menu entry.
   await open(page, '#/peers/heliostat-3');
-  await expect(page.locator('h1')).toHaveText('Heliostat');
-  await expect(card(page, 'Azimuth motor')).toBeVisible();
+  await expect(page).toHaveURL(/#\/peers\/heliostat-3\/azimuth$/);
+  await expect(page.locator('h1')).toHaveText('Azimuth motor');
+  await expect(card(page, 'Control')).toBeVisible();
   await open(page, '#/peers/kitchen-lamp');
   await expect(page.getByText('This node is offline')).toBeVisible();
 });
@@ -376,4 +379,38 @@ test('a read-only list shows its rows, without editing', async ({ page }) => {
   await expect(list.locator('.detail')).toContainText('-48');
   await expect(list.locator('.detail input:not([type=hidden])')).toHaveCount(0);
   await expect(list.locator('.detail').getByRole('button', { name: /join/i })).toBeEnabled();
+});
+
+// DESIGN.md §6.5: the node, then its remote nodes, as tabs; each opens that
+// node's own menu, views first (the porch lamp's, read through the gateway).
+test('nodes as tabs, each with its own menu and views', async ({ page }) => {
+  await open(page);
+  const tabs = page.locator('nav.tabs');
+  await expect(tabs.getByRole('link')).toHaveText(['TesserUI demo', 'Heliostat', 'kitchen-lamp', 'Porch lamp'], { timeout: 10000 });
+  await expect(tabs.getByRole('link', { name: 'kitchen-lamp' }).locator('.off')).toBeVisible();
+  await tabs.getByRole('link', { name: 'Porch lamp' }).click();
+  await expect(page).toHaveURL(/#\/peers\/porch-lamp\/_ui\/porch$/);
+  await expect(tabs.locator('[aria-current=page]')).toHaveText('Porch lamp');
+  const menu = page.locator('nav.side');
+  await expect(menu.getByRole('link')).toHaveText(['Porch', 'Lamp', 'Sensors']);
+  await expect(row(page, 'Brightness')).toBeVisible();
+  await menu.getByRole('link', { name: 'Sensors' }).click();
+  await expect(page).toHaveURL(/#\/peers\/porch-lamp\/sensors$/);
+  await expect(row(page, 'Temperature')).toBeVisible();
+  // Its pages are a node's: no way back above it.
+  await expect(page.locator('.back')).toHaveCount(0);
+  await tabs.getByRole('link', { name: 'Heliostat' }).click();
+  await expect(menu.locator('[aria-current=page]')).toHaveText('Azimuth motor');
+  // A tab opens its node's root: the device's status.
+  await tabs.getByRole('link', { name: 'TesserUI demo' }).click();
+  await expect(menu.locator('[aria-current=page]')).toHaveText('Status');
+  await expect(row(page, 'Uptime')).toBeVisible();
+  // Off: the device's menu again, its peers under Nodes; remembered.
+  await page.getByRole('button', { name: 'Nodes as tabs' }).click();
+  await expect(tabs).toHaveCount(0);
+  await expect(page.locator('.brand')).toHaveText('TesserUI demo');
+  await page.reload();
+  await expect(page.locator('.state')).toHaveText('Live');
+  await expect(page.getByRole('button', { name: 'Nodes as tabs' })).toHaveAttribute('aria-pressed', 'false');
+  await expect(tabs).toHaveCount(0);
 });

@@ -4,11 +4,11 @@
   import { compareVersions, provideSession } from './shared.svelte';
   import Icon from './Icon.svelte';
   import { humanize } from './model/format';
-  import { buildMenu, type MenuEntry } from './model/menu';
+  import { buildMenu, viewHref, type MenuEntry } from './model/menu';
   import { isUnder } from './model/schema';
   import Page from './Page.svelte';
   import Toasts from './Toasts.svelte';
-  import type { Session } from './store/session.svelte';
+  import { storageGet, storageSet, type Session } from './store/session.svelte';
   import ViewPage from './ViewPage.svelte';
 
   // full: the UI is the whole page (the node's own), not embedded.
@@ -20,11 +20,13 @@
   const t = (text: string, vars?: Record<string, string | number>) => session.t(text, vars);
 
   // Routes: #/<path> is the page of the node at that path (#/peers/<name>
-  // for a peer behind a UI host), #/v/<id> a view page (DESIGN.md §7.6, §8).
+  // for a peer behind a UI host), #/v/<id> a view page, #<node>/_ui/<id> a
+  // remote node's (DESIGN.md §7.6, §8, §6.5).
   // With memory routing, the route stays inside the UI and its links are
   // intercepted; the page keeps its URL.
   const memory = config.routing === 'memory';
-  const home = config.path ?? '/';
+  // top: where the UI starts and doesn't go above.
+  const top = config.path ?? '/';
   let hash = $state(memory ? '' : location.hash);
   if (!memory) {
     const changed = () => (hash = location.hash);
@@ -38,23 +40,63 @@
       hash = href;
     }
   }
-  const views = $derived(home === '/' ? session.views : null);
   const route = $derived.by(() => {
     const h = decodeURIComponent(hash.slice(1));
-    if (h.startsWith('/v/') && home === '/') return { view: h.slice(3), path: home };
-    const path = h.replace(/\/+$/, '') || home;
-    return { view: null as string | null, path: isUnder(path, home) ? path : home };
+    const v = h.match(/^(?:\/v|(.*)\/_ui)\/([^/]+)$/);
+    if (v && top === '/') return { view: v[2] as string | null, path: v[1] || '/' };
+    const path = h.replace(/\/+$/, '') || top;
+    return { view: null, path: isUnder(path, top) ? path : top };
   });
+  // svelte-ignore state_referenced_locally
+  const menuOn = (config.menu ?? full) && config.header !== false;
+
+  // Nodes as tabs (DESIGN.md §6.5): the node, then the remote nodes of its
+  // tree. The tab the route is in is the node whose menu shows.
+  const TABS = 'tesserui:tabs';
+  const stored = storageGet(TABS);
+  let tabsOn = $state(stored ? stored === '1' : config.tabs !== false);
+  const nodes = $derived(menuOn && top === '/' && session.loaded ? session.nodes() : []);
+  const tabs = $derived.by(() => {
+    void session.schemaVersion;
+    return tabsOn && nodes.length
+      ? ['/', ...nodes].map((path) => {
+          const s = session.schemaAt(path)!;
+          const name = path.slice(path.lastIndexOf('/') + 1);
+          return { path, label: path === '/' ? deviceLabel : (s.label ?? s.tree?.label ?? name), off: s.online === false, title: [s.id, s.route].filter(Boolean).join(' · ') };
+        })
+      : null;
+  });
+  const home = $derived(tabs?.findLast((n) => isUnder(route.path, n.path))?.path ?? top);
+  // Remote nodes' labels are in their own root schemas, and their views at
+  // their /_ui: each read once.
+  const asked = new Set<string>();
+  $effect(() => {
+    if (!tabs) return;
+    const ui = home + '/_ui';
+    const want = [ui, ...nodes.filter((p) => !session.schemaAt(p)?.tree && !session.isOffline(p))].filter((p) => p !== '//_ui' && !asked.has(p));
+    untrack(async () => {
+      for (const p of want) {
+        asked.add(p);
+        if (p !== ui) await session.fetchSchema(p, 0);
+        else if (await session.ensure(home, 1)) await session.loadViews(home);
+        // Offline: no views until it's back (asked again then).
+        else (session.views[home] = []), asked.delete(p);
+      }
+    });
+  });
+
+  const views = $derived(top === '/' ? session.views[home] : undefined);
   // The menu (DESIGN.md §6.3): views, the status, then one entry per
-  // object or remote node of the start page, each a page of its own.
+  // object or remote node of the start page, each a page of its own. It
+  // waits for the views, which decide the landing page.
   const menu = $derived.by(() => {
-    const s = (config.menu ?? full) && config.header !== false && session.loaded ? session.pageSchema(home) : null;
-    return s ? buildMenu(s, home, views, t) : null;
+    const s = menuOn && session.loaded && (views || top !== '/') ? session.pageSchema(home) : null;
+    return s ? buildMenu(s, home, views ?? null, t) : null;
   });
   const flat = $derived(menu?.flatMap((e) => [e, ...(e.children ?? [])]).filter((e) => e.href) ?? []);
   // The entry shown: the deepest one the route is in.
   const current = $derived.by(() => {
-    const at = route.view !== null ? `#/v/${route.view}` : `#${route.path}`;
+    const at = route.view !== null ? viewHref(route.path, route.view) : `#${route.path}`;
     let best: MenuEntry | undefined;
     for (const e of flat) if ((at === e.href || at.startsWith(e.href + '/')) && e.href!.length > (best?.href!.length ?? 0)) best = e;
     return best;
@@ -62,12 +104,12 @@
   let drawer = $state(false);
   // Pages come in menu order: an empty route opens the first one, and so
   // does the start page when it has nothing of its own.
-  const first = $derived(flat[0]?.href ?? (views?.length ? `#/v/${views[0].id}` : undefined));
+  const first = $derived(flat[0]?.href ?? (views?.length ? viewHref(home, views[0].id) : undefined));
   // A view that no longer exists (renamed, or gone with a firmware update)
   // lands there too.
   const landing = $derived(
     !hash ||
-      (session.loaded && route.view !== null && !views?.some((v) => v.id === route.view)) ||
+      (session.loaded && route.view !== null && !!views && !views.some((v) => v.id === route.view)) ||
       (!!menu && route.view === null && route.path === home && !flat.some((e) => e.href === `#${home}`)),
   );
   $effect(() => {
@@ -123,7 +165,15 @@
       {#if menu}
         <button type="button" class="quiet burger" aria-label={t('Menu')} aria-expanded={drawer} onclick={() => (drawer = !drawer)}><Icon name="menu" /></button>
       {/if}
-      <a class="brand" href={first ?? `#${home}`}>{deviceLabel}</a>
+      {#if tabs}
+        <nav class="tabs" aria-label={t('Nodes')}>
+          {#each tabs as n (n.path)}
+            <a href="#{n.path}" class:brand={n.path === '/'} title={n.title || undefined} aria-current={home === n.path ? 'page' : undefined}>{n.label}{#if n.off}<i class="off" title={t('Offline')}></i>{/if}</a>
+          {/each}
+        </nav>
+      {:else}
+        <a class="brand" href={first ?? `#${top}`}>{deviceLabel}</a>
+      {/if}
       {#if views?.length && !menu}
         <nav class="tabs" aria-label={t('Pages')}>
           {#each views as v (v.id)}
@@ -131,6 +181,9 @@
           {/each}
           <a href="#/" aria-current={route.view === null ? 'page' : undefined}>{t('Device')}</a>
         </nav>
+      {/if}
+      {#if nodes.length}
+        <button type="button" class="quiet" aria-pressed={tabsOn} title={t('Nodes as tabs')} aria-label={t('Nodes as tabs')} onclick={() => storageSet(TABS, (tabsOn = !tabsOn) ? '1' : '0')}><Icon name="layers" /></button>
       {/if}
       {#if session.kind}<span class="state {session.state}" role="status"><i></i>{stateText}</span>{/if}
       {#if config.launcher && session.kind}
@@ -173,12 +226,12 @@
   <main>
     {#if !session.kind && (config.transport === 'serial' || config.transport === 'ble')}
       <Connect />
-    {:else if !session.loaded || (landing && first)}
+    {:else if !session.loaded || (landing && first) || (!!tabs && !views)}
       <p class="muted center">{session.state === 'open' ? t('Loading…') : stateText}</p>
     {:else if route.view !== null}
       {@const page = views?.find((v) => v.id === route.view)}
       {#if page}
-        {#key page.id}<ViewPage {page} />{/key}
+        {#key page}<ViewPage {page} node={home} />{/key}
       {:else}
         <p class="muted center">{t('No view page named “{id}”.', { id: route.view })}</p>
       {/if}
@@ -454,6 +507,8 @@
   }
   .brand {
     font-weight: 650;
+  }
+  .top > .brand {
     color: var(--text);
     text-decoration: none;
   }
@@ -462,8 +517,12 @@
     gap: 4px;
     overflow-x: auto;
     flex: 1;
+    min-width: 0;
   }
   .tabs a {
+    display: flex;
+    align-items: center;
+    gap: 6px;
     padding: 6px 10px;
     border-radius: 8px;
     color: var(--muted);
@@ -538,7 +597,10 @@
     width: 1.15em;
     display: flex;
   }
-  .side .off {
+  .top [aria-pressed='true'] {
+    color: var(--accent);
+  }
+  .off {
     margin-left: auto;
     width: 8px;
     height: 8px;

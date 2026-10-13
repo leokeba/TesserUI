@@ -56,15 +56,22 @@ function withHints(s: Schema, doc: ViewItemDoc): Schema {
   return out;
 }
 
-function substitute(doc: ViewItemDoc, at: string): ViewItemDoc {
-  const sub = (p: unknown) => (typeof p === 'string' ? p.replace(/^\$/, at) : p);
+// Rewrites a view's paths with `f`: `$` for an `each`'s child, or a peer's
+// own paths below its node (DESIGN.md §6.5).
+function mapPaths(doc: ViewItemDoc, f: (p: string) => string): ViewItemDoc {
   const out: ViewItemDoc = { ...doc };
-  for (const k of ['node', 'path', 'each'] as const) if (out[k] !== undefined) out[k] = sub(out[k]) as string;
-  if (out.row) out.row = out.row.map((d) => substitute(d, at));
-  if (out.items) out.items = out.items.map((d) => substitute(d, at));
-  if (out.item) out.item = substitute(out.item, at);
+  for (const k of ['node', 'path', 'each'] as const) if (out[k] !== undefined) out[k] = f(out[k]!);
+  if (out.row) out.row = out.row.map((d) => mapPaths(d, f));
+  if (out.items) out.items = out.items.map((d) => mapPaths(d, f));
+  if (out.item) out.item = mapPaths(out.item, f);
   return out;
 }
+
+const substitute = (doc: ViewItemDoc, at: string) => mapPaths(doc, (p) => p.replace(/^\$/, at));
+
+// A remote node's views name paths of its own tree: they move below it.
+export const relocate = (pages: ViewPage[], node: string): ViewPage[] =>
+  node === '/' ? pages : pages.map((p) => ({ ...p, items: p.items.map((d) => mapPaths(d, (q) => (q[0] === '/' ? node + (q === '/' ? '' : q) : q))) }));
 
 export function buildView(page: ViewPage, root: Schema): View {
   const missing: string[] = [];

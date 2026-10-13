@@ -28,7 +28,7 @@ test('files below a remote node, relayed in WebSocket envelopes', async ({ page 
       if (m.op === 'upload' || m.op === 'download') sent.push(m);
     }),
   );
-  await page.goto('/?api=http://localhost:8091/api#/peers/heliostat-3');
+  await page.goto('/?api=http://localhost:8091/api#/peers/heliostat-3/diagnostics');
   await expect(page.locator('.state')).toHaveText('Live');
   const log = page.locator('.row', { has: page.locator('label span:text-is("Log")') });
   const fetch = async () => {
@@ -50,7 +50,7 @@ test('files below a remote node, relayed in WebSocket envelopes', async ({ page 
 
 // With HTTP only, it goes over HTTP, which the gateway relays too.
 test('files below a remote node over HTTP only', async ({ page }) => {
-  await page.goto('/?api=http://localhost:8091/api&ws=#/peers/heliostat-3');
+  await page.goto('/?api=http://localhost:8091/api&ws=#/peers/heliostat-3/diagnostics');
   await expect(page.locator('.state')).toHaveText('Polling');
   const log = page.locator('.row', { has: page.locator('label span:text-is("Log")') });
   const download = page.waitForEvent('download');
