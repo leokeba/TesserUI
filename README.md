@@ -1,8 +1,10 @@
 # TesserUI
 
-User interfaces for [TesserAPI](https://github.com/leokeba/TesserAPI) nodes, rendered from their **schema**. Declare your firmware's tree once in C++, and get a web UI without writing any UI code. A node that can't spare flash for HTML or JavaScript is still usable: another node, or a CDN, provides the renderer.
+User interfaces for [TesserAPI](https://github.com/leokeba/TesserAPI) nodes, rendered from their **schema**. Declare your firmware's tree once in C++, and get a live web UI without writing any UI code. A node that can't spare flash for HTML or JavaScript is still usable: another node, a CDN or the [launcher](https://leokeba.github.io/TesserUI/) provides the renderer.
 
-> **Status: early development.** The design is in [docs/DESIGN.md](docs/DESIGN.md). The web renderer, self-hosted serving, UI hosts with peer pages over ESP-NOW, stub pages, Web Serial, views, charts, forms, conditions, custom elements and embedding are implemented. The LVGL touchscreen renderer is not started yet. The API will change before 1.0.
+> **Status: early development.** The web renderer is complete enough for real devices: self-hosted, UI hosts over ESP-NOW, stub pages, the launcher (USB, Bluetooth, network), views, charts, forms, files, notifications, custom elements and embedding. The LVGL touchscreen renderer is not started. The API will change before 1.0; the specification is [docs/DESIGN.md](docs/DESIGN.md).
+>
+> The npm packages (`tesserui`, `tesserui-bridge`) are not published yet. Until they are, run the bridge from this repository (`node bridge/bridge.mjs`), and point stub pages at the launcher's copy of the bundle (`https://leokeba.github.io/TesserUI/ui.js`) or at a UI host.
 
 ```cpp
 #include <TesserAPI.h>
@@ -21,12 +23,22 @@ void setup() {
 
     http.enableWebSocket("/ws");
     http.begin(80, "/api");
-    web.serve(http.handle());   // GET / and GET /ui.js: the whole UI, about 41 KB of flash
+    web.serve(http.handle());   // GET / and GET /ui.js: the whole UI, about 58 KB of flash
     api.startTask();
 }
 ```
 
 Open `http://<node>/`: a menu with an entry for the motor, whose page has a knob, a switch and a danger button, live through a WebSocket subscription.
+
+## Installation
+
+TesserUI is a library for ESP32 boards under Arduino or ESP-IDF, next to [TesserAPI](https://github.com/leokeba/TesserAPI) (and [NowTP](https://github.com/leokeba/NowTP) for the ESP-NOW examples).
+
+- **PlatformIO:** `lib_deps = https://github.com/leokeba/TesserUI.git` pulls TesserAPI and ArduinoJson; add `https://github.com/leokeba/NowTP.git` for ESP-NOW.
+- **Arduino IDE:** install ArduinoJson from the Library Manager, then TesserAPI, NowTP and TesserUI with *Sketch > Include Library > Add .ZIP Library* (each repository's *Code > Download ZIP*).
+- **ESP-IDF:** clone TesserAPI and TesserUI and add both to `EXTRA_COMPONENT_DIRS`, as [examples/idf/self_hosted](examples/idf/self_hosted/CMakeLists.txt) does.
+
+The UI bundle is compiled into the firmware (`src/tesserui/bundle/tesserui_bundle.h`), so there is nothing to upload to a filesystem.
 
 ## From schema to screen
 
@@ -49,14 +61,22 @@ The full vocabulary is in [DESIGN.md §5](docs/DESIGN.md#5-hints-tier-1).
 
 | Mode | Who stores the bundle | How |
 |---|---|---|
-| Self-hosted | The node (~41 KB of flash) | `web.serve(http.handle())` |
+| Self-hosted | The node (~58 KB of flash) | `web.serve(http.handle())` |
 | UI host | One ESP with spare flash, also a NowTP gateway | `nowApi.mountPeers(api.object("peers"))`: every nearby node gets a page at `#/peers/<name>`, forwarded over ESP-NOW |
 | Stub | A CDN or the UI host | `web.serveStub(http.handle(), "https://cdn.jsdelivr.net/npm/tesserui@0.1.0/dist/ui.js")`: a 300-byte page |
 | Launcher | GitHub Pages | Pick a node: USB (Web Serial), Bluetooth (Web Bluetooth), or its address on the network |
 
 A NowTP-only node with no Wi-Fi needs nothing but its tree and `nowApi.advertise()`: the UI host renders it.
 
-The launcher is at <https://leokeba.github.io/TesserUI/>. To find the nodes on your network, run the bridge next to it: `npx tesserui-bridge` (or `node bridge/bridge.mjs` from this repository). It lists the nodes that announce themselves over mDNS (`http.advertise("name", "name")`), serves them live in any browser, brings serial ports to browsers without Web Serial, and serves the launcher itself at <http://localhost:8765/>. Plug a board into USB, pair one over Bluetooth, or type a node's address: `?api=http://192.168.1.20/api` opens that node directly. A board running the USB gateway (`examples/arduino/UsbGateway` or `examples/idf/usb_gateway`) brings the NowTP nodes around it along over the one USB cable; the Bluetooth example (`examples/arduino/Bluetooth`, `examples/idf/bluetooth`) is a node a phone reaches over Bluetooth, with nothing else.
+### The launcher
+
+The launcher at <https://leokeba.github.io/TesserUI/> opens any node, with no UI on the board at all:
+
+- **USB:** plug a board in and pick its port (Web Serial). A board running the USB gateway ([Arduino](examples/arduino/UsbGateway), [ESP-IDF](examples/idf/usb_gateway)) brings the NowTP nodes around it along over the one cable.
+- **Bluetooth:** pair a board running the Bluetooth example ([Arduino](examples/arduino/Bluetooth), [ESP-IDF](examples/idf/bluetooth)) from a phone or a laptop.
+- **Network:** type a node's address; `?api=http://192.168.1.20/api` opens it directly.
+
+To find the nodes on your network, run the bridge next to it: `node bridge/bridge.mjs` (`npx tesserui-bridge` once published). It lists the nodes that announce themselves over mDNS (`http.advertise("name", "name")`), serves them live in any browser, brings serial ports to browsers without Web Serial, and serves the launcher itself at <http://localhost:8765/>.
 
 ## Views
 
@@ -95,11 +115,15 @@ The interface's colors (`theme`) and its own text (`strings`) are options too: `
 
 ## Examples
 
-- [examples/arduino/SelfHosted](examples/arduino/SelfHosted): HTTP, WebSocket and the UI on one node.
-- [examples/arduino/UiHost](examples/arduino/UiHost) and [examples/arduino/NowTpNode](examples/arduino/NowTpNode): a UI host and the NowTP-only nodes it renders. The host needs a larger app partition than the default (Minimal SPIFFS).
-- [examples/arduino/Stub](examples/arduino/Stub): the UI loaded from a CDN.
-- [examples/arduino/CustomWidget](examples/arduino/CustomWidget): a custom element served from flash, on a node and as a custom page.
-- [examples/idf/self_hosted](examples/idf/self_hosted): ESP-IDF.
+| Example | Arduino | ESP-IDF |
+|---|---|---|
+| HTTP, WebSocket and the UI on one node | [SelfHosted](examples/arduino/SelfHosted) | [self_hosted](examples/idf/self_hosted) |
+| A UI host and the NowTP-only nodes it renders (the host needs the *Minimal SPIFFS* partition scheme) | [UiHost](examples/arduino/UiHost), [NowTpNode](examples/arduino/NowTpNode) | |
+| The UI loaded from a CDN by a 300-byte page | [Stub](examples/arduino/Stub) | |
+| A custom element served from flash, on a node and as a custom page | [CustomWidget](examples/arduino/CustomWidget) | |
+| A NowTP gateway on USB, for the launcher | [UsbGateway](examples/arduino/UsbGateway) | [usb_gateway](examples/idf/usb_gateway) |
+| A node over Bluetooth LE, for the launcher | [Bluetooth](examples/arduino/Bluetooth) | [bluetooth](examples/idf/bluetooth) |
+| A node over classic Bluetooth serial (ESP32 only) | [BluetoothSerial](examples/arduino/BluetoothSerial) | |
 
 ## Development
 
@@ -108,7 +132,10 @@ cd web && pnpm install && pnpm test && pnpm build    # web renderer; regenerates
 pnpm dev                                              # then http://localhost:5173/?api=http://<node-ip>/api
 cmake -S . -B build && cmake --build build -j && ctest --test-dir build   # C++ (TesserAPI from ../TesserAPI or GitHub)
 node web/scripts/device.mjs demo                      # the demo node on the host: http://localhost:8090/
+cd web && pnpm e2e                                    # Playwright, against the demo node (after both builds)
 ```
+
+No board is needed: the demo node runs TesserAPI on the host, and the browser talks to it as to a real one. The web renderer is TypeScript and Svelte 5; both it and the future LVGL renderer test against the schemas and expected UI models in [fixtures/](fixtures). Behaviour changes go into [docs/DESIGN.md](docs/DESIGN.md) with the code.
 
 ## Requirements
 
