@@ -59,10 +59,18 @@
   .W {
     color: var(--warn);
   }
-  /* Over the box's top right corner, clear of a scrollbar. */
-  button {
+  /* In the box's top right corner, its borders on the box's; see-through
+     until pointed at. */
+  .log button {
     position: absolute;
-    top: 4px;
-    right: 18px;
+    top: 0;
+    right: 0;
+    border-radius: 0 calc(var(--radius) - 4px);
+    background: color-mix(in srgb, var(--surface) 60%, transparent);
+    opacity: 0.6;
+  }
+  .log button:hover,
+  .log button:focus-visible {
+    opacity: 1;
   }
 </style>
