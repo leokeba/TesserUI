@@ -167,6 +167,19 @@
       if (!paths.length && !c.saved) close(c);
     }
   });
+  // Every connection's remote nodes are labelled from their own roots, as
+  // the shown one's are (App), each read once.
+  const labelled = new Set<string>();
+  $effect(() => {
+    for (const { c, paths } of tabs) {
+      const s = c.session!;
+      for (const p of paths?.slice(1) ?? []) {
+        if (labelled.has(c.key + p) || s.schemaAt(p)?.tree || s.isOffline(p)) continue;
+        labelled.add(c.key + p);
+        s.fetchSchema(p, 0);
+      }
+    }
+  });
   // Labels follow the nodes' own, for the next visit.
   $effect(() => {
     for (const c of conns) {
