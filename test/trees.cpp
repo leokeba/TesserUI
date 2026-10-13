@@ -470,7 +470,7 @@ void Demo::tick(uint32_t nowMs) {
     }
     if (reached(nowMs, lastLogMs_ + 3000)) {
         lastLogMs_ = nowMs;
-        static const char* const kLines[] = {"I demo: tick", "I wifi: rssi -52", "W mqtt: can't resolve the broker's name", "I demo: tick",
+        static const char* const kLines[] = {"I demo: tick", "I wifi: connected to heliostat-net on channel 6 at -52 dBm, ip 192.168.1.50, gateway 192.168.1.1, dns 192.168.1.1", "W mqtt: can't resolve the broker's name", "I demo: tick",
                                              "E sensor: read timed out"};
         const char* text = kLines[logLines++ % 5];
         log->emit(std::string(1, text[0]) + " (" + std::to_string(nowMs - startMs_) + ") " + (text + 2));

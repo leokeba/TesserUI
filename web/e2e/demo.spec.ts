@@ -142,6 +142,14 @@ test('a log shows its lines oldest first, coloured by level, until cleared', asy
   await expect(lines.nth(0)).toHaveText(/^I \(\d+\) demo: tick$/);
   await expect(lines.nth(2)).toHaveText(/^W \(\d+\) mqtt: can't resolve the broker's name$/);
   await expect(lines.nth(2)).toHaveClass(/\bW\b/);
+  // A long line scrolls sideways in the box, which stays in its card, and
+  // the clear button is beside it, not over its lines.
+  const box = (await page.getByRole('log').boundingBox())!;
+  const clear = (await page.getByRole('button', { name: 'Clear' }).boundingBox())!;
+  const sys = (await page.locator('fieldset.card', { has: page.getByRole('log') }).boundingBox())!;
+  expect(await page.getByRole('log').evaluate((e) => e.scrollWidth > e.clientWidth)).toBe(true);
+  expect(clear.x).toBeGreaterThanOrEqual(box.x + box.width);
+  expect(clear.x + clear.width).toBeLessThanOrEqual(sys.x + sys.width);
   await page.getByRole('button', { name: 'Clear' }).click();
   await expect(page.getByRole('log')).toHaveText('No events yet');
 });
