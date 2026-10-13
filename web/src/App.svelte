@@ -61,8 +61,7 @@
     return tabsOn && nodes.length
       ? ['/', ...nodes].map((path) => {
           const s = session.schemaAt(path)!;
-          const name = path.slice(path.lastIndexOf('/') + 1);
-          return { path, label: path === '/' ? deviceLabel : (s.label ?? s.tree?.label ?? name), off: s.online === false, title: [s.id, s.route].filter(Boolean).join(' · ') };
+          return { path, label: session.nodeLabel(path), off: s.online === false, title: [s.id, s.route].filter(Boolean).join(' · ') };
         })
       : null;
   });
@@ -125,7 +124,7 @@
 
   const deviceLabel = $derived.by(() => {
     void session.schemaVersion;
-    return session.root.label ?? config.title ?? 'TesserUI';
+    return session.nodeLabel('/');
   });
   $effect(() => {
     if (full) document.title = deviceLabel;
@@ -168,9 +167,15 @@
       {#if tabs}
         <nav class="tabs" aria-label={t('Nodes')}>
           {#each tabs as n (n.path)}
-            <a href="#{n.path}" class:brand={n.path === '/'} title={n.title || undefined} aria-current={home === n.path ? 'page' : undefined}>{n.label}{#if n.off}<i class="off" title={t('Offline')}></i>{/if}</a>
+            {@const a = session.all ? session.applied[n.path] : undefined}
+            <a href="#{n.path}" class:brand={n.path === '/'} title={n.title || undefined} aria-current={home === n.path ? 'page' : undefined}>
+              {n.label}{#if n.off}<i class="off" title={t('Offline')}></i>{/if}
+              {#if a && a.state !== 'offline'}<span class="mark {a.state}" title={a.text ?? t(a.state === 'done' ? 'Applied' : 'Absent')}><Icon name={{ done: 'check', absent: 'minus', refused: 'x' }[a.state]} /></span>{/if}
+            </a>
           {/each}
         </nav>
+        <!-- Apply to all (DESIGN.md §6.6): highlighted while on. -->
+        <button type="button" class="quiet all" aria-pressed={session.all} title={t('Apply to all')} aria-label={t('Apply to all')} onclick={() => ((session.all = !session.all), (session.applied = {}))}><Icon name="broadcast" /></button>
       {:else}
         <a class="brand" href={first ?? `#${top}`}>{deviceLabel}</a>
       {/if}
@@ -599,6 +604,20 @@
   }
   .top [aria-pressed='true'] {
     color: var(--accent);
+  }
+  .top .all[aria-pressed='true'] {
+    background: var(--accent);
+    color: var(--on-accent);
+  }
+  .mark {
+    display: flex;
+    color: var(--ok);
+  }
+  .mark.absent {
+    color: var(--muted);
+  }
+  .mark.refused {
+    color: var(--danger);
   }
   .off {
     margin-left: auto;

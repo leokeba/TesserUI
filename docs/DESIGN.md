@@ -27,7 +27,7 @@ TesserUI renders user interfaces for [TesserAPI](https://github.com/leokeba/Tess
 | Item | Decision |
 |---|---|
 | Device side | C++17 and TesserAPI's rules: no exceptions, no RTTI, ESP-IDF ≥ 5.1 and Arduino-ESP32 ≥ 3.0. |
-| Web bundle | ≤ 59.5 KB gzipped for everything (JS and CSS), measured in CI. Evergreen browsers only. (Raised from 40 KB once phases 1, 2 and 4 were in: they measured 40.2 KB with every saving taken. Raised from 50 KB for the navigation menu, §6.3, from 52 KB for the launcher and Bluetooth, §9.7, from 54 KB for notifications, §7.8, from 55.5 KB for file nodes in list elements, §4, from 56.5 KB for events over HTTP, §9.2, from 57 KB for files over serial and Bluetooth, §4, from 57.5 KB for the log widget, §4, from 58 KB for installing firmware from the launcher, §9.7.1 (its flasher is a script of its own, outside the budget), from 58.5 KB for moving rows and choosing a node, §5.2, and from 59 KB for nodes as tabs, §6.5.) |
+| Web bundle | ≤ 60 KB gzipped for everything (JS and CSS), measured in CI. Evergreen browsers only. (Raised from 40 KB once phases 1, 2 and 4 were in: they measured 40.2 KB with every saving taken. Raised from 50 KB for the navigation menu, §6.3, from 52 KB for the launcher and Bluetooth, §9.7, from 54 KB for notifications, §7.8, from 55.5 KB for file nodes in list elements, §4, from 56.5 KB for events over HTTP, §9.2, from 57 KB for files over serial and Bluetooth, §4, from 57.5 KB for the log widget, §4, from 58 KB for installing firmware from the launcher, §9.7.1 (its flasher is a script of its own, outside the budget), from 58.5 KB for moving rows and choosing a node, §5.2, from 59 KB for nodes as tabs, §6.5, and from 59.5 KB for applying a change to every node, §6.6. 60 KB is the ceiling: beyond it, what only a launcher uses is a script of its own, as the flasher is.) |
 | Web stack | Svelte 5 + TypeScript + Vite, without a CSS framework or chart library. |
 | LCD stack | LVGL 9.x. Display and touch drivers are the application's: TesserUI receives an `lv_display_t*`. |
 | Smallest node | A NowTP-only node with no Wi-Fi and no UI assets: its tree and its hint literals are all it stores. |
@@ -232,6 +232,24 @@ A gateway's UI reaches other nodes: the remote nodes of its tree (TesserKIT's `/
 - **Opening a tab** opens its node's root: its status, or its first entry when it has none (§6.3, *Start*). The menu waits for the node's views, which come first.
 - **On or off:** tabs are on by default with the menu, when the node has remote nodes. A header button switches them off and back, and the browser remembers it; `tabs: false` (§9.2) makes off the default. Off, remote nodes are entries of the device's menu (§6.3), and a peer's root page shows all its cards.
 
+### 6.6 Apply to all (web)
+
+Setting up many nodes alike (a field of heliostats, the lamps of a show) means making one change on each. **Apply to all** makes it once: while it is on, each write the user makes on the node shown goes to every other tab's node (§6.5) at the same path below its root.
+
+- **What goes:** every write the user makes: values, including each write of a drag; action calls, including a hold's repeats; keep-alive re-sends, so every node's dead-man timer is fed; a form's patch. Sign-in, files and subscriptions stay on their node.
+- **How:** one set per node, all at once. A gateway takes them up to its pending slots (TesserAPI's `maxPending`) and answers `busy` beyond, so they wait and are sent again, as schema reads are (§7.2). The UI doesn't use a `*` fan-out (TesserAPI §6.5): each match would take a pending slot too, and a `*` can't leave out the node being edited when it is itself a peer.
+- **Nothing is checked first.** Each node's reply tells:
+
+  | Reply | The node's tab shows |
+  |---|---|
+  | `ok` | done (✓) |
+  | `not_found` | absent (–): the node doesn't have that path |
+  | any other error | refused (✕), the node's message in its tooltip |
+  | (an offline stub: not sent) | offline: its dot |
+
+- **When some node is offline or refused,** one `warn` toast says so, at the path's labels: "Lamp › Brightness: Applied to 1 of 3 other nodes. kitchen-lamp: offline". It comes once a burst of writes, such as a drag, has been quiet for half a second. Absent nodes only show on their tabs: nodes that differ are expected.
+- **The switch** is the header's button beside the tabs, solid while on. It starts off on each load, since a change sent to every node by mistake costs more than a click, and turning it off clears the marks.
+
 ## 7. Data and reactivity
 
 ### 7.1 Store
@@ -268,6 +286,7 @@ Notifications are merge patches: apply them to `values` exactly as TesserAPI app
 
 ### 7.4 Writes
 
+- **Apply to all** (§6.6) sends each of these writes to the other nodes too.
 - **Values:** the widget updates the store at once (optimistic) and marks the path pending, then sends `set <path> <value>`.
   - Sliders, knobs and color pickers send at most one write per 100 ms while dragging, and always the final value.
   - The reply is the value read back: it replaces the optimistic one and clears `pending`.

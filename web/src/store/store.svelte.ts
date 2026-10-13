@@ -41,6 +41,8 @@ export class Store {
   // arrays by index.
   keys = new Map<string, string>();
   onUnauthorized: (() => void) | null = null;
+  // Every write the user makes, values and calls: "apply to all" (DESIGN.md §6.6).
+  onWrite: ((path: string, body: unknown) => void) | null = null;
   // The interface's text (Session.t).
   t: (text: string) => string = (x) => x;
 
@@ -165,6 +167,7 @@ export class Store {
     this.hold(path);
     delete this.errors[path];
     this.put(path, value);
+    this.onWrite?.(path, value);
     const r = await this.client().request({ op: 'set', path, body: value });
     if (r.status === 'ok') this.succeed(path, r.body);
     else this.fail(path, r);
@@ -175,6 +178,7 @@ export class Store {
   // A keep-alive (DESIGN.md §7.4): the value again, not an edit. Nothing is
   // pending, so the device's notifications keep reaching the screen.
   async resend(path: string, value: unknown): Promise<boolean> {
+    this.onWrite?.(path, value);
     const r = await this.client().request({ op: 'set', path, body: value });
     if (r.status !== 'ok') this.fail(path, r);
     else {
@@ -220,6 +224,7 @@ export class Store {
   // Calls an action (or sends a form's patch); errors show like writes'.
   async call(path: string, arg: unknown, timeoutMs?: number): Promise<Reply> {
     delete this.errors[path];
+    this.onWrite?.(path, arg ?? null);
     const r = await this.client().request({ op: 'set', path, body: arg ?? null }, timeoutMs);
     if (r.status !== 'ok') this.fail(path, r);
     else this.toasts.clear(path);

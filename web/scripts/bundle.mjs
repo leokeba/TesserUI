@@ -1,12 +1,12 @@
 // After `vite build`: writes dist/index.html, dist/ui.js.gz (zopfli, which
 // any gzip decoder reads) and the C++ header the node serves the bundle from
 // (src/tesserui/bundle/tesserui_bundle.h, DESIGN.md §9.4), and enforces the
-// 59.5 KB budget (§2). `--check` only measures.
+// 60 KB budget (§2). `--check` only measures.
 
 import { readFileSync, writeFileSync } from 'node:fs';
 import { gzipAsync } from '@gfx/zopfli';
 
-const BUDGET = 59.5 * 1024;
+const BUDGET = 60 * 1024;
 const web = new URL('../', import.meta.url);
 const dist = new URL('dist/', web);
 const header = new URL('../src/tesserui/bundle/tesserui_bundle.h', web);

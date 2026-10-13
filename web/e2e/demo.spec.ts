@@ -414,3 +414,35 @@ test('nodes as tabs, each with its own menu and views', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'Nodes as tabs' })).toHaveAttribute('aria-pressed', 'false');
   await expect(tabs).toHaveCount(0);
 });
+
+// DESIGN.md §6.6: while on, a write on one node goes to every other tab's
+// node at the same path, each tab marked with its result.
+test('apply to all: writes reach every node, each result on its tab', async ({ page }) => {
+  await open(page, '#/lamp');
+  const tabs = page.locator('nav.tabs');
+  await expect(tabs.getByRole('link', { name: 'Porch lamp' })).toBeVisible({ timeout: 10000 });
+  await page.getByRole('button', { name: 'Apply to all' }).click();
+  await expect(page.getByRole('button', { name: 'Apply to all' })).toHaveAttribute('aria-pressed', 'true');
+  const entry = row(page, 'Brightness').locator('input[type=number]');
+  await entry.fill('100');
+  await entry.press('Enter');
+  await expect(row(page, 'Power').locator('output')).toHaveText('20 W');
+  const mark = (tab: string) => tabs.getByRole('link', { name: tab }).locator('.mark');
+  await expect(mark('Porch lamp')).toHaveClass(/done/);
+  await expect(mark('Heliostat')).toHaveClass(/absent/);
+  await expect(mark('kitchen-lamp')).toHaveCount(0);
+  // The offline node didn't get it: one toast says so.
+  await expect(page.locator('.toast[data-kind=warn]')).toHaveText(/Lamp › Brightness: Applied to 1 of 3 other nodes\. kitchen-lamp: offline/);
+  // The porch lamp has it, and a write there comes back to the device.
+  await tabs.getByRole('link', { name: 'Porch lamp' }).click();
+  await expect(row(page, 'Brightness').locator('input[type=number]')).toHaveValue('100');
+  await row(page, 'On').locator('input[role=switch]').click();
+  await expect(mark('TesserUI demo')).toHaveClass(/done/);
+  await tabs.getByRole('link', { name: 'TesserUI demo' }).click();
+  await expect(page.locator('nav.side [aria-current=page]')).toHaveText('Status');
+  await page.locator('nav.side').getByRole('link', { name: 'Lamp' }).click();
+  await expect(row(page, 'Power').locator('output')).toHaveText('0 W');
+  // Off: writes stay on their node, and the marks go.
+  await page.getByRole('button', { name: 'Apply to all' }).click();
+  await expect(tabs.locator('.mark')).toHaveCount(0);
+});

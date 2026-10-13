@@ -52,7 +52,8 @@ test('secrets are never shown, and sign-in goes through the login action', async
 
   await page.locator('header').getByRole('button', { name: 'Sign out' }).click();
   await expect(page.locator('header').getByRole('button', { name: 'Sign in' })).toBeVisible();
-  await expect(page.locator('.toast[data-kind=ok]').last()).toHaveText('Signed out');
+  // Reconnecting with the new identity may toast "Connected again" after it.
+  await expect(page.locator('.toast[data-kind=ok]', { hasText: 'Signed out' })).toBeVisible();
   expect(await page.evaluate(() => localStorage.getItem('tesserui:token:http://localhost:8091/api'))).toBeNull();
 
   // The login action's own fields, in its card, sign in too.

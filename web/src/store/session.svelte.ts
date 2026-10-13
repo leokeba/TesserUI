@@ -80,6 +80,12 @@ export function recentNodes(): RecentNode[] {
   }
 }
 
+// A node's part in the last "apply to all" (DESIGN.md §6.6).
+export interface Applied {
+  state: 'done' | 'absent' | 'offline' | 'refused';
+  text?: string;
+}
+
 const LEVELS: Level[] = ['public', 'user', 'admin'];
 const asLevel = (v: unknown): Level | null => (LEVELS.includes(v as Level) ? (v as Level) : null);
 
@@ -101,6 +107,11 @@ export class Session {
   // (DESIGN.md §7.4).
   login: { path: string; schema: Schema } | null = $state(null);
   private whoamiPath: string | null = null;
+  // Apply to all: the user's writes on one node go to every other node
+  // (tab) at the same path below its root; each node's result, by its root.
+  all = $state(false);
+  applied: Record<string, Applied> = $state({});
+  private applying = 0;
   // The hash of the node's schema as this client reads it (view=hash), for
   // its schema cache; null when the node doesn't say, or once its tree
   // changed (a peer's stub).
@@ -121,6 +132,7 @@ export class Session {
     this.store = new Store(() => this.client);
     this.store.onUnauthorized = () => (this.needToken = true);
     this.store.t = (text) => this.t(text);
+    this.store.onWrite = (path, body) => this.all && this.applyAll(path, body);
     this.subs = new Subscriptions(() => this.client, this.store);
     this.subs.childNames = (path) => {
       const s = this.schemaAt(path);
@@ -358,6 +370,45 @@ export class Session {
   nodes(): string[] {
     void this.schemaVersion;
     return this.remotePaths.filter((p) => !remoteOf(this.root, parentPath(p)));
+  }
+
+  // A node's label: its own, else its name (DESIGN.md §6.5).
+  nodeLabel(path: string): string {
+    const s = this.schemaAt(path);
+    return (path === '/' ? this.root.label : (s?.label ?? s?.tree?.label)) ?? (path === '/' ? (this.config.title ?? 'TesserUI') : path.slice(path.lastIndexOf('/') + 1));
+  }
+
+  // Writes `rel`, a path below a node's root, on each node of this
+  // connection but `except`, all at once; a gateway queues what's beyond its
+  // pending slots (ask()). Offline nodes aren't sent to.
+  async applyHere(rel: string, body: unknown, except?: string): Promise<[string, Applied][]> {
+    const nodes = ['/', ...this.nodes()].filter((n) => n !== except);
+    return Promise.all(
+      nodes.map(async (n): Promise<[string, Applied]> => {
+        const path = n === '/' ? rel : n + (rel === '/' ? '' : rel);
+        let a: Applied = { state: 'offline' };
+        if (!this.isOffline(path)) {
+          const r = await this.ask({ op: 'set', path, body });
+          a = r.status === 'ok' ? { state: 'done' } : r.status === 'not_found' ? { state: 'absent' } : { state: 'refused', text: errorText(r, this.store.t) };
+        }
+        this.applied[n] = a;
+        return [this.nodeLabel(n), a];
+      }),
+    );
+  }
+
+  // After the last of a burst of writes (a drag) settles, one toast tells
+  // which nodes didn't take it; the tabs show every node's result.
+  private async applyAll(path: string, body: unknown) {
+    const at = ++this.applying;
+    const from = this.nodeRoot(path);
+    const results = await this.applyHere(from === '/' ? path : path.slice(from.length) || '/', body, from);
+    await new Promise((done) => setTimeout(done, 500));
+    const failed = results.filter(([, a]) => a.state === 'refused' || a.state === 'offline');
+    if (at !== this.applying || !failed.length) return;
+    const done = results.filter(([, a]) => a.state === 'done').length;
+    const text = [this.t('Applied to {n} of {total} other nodes', { n: done, total: results.length }), ...failed.map(([label, a]) => `${label}: ${a.text ?? this.t('offline')}`)];
+    this.store.toasts.show(text.join('. '), 'warn', path);
   }
 
   private findAuth() {
