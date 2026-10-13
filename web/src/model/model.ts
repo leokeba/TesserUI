@@ -87,6 +87,7 @@ export interface Leaf extends Base {
   options?: Option[];
   // A keyed list whose current keys are choices too, after `options`.
   optionsFrom?: string;
+  optionsValue?: string;
   confirm?: string;
   // Never read back: an empty password field.
   secret?: boolean;
@@ -384,7 +385,13 @@ function choices(leaf: Leaf, s: Schema, parent: string) {
   const options = optionsOf(s);
   if (options) leaf.options = options;
   const from = uiStr(s, 'options');
-  if (from && !s.enum && leaf.type === 'string') leaf.optionsFrom = resolvePath(from, parent, nodeRoot);
+  if (from && !s.enum && leaf.type === 'string') {
+    leaf.optionsFrom = resolvePath(from, parent, nodeRoot);
+    // Among an object's children: the field of their schemas the choice
+    // writes (a remote node's "id", its MAC), instead of their names.
+    const by = uiStr(s, 'optionsValue');
+    if (by) leaf.optionsValue = by;
+  }
 }
 
 function number(leaf: Leaf, s: Schema) {

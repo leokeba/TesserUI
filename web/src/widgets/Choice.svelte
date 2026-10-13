@@ -4,7 +4,8 @@
   let { leaf, value, set, disabled, id }: WidgetProps = $props();
   const session = useSession();
   // ui.options: the fixed choices, then the keyed list's current keys, or
-  // the object's children: the nodes under /peers, offline ones marked.
+  // the object's children: the nodes under /peers, offline ones marked, by
+  // name or by a field of their schemas (ui.optionsValue: "id").
   const options = $derived.by(() => {
     const fixed = leaf.options ?? [];
     if (!leaf.optionsFrom) return fixed;
@@ -13,10 +14,10 @@
     const list = session.store.get(leaf.optionsFrom);
     const more =
       s?.type === 'object'
-        ? Object.entries(s.children ?? {}).map(([k, c]) => ({
-            value: k,
-            label: (c.tree?.label ?? c.label ?? k) + (c.online === false ? ` (${session.t('offline')})` : ''),
-          }))
+        ? Object.entries(s.children ?? {}).flatMap(([k, c]) => {
+            const v = leaf.optionsValue ? (c as unknown as Record<string, unknown>)[leaf.optionsValue] : k;
+            return typeof v === 'string' ? [{ value: v, label: (c.tree?.label ?? c.label ?? k) + (c.online === false ? ` (${session.t('offline')})` : '') }] : [];
+          })
         : (Array.isArray(list) && s?.key ? list.map((e) => e?.[s.key!]).filter((k) => typeof k === 'string') : []).map((k) => ({ value: k, label: k }));
     return [...fixed, ...more.filter((m) => !fixed.some((o) => o.value === m.value))];
   });
@@ -38,7 +39,8 @@
   </div>
 {:else}
   <select {id} {disabled} onchange={(e) => set(e.currentTarget.value)}>
-    {#if !options.some((o) => o.value === value)}<option value="" selected disabled>{value ?? ''}</option>{/if}
+    <!-- A stored value that is no choice (yet): a node not mounted. -->
+    {#if !options.some((o) => o.value === value)}<option value="" selected disabled>{value ?? ''}{leaf.optionsFrom && value ? ` (${session.t('not found')})` : ''}</option>{/if}
     {#each options as o (o.value)}<option value={o.value} selected={value === o.value}>{o.label}</option>{/each}
   </select>
 {/if}

@@ -305,6 +305,8 @@ Demo::Demo()
     widgets.value("source", source).ui("options", "/sky/sources").ui("optionsExtra", "Sun");
     // A choice among the nodes under /peers, offline ones marked.
     widgets.value("node", node).ui("options", "/peers");
+    // The same, storing the device's id (its MAC) rather than its name.
+    widgets.value("nodeId", nodeId).ui("options", "/peers").ui("optionsValue", "id").label("Node id");
     widgets.action("go", [] {}).ui("style", "primary");
     widgets.action("scene", [this](std::string s) { scene = s; }).ui("widget", "button").ui("value", "sunset");
     widgets.object("pinned").ui("card").value("note", "A nested object shown as its own card.");

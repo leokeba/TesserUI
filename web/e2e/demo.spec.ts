@@ -225,6 +225,18 @@ test('a select of the nodes under /peers', async ({ page }) => {
   await expect(select).toHaveValue('heliostat-3');
 });
 
+// ui.optionsValue: the same choice, storing a node's device id (TesserAPI
+// 02c3bf4's "id" in a remote stub). The stored id is of a device not mounted.
+test('a select of the nodes under /peers, by device id', async ({ page }) => {
+  await open(page, '#/widgets');
+  const select = row(page, 'Node id').locator('select');
+  await expect(select.locator('option')).toHaveText(['246f280a0b0c (not found)', 'heliostat-3', 'kitchen-lamp (offline)', 'porch-lamp']);
+  await select.selectOption('porch-lamp');
+  await expect(row(page, 'Node id').locator('.busy')).toHaveCount(0);
+  await expect(select).toHaveValue('246f28070809');
+  await expect(select.locator('option')).toHaveText(['heliostat-3', 'kitchen-lamp (offline)', 'porch-lamp']);
+});
+
 // ui.reorder: rows move up and down, the whole array written each time
 // and read back.
 test('an array whose rows move', async ({ page }) => {

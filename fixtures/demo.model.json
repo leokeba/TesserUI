@@ -1447,6 +1447,20 @@
       "optionsFrom": "/peers"
      },
      {
+      "name": "nodeId",
+      "path": "/widgets/nodeId",
+      "label": "Node id",
+      "advanced": false,
+      "hidden": false,
+      "kind": "leaf",
+      "widget": "select",
+      "type": "string",
+      "editable": true,
+      "options": [],
+      "optionsFrom": "/peers",
+      "optionsValue": "id"
+     },
+     {
       "name": "go",
       "path": "/widgets/go",
       "label": "Go",
@@ -3500,6 +3514,20 @@
        "editable": true,
        "options": [],
        "optionsFrom": "/peers"
+      },
+      {
+       "name": "nodeId",
+       "path": "/widgets/nodeId",
+       "label": "Node id",
+       "advanced": false,
+       "hidden": false,
+       "kind": "leaf",
+       "widget": "select",
+       "type": "string",
+       "editable": true,
+       "options": [],
+       "optionsFrom": "/peers",
+       "optionsValue": "id"
       },
       {
        "name": "scene",
