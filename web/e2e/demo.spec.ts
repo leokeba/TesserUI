@@ -384,7 +384,8 @@ test('a read-only list shows its rows, without editing', async ({ page }) => {
 // DESIGN.md §6.5: the node, then its remote nodes, as tabs; each opens that
 // node's own menu, views first (the porch lamp's, read through the gateway).
 test('nodes as tabs, each with its own menu and views', async ({ page }) => {
-  await open(page);
+  // The node's own page: a launcher always shows its tabs (§9.7.2).
+  await page.goto('http://localhost:8091/#/');
   const tabs = page.locator('nav.tabs');
   await expect(tabs.getByRole('link')).toHaveText(['TesserUI demo', 'Heliostat', 'kitchen-lamp', 'Porch lamp'], { timeout: 10000 });
   await expect(tabs.getByRole('link', { name: 'kitchen-lamp' }).locator('.off')).toBeVisible();

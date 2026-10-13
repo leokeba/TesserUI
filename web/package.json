@@ -13,6 +13,7 @@
   "packageManager": "pnpm@11.7.0",
   "files": [
     "dist/ui.js",
+    "dist/launcher.js",
     "dist/index.html",
     "dist/flash",
     "dist/tesserui.js",
@@ -29,7 +30,7 @@
   },
   "scripts": {
     "dev": "vite --host",
-    "build": "vite build && vite build --mode lib && vite build --mode flash && tsc -p tsconfig.lib.json && node scripts/bundle.mjs && node scripts/elements.mjs",
+    "build": "vite build && vite build --mode lib && vite build --mode flash && vite build --mode launcher && tsc -p tsconfig.lib.json && node scripts/bundle.mjs && node scripts/elements.mjs",
     "test": "vitest run",
     "check": "svelte-check --tsconfig ./tsconfig.json",
     "size": "node scripts/bundle.mjs --check",

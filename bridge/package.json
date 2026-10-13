@@ -25,7 +25,7 @@
   "scripts": {
     "start": "node bridge.mjs",
     "test": "node --test test/*.test.mjs",
-    "prepack": "mkdir -p ui && cp ../web/dist/index.html ../web/dist/ui.js ui/"
+    "prepack": "mkdir -p ui && cp ../web/dist/index.html ../web/dist/ui.js ../web/dist/launcher.js ui/"
   },
   "dependencies": {
     "ws": "^8.22.0"

@@ -77,7 +77,9 @@ The launcher at <https://leokeba.github.io/TesserUI/> opens any node, with no UI
 - **Network:** type a node's address; `?api=http://192.168.1.20/api` opens it directly.
 - **Install:** put the USB gateway or the Bluetooth example on a board, from this repository's latest releases, over USB (Chrome, Edge). Another project's launcher can offer its own firmware the same way, and set up a TesserKIT device's Wi-Fi right after ([DESIGN.md §9.7.1](docs/DESIGN.md#971-installing-firmware)).
 
-To find the nodes on your network, run the bridge next to it: `node bridge/bridge.mjs` (`npx tesserui-bridge` once published). It lists the nodes that announce themselves over mDNS (`http.advertise("name", "name")`), serves them live in any browser, brings serial ports to browsers without Web Serial, and serves the launcher itself at <http://localhost:8765/>.
+It holds several nodes at once, each a tab, with the nodes a gateway mounts as tabs of their own; one device reached several ways is one tab. It remembers them and opens them again on your next visit (a USB port this page was given opens by itself, which resets most devkits). *Apply to all*, in the header, sends each change you make on one node to every other node with the same setting ([DESIGN.md §6.6](docs/DESIGN.md#66-apply-to-all-web)).
+
+To find the nodes on your network, run the bridge next to it: `node bridge/bridge.mjs` (`npx tesserui-bridge` once published). It finds the nodes that announce themselves over mDNS (`http.advertise("name", "name")`), which join the launcher as tabs, serves them live in any browser, brings serial ports to browsers without Web Serial, and serves the launcher itself at <http://localhost:8765/>.
 
 ## Views
 

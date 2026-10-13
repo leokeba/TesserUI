@@ -63,23 +63,6 @@ export function storageSet(key: string, value: string | null) {
   }
 }
 
-// The nodes a launcher reached by address, most recent first.
-const RECENT_KEY = 'tesserui:recent';
-export interface RecentNode {
-  api: string;
-  // null: HTTP only; absent: the default (DESIGN.md §9.2).
-  ws?: string | null;
-  label: string;
-}
-
-export function recentNodes(): RecentNode[] {
-  try {
-    return JSON.parse(storageGet(RECENT_KEY) ?? '[]');
-  } catch {
-    return [];
-  }
-}
-
 // A node's part in the last "apply to all" (DESIGN.md §6.6).
 export interface Applied {
   state: 'done' | 'absent' | 'offline' | 'refused';
@@ -112,6 +95,11 @@ export class Session {
   all = $state(false);
   applied: Record<string, Applied> = $state({});
   private applying = 0;
+  // In a launcher's workspace (DESIGN.md §9.7.2): this connection's tabs,
+  // without the nodes another connection shows; and the other connections,
+  // which apply to all reaches too.
+  only: string[] | null = $state(null);
+  others?: (rel: string, body: unknown) => Promise<[string, Applied][]>[];
   // The hash of the node's schema as this client reads it (view=hash), for
   // its schema cache; null when the node doesn't say, or once its tree
   // changed (a peer's stub).
@@ -349,13 +337,6 @@ export class Session {
     // Views first: they decide the landing page.
     await this.loadViews('/');
     this.loaded = true;
-    // A node reached by address goes to the top of the launcher's list.
-    if (this.config.launcher && (this.client.kind === 'ws' || this.client.kind === 'http')) {
-      const api = this.apiUrl();
-      const label = this.root.label ?? new URL(api).host;
-      const node: RecentNode = { api, ws: this.config.ws, label };
-      storageSet(RECENT_KEY, JSON.stringify([node, ...recentNodes().filter((n) => n.api !== api)].slice(0, 6)));
-    }
   }
 
   // A node's views (DESIGN.md §8), at its /_ui; a remote node's are read
@@ -382,7 +363,7 @@ export class Session {
   // connection but `except`, all at once; a gateway queues what's beyond its
   // pending slots (ask()). Offline nodes aren't sent to.
   async applyHere(rel: string, body: unknown, except?: string): Promise<[string, Applied][]> {
-    const nodes = ['/', ...this.nodes()].filter((n) => n !== except);
+    const nodes = this.tabs().filter((n) => n !== except);
     return Promise.all(
       nodes.map(async (n): Promise<[string, Applied]> => {
         const path = n === '/' ? rel : n + (rel === '/' ? '' : rel);
@@ -402,13 +383,19 @@ export class Session {
   private async applyAll(path: string, body: unknown) {
     const at = ++this.applying;
     const from = this.nodeRoot(path);
-    const results = await this.applyHere(from === '/' ? path : path.slice(from.length) || '/', body, from);
+    const rel = from === '/' ? path : path.slice(from.length) || '/';
+    const results = (await Promise.all([this.applyHere(rel, body, from), ...(this.others?.(rel, body) ?? [])])).flat();
     await new Promise((done) => setTimeout(done, 500));
     const failed = results.filter(([, a]) => a.state === 'refused' || a.state === 'offline');
     if (at !== this.applying || !failed.length) return;
     const done = results.filter(([, a]) => a.state === 'done').length;
     const text = [this.t('Applied to {n} of {total} other nodes', { n: done, total: results.length }), ...failed.map(([label, a]) => `${label}: ${a.text ?? this.t('offline')}`)];
     this.store.toasts.show(text.join('. '), 'warn', path);
+  }
+
+  // The nodes this connection shows as tabs: itself, then its remote nodes.
+  tabs(): string[] {
+    return this.only ?? ['/', ...this.nodes()];
   }
 
   private findAuth() {

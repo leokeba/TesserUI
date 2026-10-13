@@ -11,31 +11,75 @@ import { readFileSync } from 'node:fs';
 test.use({ launchOptions: { args: ['--disable-features=LocalNetworkAccessChecks'] } });
 
 const menu = (page: Page) => page.locator('nav.side');
+const row = (page: Page, label: string) => page.locator('.row', { has: page.locator(`label span:text-is("${label}")`) });
+// A page served from a public origin: the launcher's files from dist/.
+const serve = (page: Page, origin: string, html?: string) =>
+  page.route(`${origin}/**`, (route) => {
+    const file = new URL(route.request().url()).pathname.slice(1);
+    if (file.endsWith('.js')) route.fulfill({ body: readFileSync(new URL(`../dist/${file}`, import.meta.url)), contentType: 'text/javascript' });
+    else route.fulfill({ body: html ?? readFileSync(new URL('../dist/index.html', import.meta.url)), contentType: 'text/html' });
+  });
 
-test('connects by address, and lists the node afterwards', async ({ page }) => {
+// DESIGN.md §9.7.2: the workspace remembers its connections.
+test('connects by address, and opens it again on the next visit', async ({ page }) => {
   await page.goto('/');
   await expect(page.locator('h2')).toHaveText('Connect to a node');
   await page.getByLabel('Address').fill('localhost:8091');
   await page.getByRole('button', { name: 'Connect' }).click();
-  await expect(page).toHaveURL(/\?api=http%3A%2F%2Flocalhost%3A8091%2Fapi/);
   await expect(page.locator('.state')).toHaveText('Live');
   await expect(page.locator('.brand')).toHaveText('TesserUI demo');
-
-  await page.getByRole('link', { name: 'Another node' }).click();
-  const recent = page.locator('a.recent');
-  await expect(recent).toHaveText(/TesserUI demo\s*localhost:8091/);
-  await recent.click();
+  await page.reload();
   await expect(page.locator('.state')).toHaveText('Live');
+  await expect(page.locator('.brand')).toHaveText('TesserUI demo');
+  // Closed: forgotten.
+  await page.getByRole('button', { name: 'Close this connection' }).click();
+  await expect(page.locator('h2')).toHaveText('Connect to a node');
+  await page.reload();
+  await expect(page.locator('h2')).toHaveText('Connect to a node');
+});
+
+// Each connection's nodes are tabs, one per device: the second node's peers
+// are the first's (the same stub ids), so only its own tab is new. Apply to
+// all reaches across connections.
+test('several nodes at once: their tabs, one per device, apply to all across them', async ({ page }) => {
+  await page.goto('/');
+  await page.getByLabel('Address').fill('localhost:8091');
+  await page.getByRole('button', { name: 'Connect' }).click();
+  const tabs = page.locator('nav.tabs').getByRole('link');
+  await expect(tabs).toHaveText(['TesserUI demo', 'Heliostat', 'kitchen-lamp', 'Porch lamp'], { timeout: 10000 });
+  await page.getByRole('button', { name: 'Another node' }).click();
+  await expect(page.locator('h2')).toHaveText('Connect to a node');
+  // Another fresh demo node (the test device gives each connection its own).
+  await page.getByLabel('Address').fill('127.0.0.1:8091');
+  await page.getByRole('button', { name: 'Connect' }).click();
+  await expect(tabs).toHaveText(['TesserUI demo', 'Heliostat', 'kitchen-lamp', 'Porch lamp', 'TesserUI demo'], { timeout: 10000 });
+  await expect(tabs.last()).toHaveAttribute('aria-current', 'page');
+
+  await page.getByRole('button', { name: 'Apply to all' }).click();
+  await menu(page).getByRole('link', { name: 'Lamp' }).click();
+  const entry = row(page, 'Brightness').locator('input[type=number]');
+  await entry.fill('100');
+  await entry.press('Enter');
+  await expect(tabs.first().locator('.mark')).toHaveClass(/done/);
+  await expect(tabs.nth(3).locator('.mark')).toHaveClass(/done/);
+  await expect(tabs.nth(1).locator('.mark')).toHaveClass(/absent/);
+  await expect(page.locator('.toast[data-kind=warn]')).toHaveText(/Applied to 2 of 4 other nodes\. kitchen-lamp: offline/);
+  // The first node took it.
+  await tabs.first().click();
+  await expect(tabs.first()).toHaveAttribute('aria-current', 'page');
+  await expect(menu(page).locator('[aria-current=page]')).toHaveText('Status');
+  await menu(page).getByRole('link', { name: 'Lamp' }).click();
+  await expect(row(page, 'Brightness').locator('input[type=number]')).toHaveValue('100');
+
+  // Both open again on the next visit.
+  await page.reload();
+  await expect(tabs).toHaveCount(5, { timeout: 10000 });
 });
 
 // On HTTPS, the WebSocket is only tried for loopback: anything else would be
 // mixed content. The page is served from a public HTTPS origin here.
 test('on HTTPS, reaches a loopback node live', async ({ page }) => {
-  const dist = new URL('../dist/', import.meta.url);
-  await page.route('https://pages.tesserui.test/**', (route) => {
-    const file = new URL(route.request().url()).pathname.endsWith('ui.js') ? 'ui.js' : 'index.html';
-    route.fulfill({ body: readFileSync(new URL(file, dist)), contentType: file.endsWith('js') ? 'text/javascript' : 'text/html' });
-  });
+  await serve(page, 'https://pages.tesserui.test');
   await page.goto('https://pages.tesserui.test/?api=http://localhost:8091/api');
   await expect(page.locator('.state')).toHaveText('Live');
 });
@@ -45,8 +89,8 @@ test('on HTTPS, reaches a loopback node live', async ({ page }) => {
 test('the bridge lists the nodes it finds, and serves them live', async ({ page }) => {
   await page.goto('/?bridge=http://localhost:8766');
   await page.getByRole('button', { name: 'Look for the bridge' }).click();
-  const node = page.locator('a.recent', { hasText: 'TesserUI demo' });
-  await expect(node).toContainText('localhost');
+  // Its nodes join as tabs.
+  const node = page.locator('nav.tabs').getByRole('link', { name: 'TesserUI demo' });
   await node.click();
   await expect(page.locator('.state')).toHaveText('Live');
   await expect(page.locator('.brand')).toHaveText('TesserUI demo');
@@ -54,10 +98,6 @@ test('the bridge lists the nodes it finds, and serves them live', async ({ page 
   const temperature = page.locator('.row', { has: page.locator('label span:text-is("Temperature")') }).locator('output');
   const first = await temperature.textContent();
   await expect(temperature).not.toHaveText(first!, { timeout: 8000 });
-
-  // Listed among the recent nodes, behind the bridge.
-  await page.getByRole('link', { name: 'Another node' }).click();
-  await expect(page.locator('a.recent', { hasText: 'TesserUI demo' }).last()).toContainText('localhost:8091 · bridge');
 });
 
 test('through the bridge over HTTP too', async ({ page }) => {
@@ -66,22 +106,15 @@ test('through the bridge over HTTP too', async ({ page }) => {
   await expect(page.locator('.brand')).toHaveText('TesserUI demo');
 });
 
-test('the bridge serves the launcher, which lists its nodes at once', async ({ page }) => {
+test('the bridge serves the launcher, whose tabs are its nodes at once', async ({ page }) => {
   await page.goto('http://localhost:8766/');
-  await expect(page.locator('a.recent', { hasText: 'TesserUI demo' })).toBeVisible();
+  await expect(page.locator('nav.tabs').getByRole('link', { name: 'TesserUI demo' })).toBeVisible();
 });
 
 // Another project's launcher: a configuration of its own, still a launcher.
 test('a page can be a launcher with its own title', async ({ page }) => {
-  const dist = new URL('../dist/', import.meta.url);
-  await page.route('https://pages.kit.test/**', (route) => {
-    const js = new URL(route.request().url()).pathname.endsWith('ui.js');
-    route.fulfill(
-      js
-        ? { body: readFileSync(new URL('ui.js', dist)), contentType: 'text/javascript' }
-        : { body: '<!doctype html><body><script>window.TESSER={launcher:true,title:"TesserKIT"}</script><script src="ui.js"></script></body>', contentType: 'text/html' },
-    );
-  });
+  // ui.js loads launcher.js, next to it.
+  await serve(page, 'https://pages.kit.test', '<!doctype html><body><script>window.TESSER={launcher:true,title:"TesserKIT"}</script><script src="ui.js"></script></body>');
   await page.goto('https://pages.kit.test/');
   await expect(page.locator('h2')).toHaveText('Connect to a node');
   await expect(page.locator('.brand')).toHaveText('TesserKIT');
@@ -139,8 +172,17 @@ function fakeDevices() {
     async close() {
       this.ws?.close();
     },
+    // A CP2102's, as on an ESP32 devkit.
+    getInfo: () => ({ usbVendorId: 0x10c4, usbProductId: 0xea60 }),
   };
-  Object.defineProperty(navigator, 'serial', { value: { requestPort: async () => port } });
+  // A port given once is the page's from then on (getPorts).
+  let given = sessionStorage.getItem('port') === '1';
+  Object.defineProperty(navigator, 'serial', {
+    value: {
+      requestPort: async () => (sessionStorage.setItem('port', '1'), (given = true), port),
+      getPorts: async () => (given ? [port] : []),
+    },
+  });
 
   const device = new EventTarget() as EventTarget & { gatt: object };
   let ws: WebSocket | null = null;
@@ -189,6 +231,21 @@ for (const [way, button] of [
     await expect(temperature).not.toHaveText(first!, { timeout: 8000 });
   });
 }
+
+// DESIGN.md §9.7.2: a port this page was given opens again by itself.
+test('a USB port opens again on the next visit, without the chooser', async ({ page }) => {
+  await page.addInitScript(fakeDevices);
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Choose a port' }).click();
+  await expect(page.locator('.state')).toHaveText('USB');
+  await expect(page.locator('.brand')).toHaveText('TesserUI demo');
+  expect(JSON.parse((await page.evaluate(() => localStorage.getItem('tesserui:nodes')))!)).toEqual([
+    { key: 'usb:4292:60000:0', usb: [4292, 60000], label: 'TesserUI demo' },
+  ]);
+  await page.reload();
+  await expect(page.locator('.state')).toHaveText('USB');
+  await expect(page.locator('.brand')).toHaveText('TesserUI demo');
+});
 
 // Lines present the token in an auth envelope (TesserAPI §10.4): the stored
 // one after connecting, an empty one to sign out.

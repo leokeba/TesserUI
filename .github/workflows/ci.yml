@@ -171,7 +171,7 @@ jobs:
       # firmware.
       - name: Pages site
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-        run: mkdir -p _site && cp pages/index.html dist/ui.js _site/ && cp -R dist/flash _site/flash
+        run: mkdir -p _site && cp pages/index.html dist/ui.js dist/launcher.js _site/ && cp -R dist/flash _site/flash
       - uses: actions/upload-artifact@v4
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         with:

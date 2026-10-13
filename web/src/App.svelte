@@ -1,5 +1,21 @@
+<script lang="ts" module>
+  import type { Applied } from './store/session.svelte';
+
+  // A tab: a node of this UI's session (path), or of another connection of
+  // a launcher's workspace, opened by `go` (DESIGN.md §6.5, §9.7.2).
+  export interface Tab {
+    key: string;
+    label: string;
+    path?: string;
+    off?: boolean;
+    title?: string;
+    mark?: Applied;
+    go?: () => void;
+  }
+</script>
+
 <script lang="ts">
-  import { untrack } from 'svelte';
+  import { untrack, type Snippet } from 'svelte';
   import Connect from './Connect.svelte';
   import { compareVersions, provideSession } from './shared.svelte';
   import Icon from './Icon.svelte';
@@ -11,8 +27,18 @@
   import { storageGet, storageSet, type Session } from './store/session.svelte';
   import ViewPage from './ViewPage.svelte';
 
-  // full: the UI is the whole page (the node's own), not embedded.
-  let { session, full = false }: { session: Session; full?: boolean } = $props();
+  // full: the UI is the whole page (the node's own), not embedded. A
+  // launcher's workspace adds the other connections' tabs `around` this
+  // one's, buttons to `add` a connection and `close` this one, and its own
+  // `connect` screen.
+  let {
+    session,
+    full = false,
+    around,
+    add,
+    close,
+    connect,
+  }: { session: Session; full?: boolean; around?: [Tab[], Tab[]]; add?: () => void; close?: () => void; connect?: Snippet } = $props();
   // svelte-ignore state_referenced_locally
   provideSession(session);
   // svelte-ignore state_referenced_locally
@@ -55,17 +81,21 @@
   const TABS = 'tesserui:tabs';
   const stored = storageGet(TABS);
   let tabsOn = $state(stored ? stored === '1' : config.tabs !== false);
-  const nodes = $derived(menuOn && top === '/' && session.loaded ? session.nodes() : []);
-  const tabs = $derived.by(() => {
+  const own = $derived(menuOn && top === '/' && session.loaded ? session.tabs() : []);
+  const nodes = $derived(own.slice(1));
+  const tabs = $derived.by((): Tab[] | null => {
     void session.schemaVersion;
-    return tabsOn && nodes.length
-      ? ['/', ...nodes].map((path) => {
-          const s = session.schemaAt(path)!;
-          return { path, label: session.nodeLabel(path), off: s.online === false, title: [s.id, s.route].filter(Boolean).join(' · ') };
-        })
-      : null;
+    const list = [
+      ...(around?.[0] ?? []),
+      ...(tabsOn || around ? own : []).map((path) => {
+        const s = session.schemaAt(path)!;
+        return { key: path, path, label: session.nodeLabel(path), off: s.online === false, title: [s.id, s.route].filter(Boolean).join(' · '), mark: session.all ? session.applied[path] : undefined };
+      }),
+      ...(around?.[1] ?? []),
+    ];
+    return list.length > (around ? 0 : 1) ? list : null;
   });
-  const home = $derived(tabs?.findLast((n) => isUnder(route.path, n.path))?.path ?? top);
+  const home = $derived(tabs?.findLast((n) => n.path && isUnder(route.path, n.path))?.path ?? top);
   // Remote nodes' labels are in their own root schemas, and their views at
   // their /_ui: each read once.
   const asked = new Set<string>();
@@ -166,13 +196,20 @@
       {/if}
       {#if tabs}
         <nav class="tabs" aria-label={t('Nodes')}>
-          {#each tabs as n (n.path)}
-            {@const a = session.all ? session.applied[n.path] : undefined}
-            <a href="#{n.path}" class:brand={n.path === '/'} title={n.title || undefined} aria-current={home === n.path ? 'page' : undefined}>
+          {#each tabs as n (n.key)}
+            {@const a = n.mark}
+            <a
+              href="#{n.path ?? ''}"
+              class:brand={n.path === '/'}
+              title={n.title || undefined}
+              aria-current={home === n.path ? 'page' : undefined}
+              onclick={(e) => n.go && (e.preventDefault(), n.go())}
+            >
               {n.label}{#if n.off}<i class="off" title={t('Offline')}></i>{/if}
               {#if a && a.state !== 'offline'}<span class="mark {a.state}" title={a.text ?? t(a.state === 'done' ? 'Applied' : 'Absent')}><Icon name={{ done: 'check', absent: 'minus', refused: 'x' }[a.state]} /></span>{/if}
             </a>
           {/each}
+          {#if add}<button type="button" class="quiet" title={t('Another node')} aria-label={t('Another node')} onclick={add}><Icon name="plus" /></button>{/if}
         </nav>
         <!-- Apply to all (DESIGN.md §6.6): highlighted while on. -->
         <button type="button" class="quiet all" aria-pressed={session.all} title={t('Apply to all')} aria-label={t('Apply to all')} onclick={() => ((session.all = !session.all), (session.applied = {}))}><Icon name="broadcast" /></button>
@@ -187,13 +224,12 @@
           <a href="#/" aria-current={route.view === null ? 'page' : undefined}>{t('Device')}</a>
         </nav>
       {/if}
-      {#if nodes.length}
+      {#if nodes.length && !around}
         <button type="button" class="quiet" aria-pressed={tabsOn} title={t('Nodes as tabs')} aria-label={t('Nodes as tabs')} onclick={() => storageSet(TABS, (tabsOn = !tabsOn) ? '1' : '0')}><Icon name="layers" /></button>
       {/if}
       {#if session.kind}<span class="state {session.state}" role="status"><i></i>{stateText}</span>{/if}
-      {#if config.launcher && session.kind}
-        <!-- Back to the launcher: leaving the page closes a port. -->
-        <a class="quiet switch" href={location.pathname} title={t('Another node')} aria-label={t('Another node')}><Icon name="x" /></a>
+      {#if close && session.kind}
+        <button type="button" class="quiet" title={t('Close this connection')} aria-label={t('Close this connection')} onclick={close}><Icon name="x" /></button>
       {/if}
       {#if session.signedIn}
         <button type="button" class="quiet" onclick={() => session.signOut()}><Icon name="lock" /> {t('Sign out')}</button>
@@ -230,7 +266,7 @@
   {/if}
   <main>
     {#if !session.kind && (config.transport === 'serial' || config.transport === 'ble')}
-      <Connect />
+      {#if connect}{@render connect()}{:else}<Connect />{/if}
     {:else if !session.loaded || (landing && first) || (!!tabs && !views)}
       <p class="muted center">{session.state === 'open' ? t('Loading…') : stateText}</p>
     {:else if route.view !== null}
@@ -663,11 +699,6 @@
       transform: none;
       box-shadow: 0 10px 40px #0005;
     }
-  }
-  .switch {
-    color: inherit;
-    display: inline-flex;
-    padding: 6px;
   }
   .scrim {
     position: fixed;

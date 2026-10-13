@@ -53,13 +53,15 @@ function addNode(n) {
   if (!known) describe(id);
 }
 
-// The node's label, from its schema: what the launcher lists.
+// The node's label, from its schema: what the launcher lists; and its
+// device id (TesserAPI's root "id"), if mDNS didn't give it.
 async function describe(id) {
   const n = nodes.get(id);
   try {
     const r = await fetch(`http://${id}${n.api}/?view=schema&depth=0`, { signal: AbortSignal.timeout(3000) });
     const s = await r.json();
     if (typeof s?.label === 'string') n.label = s.label;
+    if (typeof s?.id === 'string') n.device ??= s.id;
   } catch {
     // not answering yet: listed by name
   }
@@ -68,7 +70,7 @@ async function describe(id) {
 async function discover() {
   try {
     for (const s of await browse()) {
-      addNode({ name: s.instance, host: s.host, port: s.port, api: s.txt.api || '/api', ws: s.txt.ws || null, via: 'mdns', hostname: s.target });
+      addNode({ name: s.instance, host: s.host, port: s.port, api: s.txt.api || '/api', ws: s.txt.ws || null, via: 'mdns', hostname: s.target, ...(s.txt.id && { device: s.txt.id }) });
     }
   } catch (e) {
     console.error('mdns:', e.message);
@@ -108,6 +110,9 @@ async function listing() {
       id: n.id,
       name: n.name,
       label: n.label ?? n.name,
+      // The device's MAC, as in a gateway's remote stubs: one node reached
+      // several ways is one tab in the launcher.
+      device: n.device ?? null,
       host: n.hostname ?? n.host,
       address: n.id,
       api: `${base}/n/${encodeURIComponent(n.id)}/api`,
@@ -167,9 +172,9 @@ const server = createServer(async (req, res) => {
     return;
   }
 
-  if (ui && url.pathname === '/ui.js') {
+  if (ui && (url.pathname === '/ui.js' || url.pathname === '/launcher.js')) {
     res.writeHead(200, { 'Content-Type': 'text/javascript', 'Cache-Control': 'no-cache' });
-    return createReadStream(new URL('ui.js', ui)).pipe(res);
+    return createReadStream(new URL(url.pathname.slice(1), ui)).pipe(res);
   }
   // The launcher, told that its own origin is the bridge.
   if (ui && url.pathname === '/') {

@@ -1,19 +1,11 @@
 // The bundle a node serves (ui.js): one UI on the whole page.
-import { mountUi, type Options } from './embed';
+import { mountUi } from './embed';
+import { pageOptions } from './page';
 
-// Configuration: window.TESSER from the page the node serves, overridable
-// from the query string for development (?api=http://<ip>/api).
-const q = new URLSearchParams(location.search);
-const t = window.TESSER;
-// A page that no node served (GitHub Pages, the dev server) is a launcher:
-// it connects to ?api=, or to the node the user picks (DESIGN.md §9.7). A
-// page can be one with a configuration of its own: {launcher: true, title}.
-const launcher = !t || t.launcher === true;
-const options: Options = { ...t, api: q.get('api') ?? t?.api ?? '/api', launcher };
-if (q.has('ws')) options.ws = q.get('ws') || null;
-else if (!t || !('ws' in t)) delete options.ws;
-if (q.has('transport')) options.transport = q.get('transport') as Options['transport'];
-else if (t?.serial || (launcher && !q.has('api'))) options.transport = 'serial';
-
+const options = pageOptions();
 document.body.style.margin = '0';
-mountUi(document.body, options);
+// A launcher is a script of its own, launcher.js, next to this one: several
+// nodes at once, remembered (DESIGN.md §9.7.2). A node's page never loads it.
+if (!options.launcher) mountUi(document.body, options);
+else if (import.meta.env.DEV) import('./launcher/launcher');
+else import(/* @vite-ignore */ new URL('launcher.js', (document.currentScript as HTMLScriptElement).src).href);

@@ -25,7 +25,7 @@ if (process.argv.includes('--check')) process.exit(0);
 writeFileSync(
   new URL('index.html', dist),
   '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
-    '<title>TesserUI</title><link rel="icon" href="data:,"></head><body><script src="ui.js"></script></body></html>\n',
+    '<title>TesserUI</title><link rel="icon" href="data:,"></head><body><script type="module" src="launcher.js"></script></body></html>\n',
 );
 writeFileSync(new URL('ui.js.gz', dist), gz);
 
