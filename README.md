@@ -2,9 +2,16 @@
 
 User interfaces for [TesserAPI](https://github.com/leokeba/TesserAPI) nodes, rendered from their **schema**. Declare your firmware's tree once in C++, and get a live web UI without writing any UI code. A node that can't spare flash for HTML or JavaScript is still usable: another node, a CDN or the [launcher](https://leokeba.github.io/TesserUI/) provides the renderer.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/motor-dark.png">
+  <img alt="A motor's page in TesserUI: a knob for its speed, a stepper for its duty cycle, a live chart of its position, and Run, Stop and Home buttons; a menu of the node's other pages on the left, and tabs for the nodes around it at the top" src="docs/images/motor-light.png">
+</picture>
+
 > **Status: early development.** The web renderer is complete enough for real devices: self-hosted, UI hosts over ESP-NOW, stub pages, the launcher (USB, Bluetooth, network), views, charts, forms, files, notifications, custom elements and embedding. The LVGL touchscreen renderer is not started. The API will change before 1.0; the specification is [docs/DESIGN.md](docs/DESIGN.md).
 >
 > The npm packages (`tesserui`, `tesserui-bridge`) are not published yet. Until they are, run the bridge from this repository (`node bridge/bridge.mjs`), and point stub pages at the launcher's copy of the bundle (`https://leokeba.github.io/TesserUI/ui.js`) or at a UI host.
+
+## At a glance
 
 ```cpp
 #include <TesserAPI.h>
@@ -23,12 +30,23 @@ void setup() {
 
     http.enableWebSocket("/ws");
     http.begin(80, "/api");
-    web.serve(http.handle());   // GET / and GET /ui.js: the whole UI, about 58 KB of flash
+    web.serve(http.handle());   // GET / and GET /ui.js: the whole UI, about 60 KB of flash
     api.startTask();
 }
 ```
 
-Open `http://<node>/`: a menu with an entry for the motor, whose page has a knob, a switch and a danger button, live through a WebSocket subscription.
+Open `http://<node>/`: a menu with an entry for the motor, whose page has a knob, a switch and a danger button, live through a WebSocket subscription. The page above is the same idea grown larger: the motor of the demo node in this repository.
+
+### Try it without a board
+
+- **The launcher:** open <https://leokeba.github.io/TesserUI/> in Chrome or Edge, install the USB gateway or the Bluetooth example on an ESP32 from there, and open it.
+- **The demo node on your computer:** it runs TesserAPI on the host, and the browser talks to it as to a real node.
+
+  ```sh
+  cmake -S . -B build && cmake --build build -j     # needs TesserAPI next to this repository, or fetches it
+  cd web && pnpm install && pnpm build
+  node scripts/device.mjs demo                      # then open http://localhost:8090/
+  ```
 
 ## Installation
 
@@ -42,12 +60,20 @@ The UI bundle is compiled into the firmware (`src/tesserui/bundle/tesserui_bundl
 
 ## From schema to screen
 
-Without any hint, every node gets a widget from its schema: writable booleans are switches, numbers with a range are sliders, enums are segmented controls or selects, actions are buttons (with an input when they take an argument), events are logs, lists are editable tables, objects are cards and sections in declaration order. Each top-level object is a page of its own, reached from a menu (a sidebar, a drawer on phones). Hints on the same line refine it:
+Without any hint, every node gets a widget from its schema: writable booleans are switches, numbers with a range are sliders, enums are segmented controls or selects, actions are buttons (with an input when they take an argument), events are logs, lists are editable tables, objects are cards and sections in declaration order. Each top-level object is a page of its own, reached from a menu: a sidebar, or a drawer on phones.
+
+<p>
+  <img alt="A lamp's page on a phone: a switch, a brightness slider, a color picker, a segmented control for its mode, a select, and a gauge of its power" src="docs/images/phone-page.png" width="260">
+  &nbsp;
+  <img alt="The same page with the menu open as a drawer, listing the node's pages" src="docs/images/phone-menu.png" width="260">
+</p>
+
+Hints on the same line refine it:
 
 | Hint | Effect |
 |---|---|
 | `.label("Speed")`, `.unit("%")`, `.step(5)` | Label, unit, input granularity |
-| `.ui("widget", "knob")` | `toggle`, `checkbox`, `led`, `slider`, `knob`, `number`, `stepper`, `select`, `segmented`, `radio`, `text`, `password`, `textarea`, `color`, `readout`, `bar`, `gauge`, `chart`, `hold`, `button` |
+| `.ui("widget", "knob")` | `toggle`, `checkbox`, `led`, `slider`, `knob`, `number`, `stepper`, `select`, `segmented`, `radio`, `text`, `password`, `textarea`, `color`, `flags`, `timezone`, `readout`, `bar`, `gauge`, `chart`, `log`, `hold`, `button`, or a [custom element](#custom-widgets-and-pages) |
 | `.ui("confirm", "Move the mirror?")` | Ask before a write or a call |
 | `.ui("advanced")`, `.ui("hidden")`, `.ui("readonly")` | Visibility |
 | `.ui("visibleWhen", "mode=manual")`, `.ui("enabledWhen", "enabled=true")` | Conditions |
@@ -55,13 +81,15 @@ Without any hint, every node gets a widget from its schema: writable booleans ar
 | `.ui("icon", "sun")`, `.ui("group", "Connections")` | Menu entry icon, menu heading |
 | `.ui("form")` | Edits stay local until submitted as one atomic patch |
 
+<img alt="A card of widgets chosen with the widget hint: a switch, an indicator, a slider, a number entry, a select, a segmented control, radio buttons, a text field, a readout and a color picker" src="docs/images/widgets.png" width="420">
+
 The full vocabulary is in [DESIGN.md §5](docs/DESIGN.md#5-hints-tier-1).
 
 ## Deployments
 
 | Mode | Who stores the bundle | How |
 |---|---|---|
-| Self-hosted | The node (~58 KB of flash) | `web.serve(http.handle())` |
+| Self-hosted | The node (~60 KB of flash) | `web.serve(http.handle())` |
 | UI host | One ESP with spare flash, also a NowTP gateway | `nowApi.mountPeers(api.object("peers"))`: every nearby node gets a page at `#/peers/<name>`, forwarded over ESP-NOW |
 | Stub | A CDN or the UI host | `web.serveStub(http.handle(), "https://cdn.jsdelivr.net/npm/tesserui@0.1.0/dist/ui.js")`: a 300-byte page |
 | Launcher | GitHub Pages | Pick a node: USB (Web Serial), Bluetooth (Web Bluetooth), or its address on the network; or install firmware |
@@ -71,6 +99,8 @@ A NowTP-only node with no Wi-Fi needs nothing but its tree and `nowApi.advertise
 ### The launcher
 
 The launcher at <https://leokeba.github.io/TesserUI/> opens any node, with no UI on the board at all:
+
+<img alt="The launcher's Connect to a node card: USB, Bluetooth, an address on the network, and the bridge for the nodes nearby" src="docs/images/launcher.png" width="420">
 
 - **USB:** plug a board in and pick its port (Web Serial). A board running the USB gateway ([Arduino](examples/arduino/UsbGateway), [ESP-IDF](examples/idf/usb_gateway)) brings the NowTP nodes around it along over the one cable.
 - **Bluetooth:** pair a board running the Bluetooth example ([Arduino](examples/arduino/Bluetooth), [ESP-IDF](examples/idf/bluetooth)) from a phone or a laptop.
@@ -93,6 +123,8 @@ field.each("/peers", "$/heliostat/status");       // one entry per mounted peer
 field.card("Calibration").node("/calib");
 ```
 
+<img alt="The demo node's Overview view: a row with a power gauge and a temperature readout, the motor's card, a keyframe editor, and a list of a value from every mounted node" src="docs/images/views.png" width="640">
+
 ## Custom widgets and pages
 
 What the generic widgets can't show is a [custom element](docs/DESIGN.md#98-custom-elements): a standard web component, written with any framework or none. A hint puts it on any node, an object included, and a view of one element is a whole custom page:
@@ -102,6 +134,8 @@ auto& sky = api.object("sky").ui("widget", "x-sun-dial").ui("script", "/ext/sun-
 views.page("sky", "Sky").widget("x-sun-dial", "/sky");
 web.asset("/ext/sun-dial.js", kSunDial, sizeof(kSunDial) - 1, "text/javascript");   // served from flash
 ```
+
+<img alt="The sun-dial custom element: a compass disc showing the sun's position and the mirror's target, with their azimuths and elevations below" src="docs/images/sky.png" width="300">
 
 TesserUI sets the element's `value` (the node's values), `schema` and `disabled`, and gives it a `tesser` handle to write values and call actions. If it can't load, the inferred widget stands in. [examples/elements/sun-dial.js](examples/elements/sun-dial.js) is a complete one.
 
@@ -114,7 +148,7 @@ import { mount } from "tesserui";
 mount(document.getElementById("motor"), { api: "http://heliostat.local/api", path: "/motor", routing: "memory", header: false });
 ```
 
-The interface's colors (`theme`) and its own text (`strings`) are options too: `web.theme("accent", "#d97706").text("Advanced", "Avancé")` on a node.
+The interface's colors (`theme`) and its own text (`strings`) are options too: `web.theme("accent", "#d97706").text("Advanced", "Avancé")` on a node. It follows the system's light or dark mode.
 
 ## Examples
 
@@ -138,7 +172,7 @@ node web/scripts/device.mjs demo                      # the demo node on the hos
 cd web && pnpm e2e                                    # Playwright, against the demo node (after both builds)
 ```
 
-No board is needed: the demo node runs TesserAPI on the host, and the browser talks to it as to a real one. The web renderer is TypeScript and Svelte 5; both it and the future LVGL renderer test against the schemas and expected UI models in [fixtures/](fixtures). Behaviour changes go into [docs/DESIGN.md](docs/DESIGN.md) with the code.
+No board is needed: the demo node runs TesserAPI on the host, and the browser talks to it as to a real one. The screenshots in [docs/images](docs/images) are of it. The web renderer is TypeScript and Svelte 5; both it and the future LVGL renderer test against the schemas and expected UI models in [fixtures/](fixtures). Behaviour changes go into [docs/DESIGN.md](docs/DESIGN.md) with the code.
 
 ## Requirements
 
