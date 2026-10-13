@@ -5,6 +5,7 @@ import { bleLink, EnvelopeClient, serialLink, webSocketLink } from '../client/en
 import { HttpClient } from '../client/http';
 import { isObject } from '../client/json';
 import { errorText, type Client, type ConnState, type Notification, type Reply, type Request } from '../client/types';
+import type { Firmware } from '../flash/firmware';
 import { toastKind, visiblePaths, type Item, type Leaf, type Page, type Section } from '../model/model';
 import { isCut, isUnder, joinPath, mergeSchema, parentPath, rank, remoteOf, schemaAt, segments, type Level, type Schema } from '../model/schema';
 import type { ViewPage } from '../model/views';
@@ -38,6 +39,8 @@ export interface Config {
   // A page that no node served (GitHub Pages, DESIGN.md §9.7): it connects
   // to the node the user picks, and remembers them.
   launcher?: boolean;
+  // Firmware the launcher installs over USB (§9.7.1), with flash.js.
+  firmware?: Firmware;
 }
 
 function storageGet(key: string): string | null {
@@ -229,8 +232,9 @@ export class Session {
   }
 
   // Web Serial: the port comes from a user gesture (navigator.serial.requestPort()).
-  useSerial(port: Parameters<typeof serialLink>[0]) {
-    this.useLine('serial', new EnvelopeClient('serial', () => serialLink(port)));
+  // Or a line the flasher already opened (§9.7.1).
+  useSerial(port: Parameters<typeof serialLink>[0] | Client) {
+    this.useLine('serial', 'request' in port ? port : new EnvelopeClient('serial', () => serialLink(port)));
   }
 
   // Web Bluetooth: the device too (navigator.bluetooth.requestDevice()).

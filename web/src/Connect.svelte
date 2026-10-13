@@ -3,6 +3,7 @@
   // on a page that no node served (GitHub Pages), by address, among the
   // nodes the bridge finds on the network, or among those reached before.
   import { NUS_SERVICE } from './client/envelope';
+  import { FLASHER } from './flash/firmware';
   import Icon from './Icon.svelte';
   import { useSession } from './shared.svelte';
   import { recentNodes } from './store/session.svelte';
@@ -30,6 +31,29 @@
       if ((e as Error).name !== 'NotFoundError') error = (e as Error).message;
     }
   }
+  const serial = () => pick(async () => session.useSerial(await nav.serial!.requestPort({ allowedBluetoothServiceClassIds: [SPP] })));
+  const ble = () => pick(async () => session.useBle(await nav.bluetooth!.requestDevice({ filters: [{ services: [NUS_SERVICE] }] })));
+
+  // Installing firmware (§9.7.1): flash.js, next to the page, loads when
+  // asked for, so nothing of it is in this bundle.
+  const firmware = session.config.firmware;
+  let host: HTMLElement | undefined = $state();
+  $effect(() => {
+    if (!host) return;
+    let stop: (() => void) | undefined;
+    let gone = false;
+    import(/* @vite-ignore */ new URL(firmware!.flasher ?? FLASHER, location.href).href).then(
+      (m) => {
+        if (!gone) stop = m.mount(host, { firmware, t: session.t.bind(session), connect: (c: never) => session.useSerial(c), bluetooth: ble });
+      },
+      (e: Error) => (error = e.message),
+    );
+    return () => {
+      gone = true;
+      stop?.();
+    };
+  });
+  let installing = $state(false);
 
   // A node's page in this launcher; ws: null means HTTP only.
   const link = (api: string, ws?: string | null) =>
@@ -95,24 +119,21 @@
     <div class="way">
       <Icon name="usb" />
       <p><b>USB</b>{t('A board on its serial port, or a NowTP gateway reaching the nodes around it.')}</p>
-      <button
-        class="primary"
-        onclick={() => pick(async () => session.useSerial(await nav.serial!.requestPort({ allowedBluetoothServiceClassIds: [SPP] })))}
-      >
-        {t('Choose a port')}
-      </button>
+      <button class="primary" onclick={serial}>{t('Choose a port')}</button>
     </div>
+    {#if firmware}
+      <div class="way">
+        <Icon name="download" />
+        <p><b>{t('Install')}</b>{t('A firmware on a board, over USB.')}</p>
+        {#if installing}<div class="flash" bind:this={host}></div>{:else}<button onclick={() => (installing = true)}>{t('Install firmware')}</button>{/if}
+      </div>
+    {/if}
   {/if}
   {#if nav.bluetooth}
     <div class="way">
       <Icon name="bluetooth" />
       <p><b>Bluetooth</b>{t('A node nearby with a Bluetooth transport.')}</p>
-      <button
-        class="primary"
-        onclick={() => pick(async () => session.useBle(await nav.bluetooth!.requestDevice({ filters: [{ services: [NUS_SERVICE] }] })))}
-      >
-        {t('Choose a device')}
-      </button>
+      <button class="primary" onclick={ble}>{t('Choose a device')}</button>
     </div>
   {/if}
   {#if !nav.serial || !nav.bluetooth}
@@ -180,6 +201,9 @@
   }
   .way b {
     display: block;
+  }
+  .flash {
+    flex: 1 1 100%;
   }
   .address {
     display: flex;

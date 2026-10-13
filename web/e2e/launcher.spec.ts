@@ -241,3 +241,71 @@ for (const [way, button] of [
     expect((await fetch()).bytes.equals(bytes)).toBe(true);
   });
 }
+
+// Installing firmware (DESIGN.md §9.7.1): a launcher configured with
+// `firmware` offers it over USB, and loads the flasher, flash.js, only then.
+// The releases come from the site's manifest (scripts/firmware.mjs); writing
+// one needs a board's bootloader, which is checked on hardware.
+test('a launcher with firmware offers to install it, from its releases', async ({ page }) => {
+  const firmware = {
+    images: [
+      { label: 'Full', asset: 'kit-full-{target}-factory.bin', description: 'Every service.' },
+      { label: 'Gateway', asset: 'gateway-{target}-factory.bin' },
+    ],
+    wifi: '/sys/network/wifi',
+  };
+  const manifest = {
+    repo: 'leokeba/TesserKIT',
+    releases: [
+      { tag: 'v0.1.12', date: '2026-10-13T12:00:00Z', assets: [{ name: 'kit-full-esp32-factory.bin', size: 1 }] },
+      {
+        tag: 'v0.1.11',
+        date: '2026-10-12T12:00:00Z',
+        assets: [
+          { name: 'kit-full-esp32-factory.bin', size: 1 },
+          { name: 'gateway-esp32c3-factory.bin', size: 1 },
+        ],
+      },
+    ],
+  };
+  const scripts: string[] = [];
+  page.on('request', (r) => scripts.push(new URL(r.url()).pathname));
+  await page.route('**/kit.html', (route) =>
+    route.fulfill({
+      contentType: 'text/html',
+      body: `<!doctype html><body><script>window.TESSER=${JSON.stringify({ launcher: true, title: 'TesserKIT', firmware })}</script><script src="ui.js"></script></body>`,
+    }),
+  );
+  await page.route('**/firmware/manifest.json', (route) => route.fulfill({ json: manifest }));
+  await page.addInitScript(fakeDevices);
+  await page.goto('/kit.html');
+  await expect(page.locator('h2')).toHaveText('Connect to a node');
+  expect(scripts).not.toContain('/flash/flash.js');
+
+  await page.getByRole('button', { name: 'Install firmware' }).click();
+  const firmwareSelect = page.getByLabel('Firmware');
+  const version = page.getByLabel('Version');
+  await expect(firmwareSelect.locator('option')).toHaveText(['Full', 'Gateway', 'A file on this computer']);
+  await expect(page.getByText('Every service.')).toBeVisible();
+  await expect(version.locator('option')).toHaveText([/^v0\.1\.12 · /, /^v0\.1\.11 · /]);
+  expect(scripts).toContain('/flash/flash.js');
+
+  // Only the releases with the chosen firmware.
+  await firmwareSelect.selectOption('Gateway');
+  await expect(version.locator('option')).toHaveText([/^v0\.1\.11 · /]);
+  await expect(page.getByRole('button', { name: 'Choose a port and install' })).toBeEnabled();
+
+  // Or a file, once chosen.
+  await firmwareSelect.selectOption('A file on this computer');
+  const install = page.getByRole('button', { name: 'Choose a port and install' });
+  await expect(install).toBeDisabled();
+  await page.getByLabel('File', { exact: true }).setInputFiles({ name: 'mine.bin', mimeType: 'application/octet-stream', buffer: Buffer.alloc(16) });
+  await expect(install).toBeEnabled();
+});
+
+test('a launcher without firmware offers no install', async ({ page }) => {
+  await page.addInitScript(fakeDevices);
+  await page.goto('/');
+  await expect(page.getByRole('button', { name: 'Choose a port' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Install firmware' })).toHaveCount(0);
+});

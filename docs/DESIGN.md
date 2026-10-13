@@ -27,7 +27,7 @@ TesserUI renders user interfaces for [TesserAPI](https://github.com/leokeba/Tess
 | Item | Decision |
 |---|---|
 | Device side | C++17 and TesserAPI's rules: no exceptions, no RTTI, ESP-IDF ≥ 5.1 and Arduino-ESP32 ≥ 3.0. |
-| Web bundle | ≤ 58 KB gzipped for everything (JS and CSS), measured in CI. Evergreen browsers only. (Raised from 40 KB once phases 1, 2 and 4 were in: they measured 40.2 KB with every saving taken. Raised from 50 KB for the navigation menu, §6.3, from 52 KB for the launcher and Bluetooth, §9.7, from 54 KB for notifications, §7.8, from 55.5 KB for file nodes in list elements, §4, from 56.5 KB for events over HTTP, §9.2, from 57 KB for files over serial and Bluetooth, §4, and from 57.5 KB for the log widget, §4.) |
+| Web bundle | ≤ 58.5 KB gzipped for everything (JS and CSS), measured in CI. Evergreen browsers only. (Raised from 40 KB once phases 1, 2 and 4 were in: they measured 40.2 KB with every saving taken. Raised from 50 KB for the navigation menu, §6.3, from 52 KB for the launcher and Bluetooth, §9.7, from 54 KB for notifications, §7.8, from 55.5 KB for file nodes in list elements, §4, from 56.5 KB for events over HTTP, §9.2, from 57 KB for files over serial and Bluetooth, §4, from 57.5 KB for the log widget, §4, and from 58 KB for installing firmware from the launcher, §9.7.1 (its flasher is a script of its own, outside the budget).) |
 | Web stack | Svelte 5 + TypeScript + Vite, without a CSS framework or chart library. |
 | LCD stack | LVGL 9.x. Display and touch drivers are the application's: TesserUI receives an `lv_display_t*`. |
 | Smallest node | A NowTP-only node with no Wi-Fi and no UI assets: its tree and its hint literals are all it stores. |
@@ -56,7 +56,7 @@ The two renderers share the model and its rules, not code: the web renderer is T
 | **Self-hosted** | The node itself (about 40–50 KB of flash) | `http://node/` | §9.4 |
 | **UI host** | One ESP with spare flash, also a gateway | `http://host/#/peers/<node>`: requests forwarded over NowTP | §9.5 |
 | **Stub** | A CDN or the UI host; the node serves a 300-byte page | `http://node/`, script from elsewhere | §9.6 |
-| **Launcher** | GitHub Pages | The user picks the node: USB (Web Serial), Bluetooth (Web Bluetooth), or an address on the network | §9.7 |
+| **Launcher** | GitHub Pages | The user picks the node: USB (Web Serial), Bluetooth (Web Bluetooth), or an address on the network; or installs firmware on a board (§9.7.1) | §9.7 |
 | **LCD, local** | n/a | `LocalClient` on the same chip | §10 |
 | **LCD, remote** | n/a | `PeerClient` over NowTP, e.g. a handheld remote for a heliostat field | §10 |
 
@@ -395,6 +395,7 @@ web/
   | `menu` | The navigation menu (§6.3). Default: on for the node's own page, off when embedded; always off without the header. |
   | `routing` | `hash` (default) follows `location.hash`; `memory` keeps the route inside the UI, for pages that own the URL. |
   | `launcher` | `true`: the page is a launcher (§9.7) despite having a configuration. |
+  | `firmware` | Firmware the launcher installs over USB (§9.7.1): `{images, wifi, manifest, flasher}`. |
 
   For development, the query string overrides the page's: `?api=http://<ip>/api`, `?ws=` (empty: HTTP only), `?transport=serial`.
 - **Fallback:** if the WebSocket never opens, the client switches to HTTP for good. Once it has opened, it reconnects with backoff (§7.5).
@@ -481,6 +482,25 @@ The same bundle, published on GitHub Pages by CI from `main` (`https://leokeba.g
 - **Android:** Chrome on Android has no Web Serial over USB, only Bluetooth serial ports, which the USB chooser lists (`allowedBluetoothServiceClassIds`: SPP). Phones use Bluetooth LE, Bluetooth serial or the network. The Bluetooth serial example is not yet tried on hardware (pairing needs a person).
 - **Bluetooth throughput,** measured from an ESP32 to a Mac: on ESP-IDF (NimBLE, notifications) about 60 ms per request and 13 KB/s for long replies; on Arduino (confirmed indications) about 120 ms and 6 KB/s. A node's schema loads in a second or two. A Bluetooth client isn't authenticated (anyone in range can connect): it has the `public` level, and the node's authorizer decides what it may change.
 - **On a node's own page**, `serial: true` in `window.TESSER` shows the connection screen without the network way.
+
+### 9.7.1 Installing firmware
+
+A launcher can install firmware on a board over USB, as ESPHome's web installer does, then take the board through its first steps. The firmware comes from the GitHub releases of the project the launcher belongs to: TesserUI's own launcher offers its USB gateway and Bluetooth examples, TesserKIT's its example firmwares.
+
+```js
+window.TESSER = { launcher: true, title: 'TesserKIT', firmware: {
+  images: [{ label: 'Full', asset: 'tesserkit-full-{target}-factory.bin', description: 'Every service' },
+           { label: 'Minimal', asset: 'tesserkit-minimal-{target}-factory.bin' }],
+  wifi: '/sys/network/wifi' } };
+```
+
+- **Images:** `asset` names a release asset, with `{target}` (`esp32`, `esp32c3`, `esp32s3`...) and `{version}` (the tag without its `v`), as TesserKIT's `fw.github()` names them. It is a whole-flash image written at 0x0: `merge_bin`'s output, TesserKIT's `<name>-<target>-factory.bin`. `transport: "ble"` marks a firmware reached over Bluetooth afterwards rather than over its serial port. The user can also pick a file of their own.
+- **Releases on the launcher's site:** a page reads GitHub's API (it sends CORS headers) but not the release assets, which come from a host that sends none. So CI copies the images of the latest three releases into the site: `node web/scripts/firmware.mjs <owner/repo> _site/firmware` writes `<tag>/<asset>` and `manifest.json` (`{repo, releases: [{tag, date, assets: [{name, size}]}]}`, newest first, without drafts and pre-releases), which the flasher reads (`manifest`, by default `firmware/manifest.json`). About 9 MB a release for TesserKIT's six images.
+- **The flasher** is `flash.js` (`web/src/flash/`, built by `vite build --mode flash` into `dist/flash/`, with the stub flashers esptool-js loads per chip): a separate script, outside the budget (§2), loaded from `flasher` (by default `flash/flash.js` next to the page) when the user clicks *Install firmware*, which shows only on a page with `firmware` and Web Serial. A node's bundle has the button and the `import()`, nothing more. It runs [esptool-js](https://github.com/espressif/esptool-js) (Espressif's esptool in the browser) and its own Svelte UI in the launcher's card, with the launcher's styles and `strings`.
+- **Steps:** the user picks the firmware and a version (only those with an image for some chip), then the port; esptool-js resets the board into its bootloader and identifies it; the page names the chip and MAC and asks before writing (a release without an image for that chip says so and stops); the image is downloaded, written with compression, and the board restarted. *Erase the whole flash first* also erases what the image doesn't cover: the other OTA slot, files, the core dump. The image itself covers NVS (0x9000) with its padding, so an install resets the board's settings whatever is chosen.
+- **Speed:** the stub flasher asks for 460800 baud, which reopens the port. A devkit's USB-to-UART bridge resets the board then, and esptool-js goes on at 115200: about 107 s for TesserKIT's 1.8 MB image on an ESP32 devkit. A chip's own USB (the C3's and S3's) keeps the faster rate. Talking to the ROM at 460800 from the start fails on an ESP32 devkit. Such a chip leaves with its reset and comes back as another port, which the flasher finds among the page's ports by its USB identity.
+- **After the install,** the flasher opens the port as the USB way does and waits up to a minute for the firmware to answer. If `wifi` names TesserKIT's Wi-Fi service (its DESIGN.md §5.2) and the firmware has it, it asks which network to join: the device's `scan`, strongest first, a network name, a password; the network goes first in the keyed `networks` list, the others rewritten by name alone so they keep their passwords. It follows `status` until the device has an address (45 s at most, the device's own words in the meantime), and offers *Open it over the network* (`?api=http://<ip>/api`) or *Stay on USB*. A device that joins a saved network on its own while asked skips the question. Then the launcher's session takes the line the flasher opened (`useSerial()` takes a client too): opening the port again would reset the board. A firmware that doesn't answer gets a word saying so; a Bluetooth one, the Bluetooth chooser.
+- **Through the bridge** *(later)*: browsers without Web Serial would need the bridge's serial ports to carry DTR, RTS and the baud rate.
 
 ### 9.8 Custom elements
 
@@ -605,7 +625,7 @@ void lvglTask() {
 ```
 TesserUI/
   docs/DESIGN.md
-  web/                 the web renderer (npm package "tesserui": dist/ui.js and index.html for nodes, tesserui.js and its types for applications)
+  web/                 the web renderer (npm package "tesserui": dist/ui.js and index.html for nodes, tesserui.js and its types for applications, dist/flash/ for launchers, §9.7.1)
   bridge/              tesserui-bridge (npm): mDNS discovery, proxies and serial ports on localhost, for the launcher (§9.7)
   src/tesserui/        C++: WebUi (bundle and stub serving), Views, LvglUi
   src/tesserui/bundle/ tesserui_bundle.h, generated by the web build and committed per release
@@ -634,7 +654,7 @@ None blocks the first release; each has a workaround above.
 | 3 | LVGL renderer: pages, widget mapping, `LocalClient` and `PeerClient` | The same node on a 320×240 touchscreen, locally and from a remote handheld. | not started |
 | 4 | Views (§8), charts, forms, conditions | helionext's motors and calibration pages, ported with no hand-written UI: `describe()` plus hints. | implemented; the motors fixture renders without UI code, and views, charts, forms and conditions pass end-to-end tests against the host demo device |
 | 5 | Monochrome profile, color widget, custom pages *(later)* | | web: color widget, custom elements and pages (§9.8), embedding (§9.9), interface text (§9.10) |
-| 6 | Launcher (§9.7): GitHub Pages, USB, Bluetooth and network ways, a NowTP gateway on USB | Any node reachable from a published page, with no UI assets on it. | implemented; the launcher's ways tested end to end against the host node (USB and Bluetooth through fakes cutting lines into pieces among log output). On hardware: the USB gateway driven over serial, mounting a peer over ESP-NOW with live notifications; the Bluetooth example driven from Chrome's Web Bluetooth and from a Mac (`bleak`); the ESP-IDF Bluetooth and USB gateway examples likewise. The network way from an HTTPS origin in Chrome, local network access granted: the test firmware polled over HTTP (CORS), the mixed content allowed with a console warning. Files in envelopes over a line: tested end to end against the host node through the USB and Bluetooth fakes; on hardware, 20 KB up and back through the bridge's serial port to the test firmware, at 7 to 8 KB/s, and through the test firmware's gateway to its peer over ESP-NOW in WebSocket envelopes (20 KB up in 1.3 s, down in 0.7 s, the page live throughout). |
+| 6 | Launcher (§9.7): GitHub Pages, USB, Bluetooth and network ways, a NowTP gateway on USB | Any node reachable from a published page, with no UI assets on it. | implemented; the launcher's ways tested end to end against the host node (USB and Bluetooth through fakes cutting lines into pieces among log output). On hardware: the USB gateway driven over serial, mounting a peer over ESP-NOW with live notifications; the Bluetooth example driven from Chrome's Web Bluetooth and from a Mac (`bleak`); the ESP-IDF Bluetooth and USB gateway examples likewise. The network way from an HTTPS origin in Chrome, local network access granted: the test firmware polled over HTTP (CORS), the mixed content allowed with a console warning. Files in envelopes over a line: tested end to end against the host node through the USB and Bluetooth fakes; on hardware, 20 KB up and back through the bridge's serial port to the test firmware, at 7 to 8 KB/s, and through the test firmware's gateway to its peer over ESP-NOW in WebSocket envelopes (20 KB up in 1.3 s, down in 0.7 s, the page live throughout). Installing firmware (§9.7.1): end to end up to the port chooser (the flasher loaded only on demand, versions from a manifest, a file); on hardware, TesserKIT v0.1.12 `full` installed on an ESP32 devkit by the flasher in headless Chromium (its Web Serial relayed to the port, DTR and RTS included), Wi-Fi joined through TesserKIT's service in 20 s, then the device's page over the same line. |
 
 ## 15. Decisions
 
