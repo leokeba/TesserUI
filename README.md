@@ -96,7 +96,7 @@ The interface's colors (`theme`) and its own text (`strings`) are options too: `
 ## Examples
 
 - [examples/arduino/SelfHosted](examples/arduino/SelfHosted): HTTP, WebSocket and the UI on one node.
-- [examples/arduino/UiHost](examples/arduino/UiHost) and [examples/arduino/NowTpNode](examples/arduino/NowTpNode): a UI host and the NowTP-only nodes it renders.
+- [examples/arduino/UiHost](examples/arduino/UiHost) and [examples/arduino/NowTpNode](examples/arduino/NowTpNode): a UI host and the NowTP-only nodes it renders. The host needs a larger app partition than the default (Minimal SPIFFS).
 - [examples/arduino/Stub](examples/arduino/Stub): the UI loaded from a CDN.
 - [examples/arduino/CustomWidget](examples/arduino/CustomWidget): a custom element served from flash, on a node and as a custom page.
 - [examples/idf/self_hosted](examples/idf/self_hosted): ESP-IDF.

@@ -8,6 +8,10 @@
 // Wi-Fi channel: in station mode, ESP-NOW runs on the router's channel, so
 // every node must use that channel (NowTpNode's NOWTP_CHANNEL). Without a
 // router, run the host as a soft AP and give the nodes its channel.
+//
+// Partitions: the host is about 1.36 MB, past the default 1.25 MB app
+// partition. Choose Tools > Partition Scheme > "Minimal SPIFFS (1.9MB APP
+// with OTA)" (min_spiffs), or a larger one.
 #include <NowTP.h>
 #include <TesserAPI.h>
 #include <TesserUI.h>
