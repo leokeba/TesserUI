@@ -3,14 +3,22 @@
   import type { WidgetProps } from './types';
   let { leaf, value, set, disabled, id }: WidgetProps = $props();
   const session = useSession();
-  // ui.options: the fixed choices, then the keyed list's current keys.
+  // ui.options: the fixed choices, then the keyed list's current keys, or
+  // the object's children: the nodes under /peers, offline ones marked.
   const options = $derived.by(() => {
     const fixed = leaf.options ?? [];
     if (!leaf.optionsFrom) return fixed;
+    void session.schemaVersion;
+    const s = session.schemaAt(leaf.optionsFrom);
     const list = session.store.get(leaf.optionsFrom);
-    const key = session.schemaAt(leaf.optionsFrom)?.key;
-    const keys = Array.isArray(list) && key ? list.map((e) => e?.[key]).filter((k) => typeof k === 'string') : [];
-    return [...fixed, ...keys.filter((k) => !fixed.some((o) => o.value === k)).map((k) => ({ value: k, label: k }))];
+    const more =
+      s?.type === 'object'
+        ? Object.entries(s.children ?? {}).map(([k, c]) => ({
+            value: k,
+            label: (c.tree?.label ?? c.label ?? k) + (c.online === false ? ` (${session.t('offline')})` : ''),
+          }))
+        : (Array.isArray(list) && s?.key ? list.map((e) => e?.[s.key!]).filter((k) => typeof k === 'string') : []).map((k) => ({ value: k, label: k }));
+    return [...fixed, ...more.filter((m) => !fixed.some((o) => o.value === m.value))];
   });
 </script>
 

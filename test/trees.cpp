@@ -303,6 +303,8 @@ Demo::Demo()
     widgets.value("conditional", conditional).ui("visibleWhen", "/config/enabled=true&../config/mode!=auto");
     // A choice among a keyed list's current keys, and a fixed one.
     widgets.value("source", source).ui("options", "/sky/sources").ui("optionsExtra", "Sun");
+    // A choice among the nodes under /peers, offline ones marked.
+    widgets.value("node", node).ui("options", "/peers");
     widgets.action("go", [] {}).ui("style", "primary");
     widgets.action("scene", [this](std::string s) { scene = s; }).ui("widget", "button").ui("value", "sunset");
     widgets.object("pinned").ui("card").value("note", "A nested object shown as its own card.");
@@ -330,12 +332,13 @@ Demo::Demo()
     seq.action("stop", [this] { sequenceStartMs = 0; });
     seq.action("clear", [this] { frames.clear(); });
 
-    // Scalar arrays: a calibration table drawn as a chart, and an editable
-    // one.
+    // Scalar arrays: a calibration table drawn as a chart, an editable one,
+    // and an order that means something, rows moved up and down.
     for (int i = 0; i < 16; i++) offsets[i] = static_cast<float>(2.0 * sin(i * 3.14159265358979 / 8.0));
     auto& tables = api.object("tables").label("Tables");
     tables.array("offsets", offsets).readOnly().unit("°").ui("widget", "chart").label("Encoder offsets");
     tables.array("gains", gains).range(0, 100).maxSize(6);
+    tables.array("priority", priority).ui("reorder").label("Transport priority");
 
     // What TesserKIT's services declare: admin-only settings, secrets,
     // flags, a time zone, the browser's clock, sign-in.

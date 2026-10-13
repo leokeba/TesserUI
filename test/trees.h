@@ -198,6 +198,8 @@ struct Demo {
     // tables: scalar arrays
     float offsets[16] = {};
     std::vector<int> gains{10, 40, 80};
+    std::array<std::string, 3> priority{"udp", "nowtp", "serial"};
+    std::string node = "porch-lamp";
     // sequence: keyframes (<x-keyframes>)
     std::vector<Frame> frames{{0, 0}, {2000, 30}, {5000, -20}, {8000, 0}};
     bool loop = true;

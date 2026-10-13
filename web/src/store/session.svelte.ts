@@ -548,7 +548,13 @@ export class Session {
     walk(items, (i) => {
       for (const c of [...(i.visibleWhen ?? []), ...(i.enabledWhen ?? [])]) followed.push(c.path);
       if (i.kind === 'leaf') {
-        if (i.optionsFrom) followed.push(i.optionsFrom);
+        // An object's children (nodes under /peers): a stub's change, its
+        // online state, comes in the object's value.
+        if (i.optionsFrom) {
+          const s = this.schemaAt(i.optionsFrom);
+          const nodes = s?.type === 'object' ? Object.keys(s.children ?? {}).map((k) => joinPath(i.optionsFrom!, k)) : [];
+          followed.push(...(nodes.length ? nodes : [i.optionsFrom]));
+        }
         if (i.history) store.charts.set(i.path, i.history);
         if (i.lines) store.lines.set(i.path, i.lines);
       } else if (i.kind === 'link' && i.remote && i.online && !this.schemaAt(i.path)?.tree) {

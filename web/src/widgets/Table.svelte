@@ -74,6 +74,11 @@
     newKey = '';
   }
   const remove = (i: number) => send(copy().filter((_, j) => j !== i));
+  function move(i: number, by: number) {
+    const next = copy();
+    [next[i], next[i + by]] = [next[i + by], next[i]];
+    send(next);
+  }
 
   // List lines: the element's name (its key, else its first value), up to
   // three short values, its first writable boolean as a switch, and its
@@ -111,6 +116,14 @@
     return sec;
   }
 </script>
+
+<!-- Moving a row (ui.reorder): up, down. -->
+{#snippet mover(i: number, k: string | number)}
+  <span class="move">
+    <button type="button" class="quiet up" disabled={disabled || !i} aria-label={t('Move row {i} up', { i: k })} onclick={() => move(i, -1)}><Icon name="down" /></button>
+    <button type="button" class="quiet" disabled={disabled || i === rows.length - 1} aria-label={t('Move row {i} down', { i: k })} onclick={() => move(i, 1)}><Icon name="down" /></button>
+  </span>
+{/snippet}
 
 <!-- Adding: a keyed list's new element needs its key first. -->
 {#snippet adder()}
@@ -152,6 +165,7 @@
               />
             {/if}
           {/each}
+          {#if leaf.reorder}{@render mover(i, k)}{/if}
           {#if resizable}
             <button type="button" class="quiet" {disabled} aria-label={t('Remove row {i}', { i: k })} onclick={() => remove(i)}><Icon name="trash" /></button>
           {/if}
@@ -172,6 +186,7 @@
       <tr>
         {#if !leaf.key}<th scope="col">#</th>{/if}
         {#each cols as c (c.path)}<th scope="col">{c.label}</th>{/each}
+        {#if leaf.reorder}<th><span class="sr">{t('Order')}</span></th>{/if}
         {#if resizable}<th><span class="sr">{t('Remove')}</span></th>{/if}
       </tr>
     </thead>
@@ -217,12 +232,13 @@
               {/if}
             </td>
           {/each}
+          {#if leaf.reorder}<td>{@render mover(i, i)}</td>{/if}
           {#if resizable}
             <td><button type="button" class="quiet" {disabled} aria-label={t('Remove row {i}', { i })} onclick={() => remove(i)}><Icon name="trash" /></button></td>
           {/if}
         </tr>
       {:else}
-        <tr><td colspan={cols.length + 2} class="muted">{t('Empty')}</td></tr>
+        <tr><td colspan={cols.length + 3} class="muted">{t('Empty')}</td></tr>
       {/each}
     </tbody>
   </table>
@@ -233,6 +249,12 @@
 {/if}
 
 <style>
+  .move {
+    display: inline-flex;
+  }
+  .up :global(svg) {
+    transform: rotate(180deg);
+  }
   .table {
     display: grid;
     gap: 8px;

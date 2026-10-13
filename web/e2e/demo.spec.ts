@@ -213,6 +213,39 @@ test("a select of a keyed list's keys", async ({ page }) => {
   await expect(row(page, 'Source').locator('.busy')).toHaveCount(0);
 });
 
+// ui.options naming an object: its children, here the nodes under /peers,
+// an offline one marked.
+test('a select of the nodes under /peers', async ({ page }) => {
+  await open(page, '#/widgets');
+  const select = row(page, 'Node').locator('select');
+  await expect(select.locator('option')).toHaveText(['heliostat-3', 'kitchen-lamp (offline)', 'porch-lamp']);
+  await expect(select).toHaveValue('porch-lamp');
+  await select.selectOption('heliostat-3');
+  await expect(row(page, 'Node').locator('.busy')).toHaveCount(0);
+  await expect(select).toHaveValue('heliostat-3');
+});
+
+// ui.reorder: rows move up and down, the whole array written each time
+// and read back.
+test('an array whose rows move', async ({ page }) => {
+  await open(page, '#/tables');
+  const card = (title: string) => page.locator('.card', { has: page.locator('h2', { hasText: title }) });
+  const table = card('Transport priority');
+  const values = () => table.locator('tbody input').evaluateAll((e) => e.map((i) => (i as HTMLInputElement).value));
+  await expect.poll(values).toEqual(['udp', 'nowtp', 'serial']);
+  await expect(table.getByRole('button', { name: 'Move row 0 up' })).toBeDisabled();
+  await expect(table.getByRole('button', { name: 'Move row 2 down' })).toBeDisabled();
+  await table.getByRole('button', { name: 'Move row 0 down' }).click();
+  await expect.poll(values).toEqual(['nowtp', 'udp', 'serial']);
+  await table.getByRole('button', { name: 'Move row 2 up' }).click();
+  await expect.poll(values).toEqual(['nowtp', 'serial', 'udp']);
+  // A fixed-length array: no add or remove.
+  await expect(table.getByRole('button', { name: /Remove|Add/ })).toHaveCount(0);
+  // Other arrays don't move.
+  await expect(card('Gains').locator('table')).toBeVisible();
+  await expect(card('Gains').getByRole('button', { name: /Move/ })).toHaveCount(0);
+});
+
 test('groups load their schema on opening', async ({ page }) => {
   await open(page, '#/config');
   // Network is a collapsed card, Deep a heading, Deeper a group below the

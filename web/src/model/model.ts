@@ -112,6 +112,9 @@ export interface Leaf extends Base {
   maxSize?: number;
   // Tables: rows can't be added or removed (fixed-length arrays).
   fixed?: boolean;
+  // Tables and lists: rows move up and down (ui.reorder), where order means
+  // something, like priorities.
+  reorder?: boolean;
   // Keyed lists: the field naming each row.
   key?: string;
   // Lists: the file nodes of each element (paths relative to it), on its line.
@@ -310,6 +313,9 @@ export function buildLeaf(name: string, path: string, s: Schema, parent: string,
       leaf.maxSize = s.maxSize;
       const cols = (leaf.columns = s.items ? columns(s.items, '') : []);
       if (s.key) leaf.key = s.key;
+      // An indexed list's moved rows would leave their unwritten fields
+      // (read-only, secret) behind at their index: only keyed lists move.
+      if (leaf.editable && s.key && ui(s, 'reorder') === true) leaf.reorder = true;
       const children = Object.entries(s.items?.children ?? {});
       const files = children.filter(([, c]) => c.type === 'file' && ui(c, 'hidden') !== true);
       if (files.length) leaf.files = files.map(([name, c]) => buildLeaf(name, name, c, ''));
@@ -329,6 +335,7 @@ export function buildLeaf(name: string, path: string, s: Schema, parent: string,
       leaf.editable = !!s.writable;
       leaf.maxSize = s.maxSize;
       leaf.fixed = !!s.fixed;
+      if (leaf.editable && ui(s, 'reorder') === true) leaf.reorder = true;
       leaf.columns = columns(items, '');
       leaf.widget = uiStr(s, 'widget') === 'chart' && isNumeric(items.type) ? 'chart' : 'table';
       if (leaf.widget === 'chart') {

@@ -107,6 +107,19 @@ describe('widget inference (DESIGN §4)', () => {
   });
 });
 
+describe('ui.reorder', () => {
+  const row: Schema = { type: 'object', children: { name: { type: 'string', writable: true }, secret: { type: 'string', writable: true, secret: true } } };
+  it('moves the rows of writable arrays and keyed lists', () => {
+    expect(leaf({ type: 'array', writable: true, items: { type: 'string' }, ui: { reorder: true } }).reorder).toBe(true);
+    expect(leaf({ type: 'list', writable: true, key: 'name', items: row, ui: { reorder: true } }).reorder).toBe(true);
+  });
+  it("not an indexed list's, whose unwritten fields would stay behind, nor read-only ones", () => {
+    expect(leaf({ type: 'list', writable: true, items: row, ui: { reorder: true } }).reorder).toBeUndefined();
+    expect(leaf({ type: 'array', items: { type: 'string' }, ui: { reorder: true } }).reorder).toBeUndefined();
+    expect(leaf({ type: 'array', writable: true, items: { type: 'string' } }).reorder).toBeUndefined();
+  });
+});
+
 describe('layout of the test firmware (DESIGN §6.1)', () => {
   const fw = fixture('testfw');
   const page = buildPage(fw.schema, '/');

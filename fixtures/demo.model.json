@@ -1434,6 +1434,19 @@
       "optionsFrom": "/sky/sources"
      },
      {
+      "name": "node",
+      "path": "/widgets/node",
+      "label": "Node",
+      "advanced": false,
+      "hidden": false,
+      "kind": "leaf",
+      "widget": "select",
+      "type": "string",
+      "editable": true,
+      "options": [],
+      "optionsFrom": "/peers"
+     },
+     {
       "name": "go",
       "path": "/widgets/go",
       "label": "Go",
@@ -1560,6 +1573,33 @@
         "max": 100,
         "step": 1,
         "precision": 0
+       }
+      ]
+     },
+     {
+      "name": "priority",
+      "path": "/tables/priority",
+      "label": "Transport priority",
+      "advanced": false,
+      "hidden": false,
+      "kind": "leaf",
+      "widget": "table",
+      "type": "array",
+      "editable": true,
+      "maxSize": 3,
+      "fixed": true,
+      "reorder": true,
+      "columns": [
+       {
+        "name": "value",
+        "path": "",
+        "label": "Value",
+        "advanced": false,
+        "hidden": false,
+        "kind": "leaf",
+        "widget": "text",
+        "type": "string",
+        "editable": true
        }
       ]
      }
@@ -3449,6 +3489,19 @@
        "optionsFrom": "/sky/sources"
       },
       {
+       "name": "node",
+       "path": "/widgets/node",
+       "label": "Node",
+       "advanced": false,
+       "hidden": false,
+       "kind": "leaf",
+       "widget": "select",
+       "type": "string",
+       "editable": true,
+       "options": [],
+       "optionsFrom": "/peers"
+      },
+      {
        "name": "scene",
        "path": "/widgets/scene",
        "label": "Scene",
@@ -3678,6 +3731,50 @@
          "max": 100,
          "step": 1,
          "precision": 0
+        }
+       ]
+      }
+     ],
+     "advancedItems": [],
+     "lazy": false,
+     "tabs": false,
+     "inline": false,
+     "collapsed": false,
+     "form": false
+    },
+    {
+     "name": "",
+     "path": "/tables/priority",
+     "label": "Transport priority",
+     "advanced": false,
+     "hidden": false,
+     "kind": "section",
+     "level": 1,
+     "items": [
+      {
+       "name": "priority",
+       "path": "/tables/priority",
+       "label": "",
+       "advanced": false,
+       "hidden": false,
+       "kind": "leaf",
+       "widget": "table",
+       "type": "array",
+       "editable": true,
+       "maxSize": 3,
+       "fixed": true,
+       "reorder": true,
+       "columns": [
+        {
+         "name": "value",
+         "path": "",
+         "label": "Value",
+         "advanced": false,
+         "hidden": false,
+         "kind": "leaf",
+         "widget": "text",
+         "type": "string",
+         "editable": true
         }
        ]
       }
