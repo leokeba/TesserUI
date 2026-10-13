@@ -106,6 +106,16 @@ test('through the bridge over HTTP too', async ({ page }) => {
   await expect(page.locator('.brand')).toHaveText('TesserUI demo');
 });
 
+// A node's custom elements name their scripts from its root (/ext/...):
+// behind the bridge, that is the node's folder of the proxy (DESIGN §9.8).
+test("through the bridge, a node's custom elements load from it", async ({ page }) => {
+  const scripts: string[] = [];
+  page.on('request', (r) => r.url().endsWith('.js') && scripts.push(r.url()));
+  await page.goto(`/?api=${encodeURIComponent('http://localhost:8766/n/localhost:8091/api')}#/v/sky`);
+  await expect(page.locator('x-sun-dial p')).toContainText('target 180° / 45°');
+  expect(scripts).toContain('http://localhost:8766/n/localhost:8091/ext/sun-dial.js');
+});
+
 test('the bridge serves the launcher, whose tabs are its nodes at once', async ({ page }) => {
   await page.goto('http://localhost:8766/');
   await expect(page.locator('nav.tabs').getByRole('link', { name: 'TesserUI demo' })).toBeVisible();

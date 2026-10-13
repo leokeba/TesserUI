@@ -70,12 +70,15 @@
   // svelte-ignore state_referenced_locally
   const tag = leaf.widget;
   // The page's scripts resolve against the page; a node's (ui.script)
-  // against the node, i.e. its API's URL.
-  const nodeUrl = new URL(session.config.api, location.href);
+  // against the node, i.e. its API's URL, and a path from its root against
+  // the folder above its API: the node's root, also behind the bridge's
+  // proxy (/n/<host>/api, DESIGN.md §9.8).
+  const nodeUrl = new URL('.', session.apiUrl());
   // svelte-ignore state_referenced_locally
   const urls = [...(session.config.scripts ?? []).map((u) => new URL(u, location.href).href)];
   // svelte-ignore state_referenced_locally
-  if (leaf.script) urls.push(new URL(leaf.script, nodeUrl).href);
+  const script = leaf.script;
+  if (script) urls.push(new URL(script[0] === '/' ? '.' + script : script, nodeUrl).href);
   for (const url of urls) load(url).then((ok) => ok || customElements.get(tag) || (failed = true));
   const timer = setTimeout(() => (failed = !customElements.get(tag)), 8000);
   customElements.whenDefined(tag).then(() => {

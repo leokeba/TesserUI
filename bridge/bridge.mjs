@@ -142,11 +142,13 @@ const server = createServer(async (req, res) => {
     return res.writeHead(200, { ...h, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }).end(JSON.stringify(await listing()));
   }
 
-  // /n/<id>/api/...: the node's HTTP API.
-  const m = url.pathname.match(/^\/n\/([^/]+)\/api(\/.*)?$/);
+  // /n/<id>/api/...: the node's HTTP API. /n/<id>/<path>: the node's other
+  // files, read only (custom elements' scripts, DESIGN.md §9.8).
+  const m = url.pathname.match(/^\/n\/([^/]+)(\/api)?(\/.*)?$/);
   if (m) {
     const n = nodes.get(decodeURIComponent(m[1]));
     if (!n) return res.writeHead(404, h).end();
+    if (!m[2] && !['GET', 'HEAD'].includes(req.method)) return res.writeHead(405, h).end();
     const body = ['GET', 'HEAD'].includes(req.method) ? undefined : Buffer.concat(await Array.fromAsync(req));
     // The node has 30 s to answer; the body then flows as long as it lasts
     // (a streamed subscription: hours), until the browser goes away.
@@ -154,14 +156,16 @@ const server = createServer(async (req, res) => {
     const timer = setTimeout(() => ctl.abort(), 30000);
     res.on('close', () => ctl.abort());
     try {
-      const r = await fetch(`http://${n.id}${n.api}${m[2] ?? ''}${url.search}`, {
+      const r = await fetch(`http://${n.id}${m[2] ? n.api : ''}${m[3] ?? (m[2] ? '' : '/')}${url.search}`, {
         method: req.method,
         headers: Object.fromEntries(['authorization', 'content-type'].filter((k) => req.headers[k]).map((k) => [k, req.headers[k]])),
         body,
         signal: ctl.signal,
       });
       clearTimeout(timer);
-      const pass = Object.fromEntries(['content-type', 'content-length', 'content-disposition', 'cache-control'].filter((k) => r.headers.get(k)).map((k) => [k, r.headers.get(k)]));
+      // fetch() decodes a gzipped body: its length is no longer the node's.
+      const keep = ['content-type', 'content-disposition', 'cache-control', ...(r.headers.get('content-encoding') ? [] : ['content-length'])];
+      const pass = Object.fromEntries(keep.filter((k) => r.headers.get(k)).map((k) => [k, r.headers.get(k)]));
       res.writeHead(r.status, { ...h, ...pass });
       if (r.body) Readable.fromWeb(r.body).on('error', () => res.destroy()).pipe(res);
       else res.end();
