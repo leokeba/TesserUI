@@ -32,22 +32,19 @@
       <span class="muted">{session.t('No events yet')}</span>
     {/each}
   </div>
-  <!-- Beside the box, not over its lines; there when empty, so the box keeps its width. -->
-  <button type="button" disabled={!entries.length} aria-label={session.t('Clear')} title={session.t('Clear')} onclick={() => (store.events[leaf.path] = [])}><Icon name="trash" /></button>
+  {#if entries.length}
+    <button type="button" aria-label={session.t('Clear')} title={session.t('Clear')} onclick={() => (store.events[leaf.path] = [])}><Icon name="trash" /></button>
+  {/if}
 </div>
 
 <style>
   /* A flex item of the row's control: without min-width, a long line would
      widen it past the card instead of scrolling. */
   .log {
-    display: flex;
-    gap: 6px;
-    align-items: flex-start;
+    position: relative;
     min-width: 0;
   }
   .lines {
-    flex: 1;
-    min-width: 0;
     height: 15em;
     overflow: auto;
     padding: 6px 8px;
@@ -61,5 +58,11 @@
   }
   .W {
     color: var(--warn);
+  }
+  /* Over the box's top right corner, clear of a scrollbar. */
+  button {
+    position: absolute;
+    top: 4px;
+    right: 18px;
   }
 </style>
