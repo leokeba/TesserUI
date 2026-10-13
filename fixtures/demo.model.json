@@ -4388,7 +4388,8 @@
    ],
    "specs": [
     {
-     "path": "/"
+     "path": "/",
+     "keys": "lamp,sensors,motor,sequence"
     }
    ]
   },

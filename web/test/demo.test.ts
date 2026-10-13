@@ -145,8 +145,8 @@ describe('demo: views (DESIGN §8)', () => {
     expect(v.items[3]).toEqual({ kind: 'text', text: 'Live values from **every** node.' });
     // `each` over the peers: their trees aren't fetched yet.
     expect(v.missing).toEqual(['/peers/heliostat-3/lamp/on', '/peers/kitchen-lamp/lamp/on', '/peers/porch-lamp/lamp/on']);
-    // The element wants its whole subtree.
-    expect(v.specs).toEqual([{ path: '/', depth: undefined }]);
+    // The element wants its whole subtree; of the root, only what it shows.
+    expect(v.specs).toEqual([{ path: '/', keys: 'lamp,sensors,motor,sequence', depth: undefined }]);
     expect(viewModelItems(v.items).map((i) => i.path)).toEqual(['/lamp/power', '/sensors/temperature', '/motor', '/sequence']);
   });
   it('labels repeated items with the peer and subscribes per node', () => {

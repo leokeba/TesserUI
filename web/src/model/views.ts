@@ -136,7 +136,9 @@ export function buildView(page: ViewPage, root: Schema): View {
   const items = page.items.flatMap((d) => build(d, 1));
 
   // One subscription per node involved (the host, each peer), at the
-  // deepest path covering what the view shows of it (DESIGN.md §8).
+  // deepest path covering what the view shows of it, narrowed to the
+  // children it shows there: a gateway asks a peer for no more (TesserAPI
+  // §14, DESIGN.md §8).
   const groups = new Map<string, { path: string; depth: number }[]>();
   for (const w of watched) {
     const node = remoteOf(root, w.path)?.path ?? '/';
@@ -147,7 +149,9 @@ export function buildView(page: ViewPage, root: Schema): View {
   for (const list of groups.values()) {
     const base = commonAncestor(list.map((w) => w.path));
     const depth = Math.max(...list.map((w) => segments(w.path).length - segments(base).length + w.depth));
-    specs.push({ path: base, depth: Number.isFinite(depth) ? depth : undefined });
+    const firsts = list.map((w) => segments(w.path)[segments(base).length]);
+    const keys = firsts.every(Boolean) ? [...new Set(firsts)].join(',') : undefined;
+    specs.push({ path: base, ...(keys && { keys }), depth: Number.isFinite(depth) ? depth : undefined });
   }
   return { items, missing, specs };
 }
