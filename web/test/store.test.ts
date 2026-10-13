@@ -381,3 +381,51 @@ describe("session: a view's item a peer lacks", () => {
     expect(s.store.toasts.list).toMatchObject([{ kind: 'error', text: 'no such node', path: '/peers/gled/led' }]);
   });
 });
+
+// TesserAPI dba7c1f: a node short of memory for a reply answers busy. A
+// gateway's upstream subscription takes a peer's whole tree, which crashed
+// DEVKIT-R1 before (4.8 KB over UDP).
+describe('a node short of memory', () => {
+  const short = { status: 'busy', body: { error: 'busy', message: 'not enough memory for the response' } };
+  it('gets its subscription again later, read in pieces meanwhile, without polling or a toast', async () => {
+    vi.useFakeTimers();
+    const { client, store } = setup();
+    let memory = false;
+    client.answer = (r) => (r.op === 'sub' && r !== EVENTS && !memory ? short : { status: 'ok', body: r.op === 'get' ? { [r.keys!]: 1 } : null });
+    const subs = new Subscriptions(() => client, store);
+    subs.want([{ path: '/peers/r1', keys: 'a,b', depth: 1 }]);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(store.get('/peers/r1/a')).toBe(1);
+    expect(store.get('/peers/r1/b')).toBe(1);
+    const sent = () => client.sent.splice(0).filter((r) => r !== EVENTS).map((r) => `${r.op} ${r.keys ?? ''}`);
+    expect(sent()).toEqual(['sub a,b', 'get a', 'get b']);
+    // Not polled each second; tried again after 5 s, then 10 s.
+    await vi.advanceTimersByTimeAsync(4000);
+    expect(sent()).toEqual([]);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(sent()).toEqual(['sub a,b', 'get a', 'get b']);
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(sent()).toEqual([]);
+    memory = true;
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(sent()).toEqual(['sub a,b']);
+    await vi.advanceTimersByTimeAsync(20000);
+    expect(sent()).toEqual([]);
+    expect(store.toasts.list).toEqual([]);
+    subs.stop();
+    vi.useRealTimers();
+  });
+  it("reads a schema a level at a time, and doesn't toast", async () => {
+    const { Session } = await import('../src/store/session.svelte');
+    const { schemaAt } = await import('../src/model/schema');
+    const tree: Schema = { type: 'object', children: { a: { type: 'object', children: { x: { type: 'integer' } } }, b: { type: 'integer' } } };
+    const client = new FakeClient();
+    client.answer = (r) => (r.view === 'schema' && (r.depth ?? 0) > 1 ? short : { status: 'ok', body: r.view === 'hash' ? null : schemaAt(tree, r.path) });
+    const s = new Session({ api: '/api', ws: '/ws', transport: 'ws' });
+    (s as unknown as { use(c: FakeClient): void }).use(client);
+    expect(await s.fetchSchema('/', 3)).toBe(true);
+    expect(client.sent.map((r) => `${r.path} ${r.depth}`)).toEqual(['/ 3', '/ 1', '/a 2', '/a 1']);
+    expect(s.schemaAt('/a/x')).toEqual({ type: 'integer' });
+    expect(s.store.toasts.list).toEqual([]);
+  });
+});

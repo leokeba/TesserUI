@@ -2,7 +2,7 @@
 // this keeps at most 3 subscriptions on the client and polls the rest (or
 // everything, over plain HTTP), plus one for the tree's events.
 
-import type { Client, Reply, Request } from '../client/types';
+import { lowMemory, type Client, type Reply, type Request } from '../client/types';
 import { isUnder, segments } from '../model/schema';
 import type { Store } from './store.svelte';
 
@@ -25,8 +25,11 @@ export const EVENTS: Request = { op: 'sub', path: '/', changes: false, snapshot:
 interface Active {
   spec: SubSpec;
   mode: 'sub' | 'poll';
-  // A failed subscribe (peer offline, timeout) is retried.
+  // A failed subscribe (peer offline, timeout) is retried; one the node had
+  // no memory for, not before `next`, waiting longer each time.
   failed: boolean;
+  tries: number;
+  next: number;
 }
 
 const keyOf = (s: SubSpec) => `${s.path}|${s.keys ?? ''}|${s.depth ?? ''}`;
@@ -73,7 +76,7 @@ export class Subscriptions {
       if (this.active.has(k)) continue;
       const mode = this.client().subscribes && subs < MAX_SUBSCRIPTIONS ? 'sub' : 'poll';
       if (mode === 'sub') subs++;
-      const a: Active = { spec, mode, failed: false };
+      const a: Active = { spec, mode, failed: false, tries: 0, next: 0 };
       this.active.set(k, a);
       if (mode === 'sub') this.subscribe(a);
       else this.read(spec);
@@ -137,7 +140,7 @@ export class Subscriptions {
     }
     if (!this.retryTimer) {
       this.retryTimer = setInterval(() => {
-        for (const a of this.active.values()) if (a.failed) this.subscribe(a);
+        for (const a of this.active.values()) if (a.failed && Date.now() >= a.next) this.subscribe(a);
         if (this.events === 'failed') this.subscribeEvents();
       }, RETRY_MS);
     }
@@ -157,6 +160,7 @@ export class Subscriptions {
     }
     if (r.status === 'ok') {
       a.failed = false;
+      a.tries = 0;
       this.store.apply(path, r.body);
     } else if (r.status === 'not_allowed' || (r.status === 'busy' && !transient(r))) {
       // No subscription to be had here (budget, or below a list): poll.
@@ -165,7 +169,13 @@ export class Subscriptions {
       this.schedule();
     } else {
       a.failed = true;
-      if (!['timeout', 'disconnected', 'busy'].includes(r.status)) this.store.fail(path, r);
+      if (lowMemory(r)) {
+        // A snapshot too large for the node's free memory, such as a peer's
+        // whole tree, which its gateway subscribes to: the page is read in
+        // pieces, and the subscription tried again after 5, 10, 20, 40 s.
+        a.next = Date.now() + RETRY_MS * 2 ** Math.min(a.tries++, 3);
+        await this.readInPieces(a.spec);
+      } else if (!['timeout', 'disconnected', 'busy'].includes(r.status)) this.store.fail(path, r);
     }
   }
 
@@ -181,7 +191,7 @@ export class Subscriptions {
   private async read(spec: SubSpec): Promise<Reply> {
     const r = await this.client().request({ op: 'get', path: spec.path, keys: spec.keys, depth: spec.depth });
     if (r.status === 'ok') this.store.apply(spec.path, r.body);
-    else if (r.status === 'too_large') await this.readInPieces(spec);
+    else if (r.status === 'too_large' || lowMemory(r)) await this.readInPieces(spec);
     return r;
   }
 
@@ -200,10 +210,10 @@ export class Subscriptions {
 }
 
 // `busy` for a reason that passes: a peer that can't be reached, too many
-// forwarded calls at once, a full queue. Any other `busy` is the node's
+// forwarded calls at once, a full queue, not enough memory for the reply. Any other `busy` is the node's
 // subscription limit.
 function transient(r: Reply): boolean {
-  return /couldn't send|pending|queue/.test(String((r.body as { message?: string } | null)?.message));
+  return /couldn't send|pending|queue|memory/.test(String((r.body as { message?: string } | null)?.message));
 }
 
 function mergeSpecs(a: SubSpec, b: SubSpec): SubSpec {

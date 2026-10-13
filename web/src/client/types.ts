@@ -71,6 +71,10 @@ export function errorBody(r: Reply): ErrorBody {
   return b && typeof b === 'object' && typeof b.error === 'string' ? b : { error: r.status };
 }
 
+// A node short of memory for this reply (TesserAPI dba7c1f: "not enough
+// memory for the response"): it may fit later, or in smaller pieces.
+export const lowMemory = (r: Reply) => r.status === 'busy' && /memory/.test(errorBody(r).message ?? '');
+
 export function errorText(r: Reply, t: (text: string) => string = (x) => x): string {
   const b = errorBody(r);
   const text = b.message || b.error.replace(/_/g, ' ');

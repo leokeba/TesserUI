@@ -4,7 +4,7 @@
 import { bleLink, EnvelopeClient, serialLink, webSocketLink } from '../client/envelope';
 import { HttpClient } from '../client/http';
 import { isObject } from '../client/json';
-import { errorText, type Client, type ConnState, type Notification, type Reply, type Request } from '../client/types';
+import { errorText, lowMemory, type Client, type ConnState, type Notification, type Reply, type Request } from '../client/types';
 import type { Firmware } from '../flash/firmware';
 import { toastKind, visiblePaths, type Item, type Leaf, type Page, type Section } from '../model/model';
 import { isCut, isUnder, joinPath, mergeSchema, parentPath, rank, remoteOf, schemaAt, segments, type Level, type Schema } from '../model/schema';
@@ -544,13 +544,16 @@ export class Session {
   }
 
   // A gateway forwards at most maxPending requests at once (TesserAPI's
-  // default: 4) and answers `busy` beyond: schema reads wait and retry.
-  private async ask(r: Request): Promise<Reply> {
+  // default: 4) and answers `busy` beyond: schema reads wait and retry. So
+  // they do when the node has no memory for the reply (TesserAPI dba7c1f),
+  // longer, unless `split`: the caller asks for less instead.
+  private async ask(r: Request, split = false): Promise<Reply> {
     for (let attempt = 0; ; attempt++) {
       const reply = await this.client.request(r);
+      const memory = !split && lowMemory(reply);
       const pendingLimit = reply.status === 'busy' && /pending/.test(String((reply.body as { message?: string } | null)?.message));
-      if (!pendingLimit || attempt === 4) return reply;
-      await new Promise((done) => setTimeout(done, 200 * (attempt + 1)));
+      if (!(pendingLimit || memory) || attempt === 4) return reply;
+      await new Promise((done) => setTimeout(done, memory ? 500 * 2 ** attempt : 200 * (attempt + 1)));
     }
   }
 
@@ -569,8 +572,9 @@ export class Session {
         return true;
       }
     }
-    const r = await this.ask({ op: 'get', path, view: 'schema', depth });
-    if (r.status === 'too_large' && depth > 1) {
+    const r = await this.ask({ op: 'get', path, view: 'schema', depth }, depth > 1);
+    // Too large for a response, or for the node's memory: a level at a time.
+    if ((r.status === 'too_large' || lowMemory(r)) && depth > 1) {
       if (!(await this.fetchSchema(path, 1, quiet))) return false;
       const s = this.schemaAt(path);
       const tree = s?.type === 'remote' ? s.tree : s;
@@ -580,7 +584,7 @@ export class Session {
       return true;
     }
     if (r.status !== 'ok') {
-      if (!quiet && r.status !== 'timeout' && r.status !== 'disconnected') this.store.fail(path, r);
+      if (!quiet && r.status !== 'timeout' && r.status !== 'disconnected' && !lowMemory(r)) this.store.fail(path, r);
       return false;
     }
     this.merge(path, r.body as Schema);
