@@ -213,19 +213,21 @@ const server = createServer(async (req, res) => {
     const n = nodes.get(decodeURIComponent(m[1]));
     if (!n) return res.writeHead(404, h).end();
     if (!m[2] && !['GET', 'HEAD'].includes(req.method)) return res.writeHead(405, h).end();
-    const body = ['GET', 'HEAD'].includes(req.method) ? undefined : Buffer.concat(await Array.fromAsync(req));
-    // The node has 30 s to answer; the body then flows as long as it lasts
-    // (a streamed subscription: hours), until the browser goes away.
+    // The node has 30 s to answer, from the last byte of the request it took;
+    // its answer then flows as long as it lasts (a streamed subscription:
+    // hours), until the browser goes away.
     const ctl = new AbortController();
-    const timer = setTimeout(() => ctl.abort(), 30000);
+    let timer, answered;
+    const wait = (ms) => (clearTimeout(timer), answered || (timer = setTimeout(() => ctl.abort(), ms)));
     res.on('close', () => ctl.abort());
     try {
       const r = await fetch(`http://${n.id}${m[2] ? n.api : ''}${m[3] ?? (m[2] ? '' : '/')}${url.search}`, {
         method: req.method,
-        headers: Object.fromEntries(['authorization', 'content-type'].filter((k) => req.headers[k]).map((k) => [k, req.headers[k]])),
-        body,
+        headers: Object.fromEntries(['authorization', 'content-type', 'content-length'].filter((k) => req.headers[k]).map((k) => [k, req.headers[k]])),
+        ...(await requestBody(req, wait)),
         signal: ctl.signal,
       });
+      answered = true;
       clearTimeout(timer);
       // fetch() decodes a gzipped body: its length is no longer the node's.
       const keep = ['content-type', 'content-disposition', 'cache-control', ...(r.headers.get('content-encoding') ? [] : ['content-length'])];
@@ -280,6 +282,35 @@ const server = createServer(async (req, res) => {
   }
   res.writeHead(404, h).end();
 });
+
+// A request's body for the node: streamed through, so a firmware upload
+// (1.7 MB at 50-70 KB/s over the node's Wi-Fi, after an erase) goes as the
+// node takes it, each piece starting the node's 30 s again, and a minute
+// after the last (the system's buffers may still hold seconds of it, then the
+// node checks the image). A node reads no chunked body (esp_http_server), and
+// Bun's fetch sends a stream chunked even with a Content-Length (Bun 1.3.6):
+// there it is read whole first, and the node has the time to take it at 8 KB/s.
+const REPLY_MS = 30000;
+async function requestBody(req, wait) {
+  if (['GET', 'HEAD'].includes(req.method)) return wait(REPLY_MS), {};
+  if (globalThis.Bun || !req.headers['content-length']) {
+    const body = Buffer.concat(await Array.fromAsync(req));
+    wait(2 * REPLY_MS + body.length / 8);
+    return { body };
+  }
+  wait(REPLY_MS);
+  const chunks = req[Symbol.asyncIterator]();
+  const body = new ReadableStream({
+    async pull(c) {
+      const { done, value } = await chunks.next();
+      wait(done ? 2 * REPLY_MS : REPLY_MS);
+      if (done) c.close();
+      else c.enqueue(new Uint8Array(value));
+    },
+    cancel: () => req.destroy(),
+  });
+  return { body, duplex: 'half' };
+}
 
 // WebSockets: /n/<id>/ws to a node's, /s/<path> to a serial port.
 const wss = new WebSocketServer({ noServer: true });
