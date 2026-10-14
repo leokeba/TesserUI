@@ -5,6 +5,7 @@ import type { Client, ConnState, Notification, Reply, Request } from '../src/cli
 export class FakeClient implements Client {
   kind = 'ws' as const;
   subscribes = true;
+  protocol?: number;
   sent: Request[] = [];
   held: { req: Request; resolve: (r: Reply) => void }[] = [];
   answer: ((r: Request) => Reply | undefined) | null = null;
@@ -12,7 +13,8 @@ export class FakeClient implements Client {
 
   request(r: Request): Promise<Reply> {
     this.sent.push(r);
-    const a = this.answer?.(r);
+    // A node predates view=info (protocol 1) unless the test says otherwise.
+    const a = this.answer?.(r) ?? (r.view === 'info' ? { status: 'bad_request', body: { error: 'bad_request', message: 'view must be value, schema or hash' } } : undefined);
     if (a) return Promise.resolve(a);
     return new Promise((resolve) => this.held.push({ req: r, resolve }));
   }

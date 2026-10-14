@@ -2,7 +2,7 @@
 // this keeps at most 3 subscriptions on the client and polls the rest (or
 // everything, over plain HTTP), plus one for the tree's events.
 
-import { lowMemory, type Client, type Reply, type Request } from '../client/types';
+import { lowMemory, reason, type Client, type Reply, type Request } from '../client/types';
 import { isUnder, segments } from '../model/schema';
 import type { Store } from './store.svelte';
 
@@ -236,9 +236,11 @@ export class Subscriptions {
     this.events = 'on';
     const r = await this.client().request(EVENTS);
     if (this.events !== 'on' || r.status === 'ok') return;
-    // Refused (the node's streams, held by other pages): again in a minute.
+    // Not to be had (a transport that can't deliver them; firmware without
+    // streams): not asked for again on this node. Refused (its streams, held
+    // by other pages): again in a minute.
     const passing = ['timeout', 'disconnected'].includes(r.status) || (r.status === 'busy' && transient(r));
-    this.events = 'failed';
+    this.events = r.status === 'not_allowed' ? 'none' : 'failed';
     this.eventsAt = Date.now() + (passing ? 0 : 60000);
   }
 
@@ -271,11 +273,10 @@ export class Subscriptions {
 const hidden = () => !!globalThis.document?.hidden;
 
 // `busy` for a reason that passes: a peer that can't be reached, too many
-// forwarded calls at once, a full queue, not enough memory for the reply. Any other `busy` is the node's
-// subscription limit.
-function transient(r: Reply): boolean {
-  return /couldn't send|pending|queue|memory/.test(String((r.body as { message?: string } | null)?.message));
-}
+// forwarded calls at once, a full queue, not enough memory for the reply.
+// Any other `busy` is the node's subscription limit (subscription_limit), or
+// a file transfer holding the path.
+const transient = (r: Reply) => ['low_memory', 'pending_limit', 'queue_full', 'unreachable'].includes(reason(r));
 
 function mergeSpecs(a: SubSpec, b: SubSpec): SubSpec {
   const keys = a.keys && b.keys ? [...new Set([...a.keys.split(','), ...b.keys.split(',')])].join(',') : undefined;

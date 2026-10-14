@@ -4,7 +4,7 @@
 import { bleLink, EnvelopeClient, serialLink, webSocketLink } from '../client/envelope';
 import { HttpClient } from '../client/http';
 import { isObject } from '../client/json';
-import { errorText, lowMemory, type Client, type ConnState, type Notification, type Reply, type Request } from '../client/types';
+import { errorText, lowMemory, reason, type Client, type ConnState, type Notification, type Reply, type Request } from '../client/types';
 import type { Firmware } from '../flash/firmware';
 import { toastKind, visiblePaths, type Item, type Leaf, type Page, type Section } from '../model/model';
 import { isCut, isUnder, joinPath, mergeSchema, parentPath, rank, remoteOf, schemaAt, segments, type Level, type Schema } from '../model/schema';
@@ -350,13 +350,21 @@ export class Session {
   }
 
   // What the node is, read on every connection: the hash of its schema for
-  // this client, and its device's id (TesserAPI §14).
+  // this client, and its device's id (TesserAPI §14), with its protocol, in
+  // its view=info (§10.1.2). A node that predates it (bad_request: protocol
+  // 1) is asked for its view=hash and its root at depth 0.
   private identity = '';
   private async identify(): Promise<string> {
-    const h = await this.patient({ op: 'get', path: '/', view: 'hash' });
-    const s = await this.client.request({ op: 'get', path: '/', view: 'schema', depth: 0 });
-    this.rootHash = h.status === 'ok' && typeof h.body === 'string' ? h.body : null;
-    return JSON.stringify([this.rootHash, (s.body as Schema | null)?.id]);
+    const r = await this.patient({ op: 'get', path: '/', view: 'info' });
+    let info = r.status === 'ok' ? (r.body as { protocol?: number; hash?: unknown; id?: string }) : null;
+    if (r.status === 'bad_request') {
+      const h = await this.patient({ op: 'get', path: '/', view: 'hash' });
+      const s = await this.client.request({ op: 'get', path: '/', view: 'schema', depth: 0 });
+      info = { protocol: 1, hash: h.status === 'ok' && h.body, id: (s.body as Schema | null)?.id };
+    }
+    this.client.protocol = info?.protocol;
+    this.rootHash = typeof info?.hash === 'string' ? info.hash : null;
+    return JSON.stringify([this.rootHash, info?.id]);
   }
 
   private async load() {
@@ -581,7 +589,7 @@ export class Session {
     for (let attempt = 0; ; attempt++) {
       const reply = await this.client.request(r);
       const memory = !split && lowMemory(reply);
-      const pendingLimit = reply.status === 'busy' && /pending/.test(String((reply.body as { message?: string } | null)?.message));
+      const pendingLimit = reply.status === 'busy' && reason(reply) === 'pending_limit';
       if (!(pendingLimit || memory) || attempt === 4) return reply;
       await new Promise((done) => setTimeout(done, memory ? 500 * 2 ** attempt : 200 * (attempt + 1)));
     }

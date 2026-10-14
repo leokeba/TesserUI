@@ -64,6 +64,13 @@ describe('HTTP: the events stream', () => {
     expect((await c.request(EVENTS)).status).toBe('not_allowed');
   });
 
+  it('takes it for an error from a node at protocol 2, which has streams', async () => {
+    answers.push(() => new Response('{"a":1}', { headers: { 'Content-Type': 'application/json' } }));
+    const c = new HttpClient('http://node.local/api', () => null);
+    c.protocol = 2;
+    expect((await c.request(EVENTS)).status).toBe('internal');
+  });
+
   it("passes the node's refusal on", async () => {
     answers.push(() => new Response('{"error":"busy","message":"too many subscriptions"}', { status: 503 }));
     const c = new HttpClient('http://node.local/api', () => null);

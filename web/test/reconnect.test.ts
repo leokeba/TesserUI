@@ -28,7 +28,7 @@ describe('snapshots replace what they cover (DESIGN §7.3)', () => {
 
 });
 
-describe('reconnection (DESIGN §7.3)', () => {
+describe.each([1, 2])('reconnection, protocol %i (DESIGN §7.5)', (protocol) => {
   afterEach(() => vi.unstubAllGlobals());
 
   function node() {
@@ -47,6 +47,8 @@ describe('reconnection (DESIGN §7.3)', () => {
     };
     const client = new FakeClient();
     client.answer = (r: Request) => {
+      // Protocol 2: view=info; 1: view=hash and the root at depth 0.
+      if (r.view === 'info') return protocol > 1 ? { status: 'ok', body: { protocol, features: ['info'], hash: dev.hash, id: dev.id } } : { status: 'bad_request', body: { error: 'bad_request' } };
       if (r.view === 'hash') return { status: 'ok', body: dev.hash };
       if (r.view === 'schema') return { status: 'ok', body: r.depth === 0 ? { type: 'object', id: dev.id } : { ...dev.tree, id: dev.id } };
       if (r.op === 'get' || r.op === 'sub') return { status: 'ok', body: dev.values };
@@ -74,11 +76,12 @@ describe('reconnection (DESIGN §7.3)', () => {
     await settle();
     expect(s.loaded).toBe(true);
     expect(client.sent.map((r) => [r.op, r.view ?? null])).toEqual([
-      ['get', 'hash'],
-      ['get', 'schema'],
+      ['get', 'info'],
+      ...(protocol > 1 ? [] : [['get', 'hash'], ['get', 'schema']]),
       ['sub', null],
       ['sub', null],
     ]);
+    expect(client.protocol).toBe(protocol);
   });
 
   it('reads everything again after a new firmware (another hash)', async () => {

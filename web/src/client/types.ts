@@ -10,7 +10,7 @@ export interface Request {
   depth?: number;
   keys?: string;
   exclude?: string;
-  view?: 'value' | 'schema' | 'hash';
+  view?: 'value' | 'schema' | 'hash' | 'info';
   remotes?: boolean;
   interval?: number;
   events?: boolean;
@@ -35,6 +35,8 @@ export interface Reply {
 
 export interface ErrorBody {
   error: string;
+  // Why, by code, from protocol 2 (TesserAPI §10.1.2).
+  reason?: string;
   path?: string;
   message?: string;
   partial?: boolean;
@@ -53,6 +55,9 @@ export interface Client {
   readonly kind: 'ws' | 'http' | 'serial' | 'ble';
   // false for plain HTTP: the store polls instead.
   readonly subscribes: boolean;
+  // The node's protocol (TesserAPI §10.1.2), once read: 1 for one that
+  // predates view=info.
+  protocol?: number;
   // timeoutMs: REQUEST_TIMEOUT_MS by default; longer for deferred actions.
   request(r: Request, timeoutMs?: number): Promise<Reply>;
   onNotify(fn: (n: Notification) => void): void;
@@ -71,12 +76,24 @@ export function errorBody(r: Reply): ErrorBody {
   return b && typeof b === 'object' && typeof b.error === 'string' ? b : { error: r.status };
 }
 
-// A node short of memory for this reply (TesserAPI dba7c1f: "not enough
-// memory for the response"): it may fit later, or in smaller pieces.
-export const lowMemory = (r: Reply) => r.status === 'busy' && /memory/.test(errorBody(r).message ?? '');
+// Why a node refused: its error's reason (TesserAPI §10.1.2). An error
+// without one comes from a node that predates reasons (protocol 1, perhaps a
+// peer behind a newer gateway, which relays errors as they are): its message
+// tells the few that matter here.
+export function reason(r: Reply): string {
+  const b = errorBody(r);
+  const m = b.message ?? '';
+  return b.reason ?? (/memory/.test(m) ? 'low_memory' : /pending/.test(m) ? 'pending_limit' : /queue/.test(m) ? 'queue_full' : /couldn't send/.test(m) ? 'unreachable' : '');
+}
 
+// A node short of memory for this reply: it may fit later, or in smaller
+// pieces.
+export const lowMemory = (r: Reply) => r.status === 'busy' && reason(r) === 'low_memory';
+
+// A remote node too old to limit what a gateway's client may do
+// (ceiling_unsupported, TesserAPI §13.1) says how to reach it again.
 export function errorText(r: Reply, t: (text: string) => string = (x) => x): string {
   const b = errorBody(r);
-  const text = b.message || b.error.replace(/_/g, ' ');
+  const text = b.reason === 'ceiling_unsupported' ? t("Only an admin reaches this node through a gateway until its firmware is updated") : b.message || b.error.replace(/_/g, ' ');
   return b.partial ? `${text} (${t('some changes were applied')})` : text;
 }

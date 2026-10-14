@@ -24,6 +24,7 @@ const BACKOFF_MS = [1000, 2000, 5000, 10000, 30000];
 export class HttpClient implements Client {
   readonly kind = 'http';
   readonly subscribes = false;
+  protocol?: number;
   private stateFns: ((s: ConnState) => void)[] = [];
   private notify: ((n: Notification) => void)[] = [];
   // The stream of the one subscription, and a count of every sub and unsub,
@@ -102,10 +103,11 @@ export class HttpClient implements Client {
       if (r.op === 'sub' && res.ok) {
         clearTimeout(timer);
         this.setState('open');
-        // Firmware without streams answers the value: no subscription.
+        // Firmware without streams answers the value: no subscription. From
+        // protocol 2 on, every node has them: anything else is an error.
         if (!/ndjson/.test(res.headers.get('content-type') ?? '') || !res.body) {
           ctl.abort();
-          return { status: 'not_allowed', body: null };
+          return { status: this.protocol! > 1 ? 'internal' : 'not_allowed', body: null };
         }
         this.read(res.body, ctl, r);
         return { status: 'ok', body: null };

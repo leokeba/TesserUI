@@ -525,3 +525,44 @@ describe('apply to all, while dragging (DESIGN §6.6)', () => {
     expect(applied).toEqual([10]);
   });
 });
+
+describe('error reasons (TesserAPI §10.1.2)', () => {
+  const busy = (body: object) => ({ status: 'busy', body: { error: 'busy', ...body } });
+
+  it('come from the reason, else from an older node’s message', async () => {
+    const { reason, lowMemory } = await import('../src/client/types');
+    expect(reason(busy({ reason: 'low_memory', message: 'reworded' }))).toBe('low_memory');
+    expect(reason(busy({ message: 'not enough memory for the response' }))).toBe('low_memory');
+    expect(reason(busy({ message: 'too many pending requests' }))).toBe('pending_limit');
+    expect(reason(busy({ message: 'queue full' }))).toBe('queue_full');
+    expect(reason(busy({ message: "couldn't send to the remote node" }))).toBe('unreachable');
+    // A reason wins over the words: no inference from a newer node's message.
+    expect(lowMemory(busy({ reason: 'subscription_limit', message: 'no memory for more subscriptions' }))).toBe(false);
+    expect(reason(busy({}))).toBe('');
+  });
+
+  it('tell a node too old for a gateway’s ceiling to be updated', async () => {
+    const { errorText } = await import('../src/client/types');
+    expect(errorText({ status: 'unauthorized', body: { error: 'unauthorized', reason: 'ceiling_unsupported', message: 'remote node too old' } })).toMatch(/firmware is updated/);
+  });
+
+  it('decide between waiting and polling', async () => {
+    vi.useFakeTimers();
+    const { client, store } = setup();
+    let body: object = { reason: 'pending_limit' };
+    client.answer = (r) => (r.op === 'sub' && r !== EVENTS ? busy(body) : { status: 'ok', body: {} });
+    const subs = new Subscriptions(() => client, store);
+    // Passing: tried again as a subscription, not polled.
+    subs.want([{ path: '/a' }]);
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(client.sent.filter((r) => r.op === 'get')).toHaveLength(0);
+    subs.stop();
+    // The node's limit: polled meanwhile.
+    body = { reason: 'subscription_limit' };
+    const polled = new Subscriptions(() => client, store);
+    polled.want([{ path: '/b' }]);
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(client.sent.filter((r) => r.op === 'get' && r.path === '/b').length).toBeGreaterThan(1);
+    polled.stop();
+  });
+});
