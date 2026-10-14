@@ -5,6 +5,9 @@
     nodes: { id: string; device: string | null; label: string; host: string; api: string; ws: string | null }[];
     ports: { path: string; name: string; ws: string }[];
   }
+
+  // The bridge as a macOS executable, on the latest release (bridge/scripts/macos.mjs).
+  const BRIDGE = 'https://github.com/leokeba/TesserUI/releases/latest/download/tesserui-bridge-macos-';
 </script>
 
 <script lang="ts">
@@ -90,7 +93,8 @@
     {#if nearby}
       {nearby.nodes.length ? t('The nodes the bridge finds are tabs, live in any browser.') : t('The bridge finds no node yet.')}
     {:else}
-      {t('The bridge finds the nodes on your network (mDNS) and serves them live:')} <code>npx tesserui-bridge</code>
+      {t('The bridge finds the nodes on your network (mDNS) and serves them live:')} <code>npx tesserui-bridge</code>,
+      {t('or for macOS:')} <a href="{BRIDGE}arm64.zip">Apple silicon</a>, <a href="{BRIDGE}x64.zip">Intel</a>
     {/if}
   </p>
   {#if !nearby}

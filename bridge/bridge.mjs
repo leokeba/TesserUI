@@ -17,7 +17,7 @@
 //   tesserui-bridge [--port 8765] [--origin https://example.com]... [--node host[:port]]...
 //                   [--no-mdns] [--no-serial]
 
-import { createReadStream, existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { Readable } from 'node:stream';
 import { WebSocket, WebSocketServer } from 'ws';
@@ -122,8 +122,11 @@ async function listing() {
   };
 }
 
-// The launcher's own files, from this package (ui/) or the repository's build.
-const ui = [new URL('./ui/', import.meta.url), new URL('../web/dist/', import.meta.url)].find((u) => existsSync(new URL('ui.js', u)));
+// The launcher's own files: built into the executable (scripts/macos.mjs),
+// else from this package (ui/) or the repository's build.
+const dir = [new URL('./ui/', import.meta.url), new URL('../web/dist/', import.meta.url)].find((u) => existsSync(new URL('ui.js', u)));
+const builtIn = globalThis.tesseruiLauncher;
+const ui = builtIn ? (name) => builtIn[name] : dir && ((name) => readFileSync(new URL(name, dir), 'utf8'));
 
 function cors(origin) {
   return origin
@@ -178,11 +181,11 @@ const server = createServer(async (req, res) => {
 
   if (ui && (url.pathname === '/ui.js' || url.pathname === '/launcher.js')) {
     res.writeHead(200, { 'Content-Type': 'text/javascript', 'Cache-Control': 'no-cache' });
-    return createReadStream(new URL(url.pathname.slice(1), ui)).pipe(res);
+    return res.end(ui(url.pathname.slice(1)));
   }
   // The launcher, told that its own origin is the bridge.
   if (ui && url.pathname === '/') {
-    const page = readFileSync(new URL('index.html', ui), 'utf8').replace('<head>', '<head><meta name="tesserui-bridge" content="">');
+    const page = ui('index.html').replace('<head>', '<head><meta name="tesserui-bridge" content="">');
     return res.writeHead(200, { 'Content-Type': 'text/html', 'Cache-Control': 'no-cache' }).end(page);
   }
   res.writeHead(404, h).end();

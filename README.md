@@ -9,7 +9,7 @@ User interfaces for [TesserAPI](https://github.com/leokeba/TesserAPI) nodes, ren
 
 > **Status: early development.** The web renderer is complete enough for real devices: self-hosted, UI hosts over ESP-NOW, stub pages, the launcher (USB, Bluetooth, network), views, charts, forms, files, notifications, custom elements and embedding. The LVGL touchscreen renderer is not started. The API will change before 1.0; the specification is [docs/DESIGN.md](docs/DESIGN.md).
 >
-> The npm packages (`tesserui`, `tesserui-bridge`) are not published yet. Until they are, run the bridge from this repository (`node bridge/bridge.mjs`), and point stub pages at the launcher's copy of the bundle (`https://leokeba.github.io/TesserUI/ui.js`) or at a UI host.
+> The npm packages (`tesserui`, `tesserui-bridge`) are not published yet. Until they are, run the bridge from this repository (`node bridge/bridge.mjs`) or download it for macOS (below), and point stub pages at the launcher's copy of the bundle (`https://leokeba.github.io/TesserUI/ui.js`) or at a UI host.
 
 ## At a glance
 
@@ -110,6 +110,8 @@ The launcher at <https://leokeba.github.io/TesserUI/> opens any node, with no UI
 It holds several nodes at once, each a tab, with the nodes a gateway mounts as tabs of their own; one device reached several ways is one tab. It remembers them and opens them again on your next visit (a USB port this page was given opens by itself, which resets most devkits). *Apply to all*, in the header, sends each change you make on one node to every other node with the same setting ([DESIGN.md §6.6](docs/DESIGN.md#66-apply-to-all-web)).
 
 To find the nodes on your network, run the bridge next to it: `node bridge/bridge.mjs` (`npx tesserui-bridge` once published). It finds the nodes that announce themselves over mDNS (`http.advertise("name", "name")`), which join the launcher as tabs, serves them live in any browser, brings serial ports to browsers without Web Serial, and serves the launcher itself at <http://localhost:8765/>.
+
+On a Mac, the bridge also comes as a single executable, with nothing to install: download it for [Apple silicon](https://github.com/leokeba/TesserUI/releases/latest/download/tesserui-bridge-macos-arm64.zip) or [Intel](https://github.com/leokeba/TesserUI/releases/latest/download/tesserui-bridge-macos-x64.zip), unzip it and double-click `tesserui-bridge`, which runs in a Terminal window until you close it. It isn't notarized: macOS refuses it the first time, then *System Settings › Privacy & Security* offers *Open Anyway* (or run `xattr -d com.apple.quarantine tesserui-bridge` once). It has no serial ports; Chrome and Edge reach those by themselves. Build it with `pnpm macos` in `bridge/` ([Bun](https://bun.sh) and `pnpm build` in `web/` first).
 
 ## Views
 
