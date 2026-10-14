@@ -193,4 +193,30 @@ describe('schema cache (DESIGN §7.2)', () => {
     hash = '99999999';
     expect((await open()).schemaReads).toBe(1);
   });
+
+  it('keeps each node’s entries to itself', async () => {
+    const saved = new Map<string, string>();
+    vi.stubGlobal('localStorage', {
+      getItem: (k: string) => saved.get(k) ?? null,
+      setItem: (k: string, v: string) => void saved.set(k, v),
+      removeItem: (k: string) => void saved.delete(k),
+    });
+    vi.stubGlobal('location', new URL('https://launcher.example/'));
+    const open = async (api: string, tree: Schema) => {
+      const client = new FakeClient();
+      client.answer = (r: Request) => (r.view === 'hash' ? { status: 'ok', body: 'samehash' } : r.view === 'schema' ? { status: 'ok', body: tree } : undefined);
+      const s = new Session({ api, ws: '/ws', transport: 'ws', launcher: true });
+      const internals = s as unknown as { use(c: FakeClient): void; load(): Promise<void> };
+      internals.use(client);
+      await internals.load();
+      return { s, schemaReads: client.sent.filter((r) => r.view === 'schema').length };
+    };
+    // A host on the LAN answers with the real node's hash: what it serves
+    // is cached under its own URL, never read for the real node.
+    await open('http://localhost:8091/n/192.168.1.66/api', { type: 'object', label: 'Planted', ui: { widget: 'x-evil', script: '/ext/evil.js' } });
+    const real = await open('http://localhost:8091/n/192.168.1.59/api', { type: 'object', label: 'Lamp' });
+    expect(real.schemaReads).toBe(1);
+    expect(real.s.root.label).toBe('Lamp');
+    expect((await open('http://localhost:8091/n/192.168.1.59/api', { type: 'object', label: 'Changed' })).schemaReads).toBe(0);
+  });
 });

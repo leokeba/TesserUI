@@ -117,6 +117,10 @@ export class Session {
 
   // A launcher talks to many nodes from one origin: each has its token.
   private tokenKey: string;
+  // The line's key: with the API's URL otherwise, the node this session
+  // talks to as far as the page knows. Its schemas are cached under it
+  // (DESIGN.md §7.2).
+  private lineKey = '';
 
   constructor(readonly config: Config) {
     this.tokenKey = 'tesserui:token' + (config.launcher ? ':' + this.apiUrl() : '');
@@ -255,6 +259,7 @@ export class Session {
 
   private useLine(key: string, client: Client) {
     this.tokenKey = `tesserui:token:${key}`;
+    this.lineKey = key;
     this.signedIn = !!this.token();
     this.use(client);
   }
@@ -564,11 +569,12 @@ export class Session {
   // Fetches the schema at `path`: from the local cache while its node's hash
   // holds (a peer's advertised one, else the node's view=hash; DESIGN.md
   // §7.2), else from the node, in pieces when it is too large for one
-  // response.
+  // response. Entries are the node's own (a peer's: its gateway's, at its
+  // path): another node can't plant one by answering with the same hash.
   async fetchSchema(path: string, depth: number, quiet = false): Promise<boolean> {
     const remote = remoteOf(this.root, path);
     const hash = remote ? remote.stub.schema : this.rootHash;
-    const cacheKey = hash && `tesserui:schema:${location.origin}:${hash}:${path.slice(remote?.path.length ?? 0) || '/'}:${depth}`;
+    const cacheKey = hash && 'tesserui:schema:' + JSON.stringify([this.lineKey || this.apiUrl(), remote?.path ?? '', hash, path.slice(remote?.path.length ?? 0) || '/', depth]);
     if (cacheKey) {
       const cached = storageGet(cacheKey);
       if (cached) {
