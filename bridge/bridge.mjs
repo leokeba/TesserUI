@@ -8,25 +8,37 @@
 //     reaches http:// and ws:// on localhost, which browsers trust, so nodes
 //     are live in every browser, not only Chromium's local network access.
 //   - Carries serial ports over WebSocket, for browsers without Web Serial.
-//   - Serves the launcher itself at /, when the bundle is at hand.
+//   - Serves the launcher itself at /, when the bundle is at hand, with the
+//     flasher (/flash/) and the firmware of a repository's latest GitHub
+//     releases (/firmware/), which a page can't download from GitHub.
 //
 // Only pages from allowed origins may use it (GitHub Pages, localhost, and
 // --origin), and it only reaches nodes it listed: a page can't use it to
 // reach anything else.
 //
 //   tesserui-bridge [--port 8765] [--origin https://example.com]... [--node host[:port]]...
-//                   [--no-mdns] [--no-serial]
+//                   [--page index.html] [--launcher https://leokeba.github.io/TesserUI/]
+//                   [--repo leokeba/TesserUI] [--no-mdns] [--no-serial]
+//
+// A project's executable (scripts/macos.mjs) builds in its own page,
+// launcher and repository, which these options override.
 
 import { existsSync, readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { Readable } from 'node:stream';
 import { WebSocket, WebSocketServer } from 'ws';
 import { browse } from './mdns.mjs';
+import { latestReleases, manifest } from './releases.mjs';
 
 const args = process.argv.slice(2);
 const values = (flag) => args.flatMap((a, i) => (a === flag ? [args[i + 1]] : []));
 const port = Number(values('--port')[0] ?? 8765);
-const origins = ['https://leokeba.github.io', ...values('--origin')];
+// What scripts/macos.mjs builds in: {name, launcher, repo, files}.
+const builtIn = globalThis.tesseruiBridge;
+const name = builtIn?.name ?? 'tesserui-bridge';
+const launcher = values('--launcher')[0] ?? builtIn?.launcher ?? 'https://leokeba.github.io/TesserUI/';
+const repo = values('--repo')[0] ?? builtIn?.repo ?? 'leokeba/TesserUI';
+const origins = [new URL(launcher).origin, 'https://leokeba.github.io', ...values('--origin')];
 const useMdns = !args.includes('--no-mdns');
 const useSerial = !args.includes('--no-serial');
 const version = '0.1.0';
@@ -122,11 +134,50 @@ async function listing() {
   };
 }
 
-// The launcher's own files: built into the executable (scripts/macos.mjs),
-// else from this package (ui/) or the repository's build.
+// The launcher's own files (index.html, ui.js, launcher.js, flash/*.js):
+// built into the executable, else from this package (ui/) or the
+// repository's build, the page from --page.
 const dir = [new URL('./ui/', import.meta.url), new URL('../web/dist/', import.meta.url)].find((u) => existsSync(new URL('ui.js', u)));
-const builtIn = globalThis.tesseruiLauncher;
-const ui = builtIn ? (name) => builtIn[name] : dir && ((name) => readFileSync(new URL(name, dir), 'utf8'));
+const page = values('--page')[0];
+function ui(file) {
+  if (builtIn) return builtIn.files[file];
+  if (file === 'index.html' && page) return readFileSync(page, 'utf8');
+  if (dir && existsSync(new URL(file, dir))) return readFileSync(new URL(file, dir), 'utf8');
+}
+const types = { html: 'text/html', js: 'text/javascript' };
+
+// The firmware the launcher installs (DESIGN.md §9.7.1): the repository's
+// latest releases, as web/scripts/firmware.mjs copies them into a site. The
+// list is kept 5 minutes (GitHub's API allows 60 requests an hour without a
+// token), a stale one while GitHub fails; an image once fetched.
+let found = null;
+let foundAt = 0;
+let finding = null;
+function releases() {
+  if (found && Date.now() - foundAt < 300000) return found;
+  finding ??= latestReleases(repo, { token: process.env.GITHUB_TOKEN || process.env.GH_TOKEN })
+    .then((r) => ((foundAt = Date.now()), (found = r)))
+    .catch((e) => {
+      console.error('firmware:', e.message);
+      if (!found) throw e;
+      foundAt = Date.now() - 240000; // asked again in a minute
+      return found;
+    })
+    .finally(() => (finding = null));
+  return finding;
+}
+const images = new Map();
+function image(asset) {
+  if (!images.has(asset.url)) {
+    const got = fetch(asset.url).then(async (r) => {
+      if (!r.ok) throw new Error(`${asset.name}: ${r.status}`);
+      return Buffer.from(await r.arrayBuffer());
+    });
+    images.set(asset.url, got);
+    got.catch((e) => (console.error('firmware:', e.message), images.delete(asset.url)));
+  }
+  return images.get(asset.url);
+}
 
 function cors(origin) {
   return origin
@@ -179,14 +230,34 @@ const server = createServer(async (req, res) => {
     return;
   }
 
-  if (ui && (url.pathname === '/ui.js' || url.pathname === '/launcher.js')) {
-    res.writeHead(200, { 'Content-Type': 'text/javascript', 'Cache-Control': 'no-cache' });
-    return res.end(ui(url.pathname.slice(1)));
+  if (url.pathname === '/firmware/manifest.json') {
+    try {
+      const body = JSON.stringify(manifest(await releases()));
+      return res.writeHead(200, { ...h, 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' }).end(body);
+    } catch {
+      return res.writeHead(502, h).end();
+    }
   }
+  // Only the images the manifest lists.
+  const f = url.pathname.match(/^\/firmware\/([^/]+)\/([^/]+)$/);
+  if (f) {
+    try {
+      const [tag, file] = [decodeURIComponent(f[1]), decodeURIComponent(f[2])];
+      const asset = (await releases()).releases.find((r) => r.tag === tag)?.assets.find((a) => a.name === file);
+      if (!asset) return res.writeHead(404, h).end();
+      const body = await image(asset);
+      return res.writeHead(200, { ...h, 'Content-Type': 'application/octet-stream', 'Content-Length': body.length }).end(body);
+    } catch {
+      return res.writeHead(502, h).end();
+    }
+  }
+
   // The launcher, told that its own origin is the bridge.
-  if (ui && url.pathname === '/') {
-    const page = ui('index.html').replace('<head>', '<head><meta name="tesserui-bridge" content="">');
-    return res.writeHead(200, { 'Content-Type': 'text/html', 'Cache-Control': 'no-cache' }).end(page);
+  const file = url.pathname === '/' ? 'index.html' : url.pathname.slice(1);
+  const body = /^(index\.html|ui\.js|launcher\.js|flash\/[\w.-]+\.js)$/.test(file) && ui(file);
+  if (body) {
+    const text = file === 'index.html' ? body.replace('<head>', '<head><meta name="tesserui-bridge" content="">') : body;
+    return res.writeHead(200, { 'Content-Type': types[file.split('.').pop()], 'Cache-Control': 'no-cache' }).end(text);
   }
   res.writeHead(404, h).end();
 });
@@ -255,8 +326,8 @@ async function serial(ws, path) {
 }
 
 server.listen(port, '127.0.0.1', () => {
-  console.log(`tesserui-bridge ${version} on ${base}/  (nodes: ${base}/nodes)`);
-  console.log(`launcher: https://leokeba.github.io/TesserUI/${ui ? `  or ${base}/` : ''}`);
+  console.log(`${name} ${version} on ${base}/  (nodes: ${base}/nodes)`);
+  console.log(`launcher: ${launcher}${ui('index.html') ? `  or ${base}/` : ''}`);
 });
 if (useMdns) {
   discover();

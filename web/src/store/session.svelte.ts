@@ -44,6 +44,10 @@ export interface Config {
   launcher?: boolean;
   // Firmware the launcher installs over USB (§9.7.1), with flash.js.
   firmware?: Firmware;
+  // The bridge's macOS executables the launcher links to (§9.7): the latest
+  // release of `repo` has <name>-macos-arm64.zip and -x64.zip. Default:
+  // TesserUI's own.
+  bridge?: { repo: string; name: string };
 }
 
 export function storageGet(key: string): string | null {

@@ -1,0 +1,102 @@
+# The bridge as a macOS executable for each architecture, with a project's
+# launcher built in (bridge/scripts/macos.mjs), attached to one of the
+# project's releases: <name>-macos-arm64.zip and <name>-macos-x64.zip.
+# TesserUI's CI calls it for its own; another project calls it after its
+# release:
+#
+#   jobs:
+#     bridge:
+#       needs: release
+#       permissions:
+#         contents: write
+#       uses: leokeba/TesserUI/.github/workflows/bridge.yml@main
+#       with:
+#         page: pages/index.html
+#         name: tesserkit-bridge
+#         tag: v${{ needs.release.outputs.version }}
+#
+# The executable serves `page` with TesserUI's bundle and flasher, installs
+# the latest releases of `repo` (by default the caller's) from GitHub, and
+# names `launcher` (by default the caller's GitHub Pages). A launcher page
+# links to it with window.TESSER.bridge = {repo, name}. No release by that
+# tag (main moved on during the build): nothing is attached.
+name: Bridge executables
+
+on:
+  workflow_call:
+    inputs:
+      page:
+        description: The launcher's page in the caller's repository
+        type: string
+        required: true
+      name:
+        description: The executable's name, which begins the zips' names
+        type: string
+        required: true
+      tag:
+        description: The caller's release the zips go on
+        type: string
+        required: true
+      launcher:
+        description: The launcher's URL, also an origin allowed to use the bridge (default https://<owner>.github.io/<repo>/)
+        type: string
+        default: ''
+      repo:
+        description: The repository whose latest releases the page installs (default the caller)
+        type: string
+        default: ''
+      tesserui-ref:
+        description: The TesserUI commit the bridge, the bundle and the flasher come from
+        type: string
+        default: main
+
+jobs:
+  bridge:
+    # Bun signs ad hoc on macOS, and so does the script after it.
+    runs-on: macos-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          path: caller
+      - uses: actions/checkout@v5
+        with:
+          repository: leokeba/TesserUI
+          ref: ${{ inputs.tesserui-ref }}
+          path: TesserUI
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: TesserUI/web/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.6
+      - name: The launcher's bundle and flasher
+        working-directory: TesserUI/web
+        run: pnpm install --frozen-lockfile && pnpm build
+      - name: The executables
+        working-directory: TesserUI/bridge
+        env:
+          PAGE: ${{ inputs.page }}
+          NAME: ${{ inputs.name }}
+          LAUNCHER: ${{ inputs.launcher }}
+          REPO: ${{ inputs.repo }}
+        run: |
+          pnpm install --frozen-lockfile
+          owner=$(echo "${GITHUB_REPOSITORY%/*}" | tr A-Z a-z)
+          node scripts/macos.mjs --page "$GITHUB_WORKSPACE/caller/$PAGE" --name "$NAME" \
+            --launcher "${LAUNCHER:-https://$owner.github.io/${GITHUB_REPOSITORY#*/}/}" \
+            --repo "${REPO:-$GITHUB_REPOSITORY}" --out "$GITHUB_WORKSPACE/out"
+      - name: Attach to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            gh release upload "$TAG" out/*.zip --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            echo "::notice::no release $TAG: the executables aren't attached"
+          fi
