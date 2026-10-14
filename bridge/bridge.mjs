@@ -18,22 +18,23 @@
 //
 //   tesserui-bridge [--port 8765] [--origin https://example.com]... [--node host[:port]]...
 //                   [--page index.html] [--launcher https://leokeba.github.io/TesserUI/]
-//                   [--repo leokeba/TesserUI] [--no-mdns] [--no-serial]
+//                   [--repo leokeba/TesserUI] [--file [name=]path]... [--no-mdns] [--no-serial]
 //
-// A project's executable (scripts/macos.mjs) builds in its own page,
-// launcher and repository, which these options override.
+// A project's executable (scripts/macos.mjs) builds in its own page, files,
+// launcher and repository, which these options override (files add up).
 
 import { existsSync, readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { Readable } from 'node:stream';
 import { WebSocket, WebSocketServer } from 'ws';
+import { contentType, fileOption } from './files.mjs';
 import { browse } from './mdns.mjs';
 import { latestReleases, manifest } from './releases.mjs';
 
 const args = process.argv.slice(2);
 const values = (flag) => args.flatMap((a, i) => (a === flag ? [args[i + 1]] : []));
 const port = Number(values('--port')[0] ?? 8765);
-// What scripts/macos.mjs builds in: {name, launcher, repo, files}.
+// What scripts/macos.mjs builds in: {name, launcher, repo, files, extra}.
 const builtIn = globalThis.tesseruiBridge;
 const name = builtIn?.name ?? 'tesserui-bridge';
 const launcher = values('--launcher')[0] ?? builtIn?.launcher ?? 'https://leokeba.github.io/TesserUI/';
@@ -144,7 +145,16 @@ function ui(file) {
   if (file === 'index.html' && page) return readFileSync(page, 'utf8');
   if (dir && existsSync(new URL(file, dir))) return readFileSync(new URL(file, dir), 'utf8');
 }
-const types = { html: 'text/html', js: 'text/javascript' };
+
+// The project's own files beside its page (files.mjs): built in, base64, or
+// read from disk when asked.
+const extra = new Map(Object.entries(builtIn?.extra ?? {}).map(([n, data]) => [n, Buffer.from(data, 'base64')]));
+try {
+  for (const f of values('--file').map(fileOption)) extra.set(f.name, f.path);
+} catch (e) {
+  console.error(e.message);
+  process.exit(2);
+}
 
 // The firmware the launcher installs (DESIGN.md §9.7.1): the repository's
 // latest releases, as web/scripts/firmware.mjs copies them into a site. The
@@ -257,7 +267,16 @@ const server = createServer(async (req, res) => {
   const body = /^(index\.html|ui\.js|launcher\.js|flash\/[\w.-]+\.js)$/.test(file) && ui(file);
   if (body) {
     const text = file === 'index.html' ? body.replace('<head>', '<head><meta name="tesserui-bridge" content="">') : body;
-    return res.writeHead(200, { 'Content-Type': types[file.split('.').pop()], 'Cache-Control': 'no-cache' }).end(text);
+    return res.writeHead(200, { 'Content-Type': contentType(file), 'Cache-Control': 'no-cache' }).end(text);
+  }
+  const own = extra.get(decodeURIComponent(file));
+  if (own) {
+    try {
+      const data = typeof own === 'string' ? readFileSync(own) : own;
+      return res.writeHead(200, { ...h, 'Content-Type': contentType(file), 'Cache-Control': 'no-cache' }).end(data);
+    } catch {
+      // gone from the disk
+    }
   }
   res.writeHead(404, h).end();
 });

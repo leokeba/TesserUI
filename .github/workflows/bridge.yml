@@ -14,8 +14,13 @@
 #         page: pages/index.html
 #         name: tesserkit-bridge
 #         tag: v${{ needs.release.outputs.version }}
+#         files: |
+#           web/elements/midi.js
 #
-# The executable serves `page` with TesserUI's bundle and flasher, installs
+# The executable serves `page` with TesserUI's bundle and flasher, and
+# `files` beside it: paths in the caller's repository, one per line, each
+# served under its base name, or `name=path` (a name may have folders; the
+# bridge's own paths are refused: bridge/files.mjs). It installs
 # the latest releases of `repo` (by default the caller's) from GitHub, and
 # names `launcher` (by default the caller's GitHub Pages). A launcher page
 # links to it with window.TESSER.bridge = {repo, name}. No release by that
@@ -37,6 +42,10 @@ on:
         description: The caller's release the zips go on
         type: string
         required: true
+      files:
+        description: Files the page uses, served beside it, one per line (a path in the caller's repository, served under its base name, or name=path)
+        type: string
+        default: ''
       launcher:
         description: The launcher's URL, also an origin allowed to use the bridge (default https://<owner>.github.io/<repo>/)
         type: string
@@ -84,12 +93,23 @@ jobs:
           NAME: ${{ inputs.name }}
           LAUNCHER: ${{ inputs.launcher }}
           REPO: ${{ inputs.repo }}
+          FILES: ${{ inputs.files }}
         run: |
           pnpm install --frozen-lockfile
           owner=$(echo "${GITHUB_REPOSITORY%/*}" | tr A-Z a-z)
+          # Each file under its name, its path from the caller's checkout.
+          files=()
+          while IFS= read -r line; do
+            line=$(echo "$line" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
+            [ -z "$line" ] && continue
+            case "$line" in
+              *=*) files+=(--file "${line%%=*}=$GITHUB_WORKSPACE/caller/${line#*=}") ;;
+              *) files+=(--file "${line##*/}=$GITHUB_WORKSPACE/caller/$line") ;;
+            esac
+          done <<< "$FILES"
           node scripts/macos.mjs --page "$GITHUB_WORKSPACE/caller/$PAGE" --name "$NAME" \
             --launcher "${LAUNCHER:-https://$owner.github.io/${GITHUB_REPOSITORY#*/}/}" \
-            --repo "${REPO:-$GITHUB_REPOSITORY}" --out "$GITHUB_WORKSPACE/out"
+            --repo "${REPO:-$GITHUB_REPOSITORY}" --out "$GITHUB_WORKSPACE/out" ${files[@]+"${files[@]}"}
       - name: Attach to the release
         env:
           GH_TOKEN: ${{ github.token }}

@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 // The bridge as a macOS executable, for Macs without Node: Bun compiles
-// bridge.mjs with a project's launcher built in (its page, ui.js,
-// launcher.js and the flasher, from TesserUI's web/dist after `pnpm build`
-// there), its launcher's URL and the repository whose releases it installs.
+// bridge.mjs with a project's launcher built in (its page and its own files
+// beside it, ui.js, launcher.js and the flasher, from TesserUI's web/dist
+// after `pnpm build` there), its launcher's URL and the repository whose
+// releases it installs.
 // One file per architecture, each zipped so a download keeps it executable.
 // TesserUI's CI builds its own; .github/workflows/bridge.yml builds another
 // project's.
@@ -15,15 +16,18 @@
 //
 //   node scripts/macos.mjs [--page ../web/pages/index.html] [--name tesserui-bridge]
 //                          [--launcher https://leokeba.github.io/TesserUI/] [--repo leokeba/TesserUI]
-//                          [--ui ../web/dist] [--out dist]
+//                          [--file [name=]path]... [--ui ../web/dist] [--out dist]
 //
 // writes <out>/<name>-macos-arm64.zip and <out>/<name>-macos-x64.zip, each
 // holding the executable <name>. Paths are from the current directory.
+// --file (repeatable) builds in a file the page uses, served beside it as
+// <name>, by default its base name (files.mjs).
 
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { fileOption } from '../files.mjs';
 
 const here = fileURLToPath(new URL('../', import.meta.url));
 const args = process.argv.slice(2);
@@ -37,11 +41,18 @@ const launcher = option('launcher', 'https://leokeba.github.io/TesserUI/');
 const repo = option('repo', 'leokeba/TesserUI');
 const ui = resolve(option('ui', join(here, '../web/dist')));
 const out = resolve(option('out', join(here, 'dist')));
+let extraFiles;
+try {
+  extraFiles = args.flatMap((a, i) => (a === '--file' ? [fileOption(args[i + 1] ?? '')] : []));
+} catch (e) {
+  console.error(e.message);
+  process.exit(2);
+}
 if (!/^[\w.-]+$/.test(name) || !/^[\w.-]+\/[\w.-]+$/.test(repo)) {
   console.error('--name is a file name, --repo owner/repo');
   process.exit(2);
 }
-for (const f of [page, join(ui, 'ui.js'), join(ui, 'launcher.js'), join(ui, 'flash/flash.js')]) {
+for (const f of [page, ...extraFiles.map((f) => resolve(f.path)), join(ui, 'ui.js'), join(ui, 'launcher.js'), join(ui, 'flash/flash.js')]) {
   if (!existsSync(f)) {
     console.error(`${f} is missing${f.startsWith(ui) ? ': run pnpm build in web/ first' : ''}`);
     process.exit(1);
@@ -57,7 +68,8 @@ const build = join(here, 'build');
 rmSync(build, { recursive: true, force: true });
 mkdirSync(build, { recursive: true });
 mkdirSync(out, { recursive: true });
-writeFileSync(join(build, 'entry.mjs'), `globalThis.tesseruiBridge = ${JSON.stringify({ name, launcher, repo, files })};\nawait import('../bridge.mjs');\n`);
+const extra = Object.fromEntries(extraFiles.map((f) => [f.name, readFileSync(resolve(f.path)).toString('base64')]));
+writeFileSync(join(build, 'entry.mjs'), `globalThis.tesseruiBridge = ${JSON.stringify({ name, launcher, repo, files, extra })};\nawait import('../bridge.mjs');\n`);
 
 for (const arch of ['arm64', 'x64']) {
   const exe = join(build, arch, name);

@@ -15,6 +15,7 @@
   },
   "files": [
     "bridge.mjs",
+    "files.mjs",
     "mdns.mjs",
     "releases.mjs",
     "ui"
