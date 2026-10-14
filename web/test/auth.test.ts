@@ -184,7 +184,7 @@ describe('schema cache (DESIGN §7.2)', () => {
       const internals = s as unknown as { use(c: FakeClient): void; load(): Promise<void> };
       internals.use(client);
       await internals.load();
-      return { s, schemaReads: client.sent.filter((r) => r.view === 'schema').length };
+      return { s, schemaReads: client.sent.filter((r) => r.view === 'schema' && r.depth !== 0).length };
     };
     expect((await open()).schemaReads).toBe(1);
     const again = await open();
@@ -209,7 +209,7 @@ describe('schema cache (DESIGN §7.2)', () => {
       const internals = s as unknown as { use(c: FakeClient): void; load(): Promise<void> };
       internals.use(client);
       await internals.load();
-      return { s, schemaReads: client.sent.filter((r) => r.view === 'schema').length };
+      return { s, schemaReads: client.sent.filter((r) => r.view === 'schema' && r.depth !== 0).length };
     };
     // A host on the LAN answers with the real node's hash: what it serves
     // is cached under its own URL, never read for the real node.

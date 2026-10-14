@@ -183,11 +183,7 @@ export class Session {
   // again. The WebSocket authenticates on its handshake: it reconnects.
   private reload() {
     if (!this.client) return;
-    this.loaded = false;
-    this.views = {};
-    for (const k of Object.keys(this.root)) delete (this.root as unknown as Record<string, unknown>)[k];
-    this.root.type = 'object';
-    this.schemaVersion++;
+    this.forget();
     if (this.line()) {
       this.authLine().then(async () => {
         await this.load();
@@ -200,6 +196,14 @@ export class Session {
       // The events stream opens again with the new token.
       this.load().then(() => this.subs.renew(true));
     }
+  }
+
+  private forget() {
+    this.loaded = false;
+    this.views = {};
+    for (const k of Object.keys(this.root)) delete (this.root as unknown as Record<string, unknown>)[k];
+    this.root.type = 'object';
+    this.schemaVersion++;
   }
 
   start() {
@@ -320,7 +324,15 @@ export class Session {
       if (s !== 'open' || !wasDown) return;
       // The banner said it was lost.
       if (this.loaded) this.store.toasts.show(this.t('Connected again'), 'ok');
-      const go = () => (this.loaded ? this.subs.renew() : this.load());
+      // Another device at that address, or the same with new firmware (an
+      // update, a reboot): read again, as on the first connection.
+      const go = async () => {
+        if (this.loaded && (await this.identify()) === this.identity) return this.subs.renew();
+        this.forget();
+        this.subs.forget();
+        this.store.values = {};
+        this.load();
+      };
       // A line forgets its token when it reconnects.
       if (this.line() && this.token()) this.authLine().then(go);
       else go();
@@ -337,9 +349,18 @@ export class Session {
     return reply;
   }
 
-  private async load() {
+  // What the node is, read on every connection: the hash of its schema for
+  // this client, and its device's id (TesserAPI §14).
+  private identity = '';
+  private async identify(): Promise<string> {
     const h = await this.patient({ op: 'get', path: '/', view: 'hash' });
+    const s = await this.client.request({ op: 'get', path: '/', view: 'schema', depth: 0 });
     this.rootHash = h.status === 'ok' && typeof h.body === 'string' ? h.body : null;
+    return JSON.stringify([this.rootHash, (s.body as Schema | null)?.id]);
+  }
+
+  private async load() {
+    this.identity = await this.identify();
     if (!(await this.fetchSchema('/', 3))) return;
     this.findAuth();
     await this.whoami();
@@ -569,12 +590,13 @@ export class Session {
   // Fetches the schema at `path`: from the local cache while its node's hash
   // holds (a peer's advertised one, else the node's view=hash; DESIGN.md
   // §7.2), else from the node, in pieces when it is too large for one
-  // response. Entries are the node's own (a peer's: its gateway's, at its
-  // path): another node can't plant one by answering with the same hash.
+  // response. Entries are the node's own, by its address and identity (a
+  // peer's: its gateway's, at its path): another node can't plant one by
+  // answering with the same hash.
   async fetchSchema(path: string, depth: number, quiet = false): Promise<boolean> {
     const remote = remoteOf(this.root, path);
     const hash = remote ? remote.stub.schema : this.rootHash;
-    const cacheKey = hash && 'tesserui:schema:' + JSON.stringify([this.lineKey || this.apiUrl(), remote?.path ?? '', hash, path.slice(remote?.path.length ?? 0) || '/', depth]);
+    const cacheKey = hash && 'tesserui:schema:' + JSON.stringify([this.lineKey || this.apiUrl(), this.identity, remote?.path ?? '', hash, path.slice(remote?.path.length ?? 0) || '/', depth]);
     if (cacheKey) {
       const cached = storageGet(cacheKey);
       if (cached) {

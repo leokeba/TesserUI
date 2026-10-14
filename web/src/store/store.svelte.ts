@@ -74,13 +74,20 @@ export class Store {
     return key ? v.findIndex((e) => isObject(e) && e[key] === s) : s;
   }
 
-  // Applies a snapshot, a notification or a read-back rooted at `path`, as
-  // TesserAPI applies a set body: objects merge, everything else replaces.
+  // Applies a notification or a read-back rooted at `path`, as TesserAPI
+  // applies a set body: objects merge, everything else replaces.
   apply(path: string, body: unknown) {
     this.applyAt(segments(path), body);
   }
 
-  private applyAt(segs: string[], body: unknown) {
+  // A snapshot or a read of a subtree also removes what it covers but
+  // doesn't have (a node gone since), down to `depth` (objects below come as
+  // {}, cut) and, at the top, among `keys`.
+  snapshot(path: string, body: unknown, depth = Infinity, keys?: string) {
+    this.applyAt(segments(path), body, depth, keys?.split(','));
+  }
+
+  private applyAt(segs: string[], body: unknown, left = NaN, only?: string[]) {
     const path = '/' + segs.join('/');
     if (this.pending[path]) {
       this.confirmed.set(path, body);
@@ -89,7 +96,8 @@ export class Store {
     if (isObject(body)) {
       const cur = this.get(path);
       if (!isObject(cur)) this.setLocal(path, {});
-      for (const [k, v] of Object.entries(body)) this.applyAt([...segs, k], v);
+      else if (left > 0) for (const k in cur) if (!(k in body) && (!only || only.includes(k))) delete cur[k];
+      for (const [k, v] of Object.entries(body)) this.applyAt([...segs, k], v, left - 1);
       return;
     }
     this.setLocal(path, body);

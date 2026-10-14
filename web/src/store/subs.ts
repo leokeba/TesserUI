@@ -119,6 +119,13 @@ export class Subscriptions {
     return false;
   }
 
+  // A new node behind the connection (DESIGN.md §7.3): it has none of the
+  // subscriptions, and the page asks for its own again.
+  forget() {
+    this.active.clear();
+    this.events = 'off';
+  }
+
   stop() {
     const events = this.events;
     this.events = 'none';
@@ -161,7 +168,7 @@ export class Subscriptions {
     if (r.status === 'ok') {
       a.failed = false;
       a.tries = 0;
-      this.store.apply(path, r.body);
+      this.store.snapshot(path, r.body, depth, keys);
     } else if (r.status === 'not_allowed' || (r.status === 'busy' && !transient(r))) {
       // No subscription to be had here (budget, or below a list): poll.
       a.mode = 'poll';
@@ -190,7 +197,7 @@ export class Subscriptions {
 
   private async read(spec: SubSpec): Promise<Reply> {
     const r = await this.client().request({ op: 'get', path: spec.path, keys: spec.keys, depth: spec.depth });
-    if (r.status === 'ok') this.store.apply(spec.path, r.body);
+    if (r.status === 'ok') this.store.snapshot(spec.path, r.body, spec.depth, spec.keys);
     else if (r.status === 'too_large' || lowMemory(r)) await this.readInPieces(spec);
     return r;
   }
@@ -200,7 +207,7 @@ export class Subscriptions {
     const names = spec.keys ? spec.keys.split(',') : this.childNames(spec.path);
     for (const name of names) {
       const r = await this.client().request({ op: 'get', path: spec.path, keys: name, depth: spec.depth });
-      if (r.status === 'ok') this.store.apply(spec.path, r.body);
+      if (r.status === 'ok') this.store.snapshot(spec.path, r.body, spec.depth, name);
     }
   }
 

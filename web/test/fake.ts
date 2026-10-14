@@ -19,7 +19,14 @@ export class FakeClient implements Client {
   onNotify(fn: (n: Notification) => void) {
     this.notifyFns.push(fn);
   }
-  onState(_fn: (s: ConnState) => void) {}
+  private stateFns: ((s: ConnState) => void)[] = [];
+  onState(fn: (s: ConnState) => void) {
+    this.stateFns.push(fn);
+  }
+  // The link going down or opening (again).
+  state(s: ConnState) {
+    for (const fn of this.stateFns) fn(s);
+  }
   connect() {}
   close() {}
   push(n: Notification) {
