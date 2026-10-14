@@ -427,7 +427,7 @@ web/
   | `transport` | `ws`, `http`, or `serial` and `ble`, which wait for the user to choose a device (§9.7). |
   | `minVersion` | The oldest bundle the node accepts: older ones show a warning. |
   | `title` | The page title until the device's label is known. |
-  | `scripts` | Module scripts defining custom elements, resolved against the page (§9.8). |
+  | `scripts` | Module scripts defining custom elements, resolved against the page (§9.8): the only way to load one from another origin. |
   | `theme` | CSS variables without their `--`: `{"accent": "#d97706", "radius": "4px"}`. They apply in both color schemes. |
   | `strings` | The interface's text (§9.10). |
   | `path` | The path the UI starts from and doesn't go above: a subtree, or a peer. View pages show only when it is `/`. |
@@ -573,7 +573,8 @@ views.page("sky", "Sky").widget("x-sun-dial", "/sky");   // the same element as 
 
 - **Examples** (`examples/elements/`, served at `/ext/` by the host demo node): `sun-dial.js` (the sky and a target), `sky.js` (a heliostat's sky: sun, target, the mirror normal between them, named sources), `keyframes.js` (a keyframe editor over lists of `{t, value}`, with a playhead and the object's `start`, `stop` and `clear` actions). They are not part of the bundle.
 - **Naming:** `ui.widget` with a hyphen, the HTML rule for custom element names. It fits any node: a value, an action, a list, a custom node, or an object, which the element then draws whole (its subscription has no depth limit).
-- **Script:** a module script defining the element, from `ui.script` on the node (resolved against the node's API, so a UI host serves it for its peers; a path from the root, `/ext/x.js`, against the folder above the API: the node's root, `http://node/` for `http://node/api`, and the node's folder of the bridge's proxy for `…/n/<host>/api`. An API more than one level deep moves it: `/v1/api` takes `/v1/ext/x.js`) or from the page's `scripts` (resolved against the page). Each URL loads once per page. A node can serve it from flash with `WebUi::asset()`.
+- **Script:** a module script defining the element, from `ui.script` on the node (resolved against the node's API, so a UI host serves it for its peers; a path from the root, `/ext/x.js`, against the folder above the API: the node's root, `http://node/` for `http://node/api`, and the node's folder of the bridge's proxy for `…/n/<host>/api`. An API more than one level deep moves it: `/v1/api` takes `/v1/ext/x.js`) or from the page's `scripts` (resolved against the page). Each URL loads once per page.
+  - A script runs on the page's origin, which may hold tokens (a launcher keeps every saved node's), and a peer's schema reaches the page through its gateway. So `ui.script` is only a path on the node: no scheme, no `//`, no `%` or `\` (a server could decode them past the check), nothing that resolves outside the folder above the API, nor inside the API itself, whose answers a peer may shape (`/api/peers/<name>/files/x`). A refused script is logged and counts as one that failed to load: the inferred widget stands in. Scripts from elsewhere come only from the page's `scripts` (`web/src/widgets/script.ts`). A node can serve it from flash with `WebUi::asset()`.
 - **Properties** TesserUI sets, and updates as they change:
 
   | Property | Value |

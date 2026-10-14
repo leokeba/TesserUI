@@ -29,6 +29,7 @@
   import { useSession } from '../shared.svelte';
   import JsonView from './JsonView.svelte';
   import { widgetOf } from './registry';
+  import { nodeScript } from './script';
   import type { WidgetProps } from './types';
 
   let { leaf, value, set, disabled, id }: WidgetProps = $props();
@@ -72,13 +73,15 @@
   // The page's scripts resolve against the page; a node's (ui.script)
   // against the node, i.e. its API's URL, and a path from its root against
   // the folder above its API: the node's root, also behind the bridge's
-  // proxy (/n/<host>/api, DESIGN.md §9.8).
-  const nodeUrl = new URL('.', session.apiUrl());
+  // proxy (/n/<host>/api, DESIGN.md §9.8). Only paths on the node: a URL
+  // elsewhere is refused, like a script that fails to load.
   // svelte-ignore state_referenced_locally
   const urls = [...(session.config.scripts ?? []).map((u) => new URL(u, location.href).href)];
   // svelte-ignore state_referenced_locally
   const script = leaf.script;
-  if (script) urls.push(new URL(script[0] === '/' ? '.' + script : script, nodeUrl).href);
+  const own = script && nodeScript(script, session.apiUrl());
+  if (own) urls.push(own);
+  else if (script) console.error(`<${tag}>: ui.script refused:`, script), (failed = !customElements.get(tag));
   for (const url of urls) load(url).then((ok) => ok || customElements.get(tag) || (failed = true));
   const timer = setTimeout(() => (failed = !customElements.get(tag)), 8000);
   customElements.whenDefined(tag).then(() => {
