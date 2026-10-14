@@ -6,9 +6,10 @@
   // tab (devices.ts).
   import App, { type Tab } from '../App.svelte';
   import { NUS_SERVICE } from '../client/envelope';
+  import { HttpClient } from '../client/http';
   import Connect from '../Connect.svelte';
   import { resolve, type Options } from '../embed';
-  import { parentPath } from '../model/schema';
+  import { parentPath, type Schema } from '../model/schema';
   import { Session, storageGet, storageSet } from '../store/session.svelte';
   import { onePerDevice } from './devices';
   import Ways, { type Nearby } from './Ways.svelte';
@@ -26,6 +27,12 @@
     saved: Saved | null;
     // Its route while another connection is shown.
     hash: string;
+    // Opened (a line is from the start). A node on the network isn't until
+    // it is shown, or apply to all reaches it: meanwhile its root is read
+    // every 30 s (`peek`), and it holds no WebSocket, subscription or
+    // events stream of the node's few (DESIGN.md §9.7.2).
+    live?: boolean;
+    peek?: { ok: boolean; label?: string; id?: string };
   }
   type Port = Parameters<Session['useSerial']>[0];
   type Device = Parameters<Session['useBle']>[0];
@@ -72,12 +79,29 @@
 
   // Apply to all reaches the other connections' nodes too (DESIGN.md §6.6).
   function setup(s: Session) {
-    s.others = (rel, body) => conns.filter((c) => c.session && c.session !== s).map((c) => c.session!.applyHere(rel, body));
+    s.others = (rel, body) => conns.filter((c) => c.live && c.session !== s).map((c) => c.session!.applyHere(rel, body));
   }
+
+  function open(c: Conn) {
+    if (c.live || !c.session) return;
+    c.live = true;
+    c.session.start();
+  }
+
+  async function peek(c: Conn) {
+    const s = c.session!;
+    const r = await new HttpClient(s.apiUrl(), () => s.token()).request({ op: 'get', path: '/', view: 'schema', depth: 0 }, 5000);
+    const b = r.status === 'ok' ? (r.body as Schema) : null;
+    if (!c.live) c.peek = { ok: !!b || r.status === 'unauthorized', label: b?.label, id: b?.id };
+  }
+  $effect(() => {
+    const timer = setInterval(() => conns.forEach((c) => c.session && !c.live && peek(c)), 30000);
+    return () => clearInterval(timer);
+  });
 
   function joined(s: Session, saved: Saved | null) {
     const key = saved?.key ?? `line:${++lines}`;
-    const c: Conn = { key, session: s, saved, hash: '' };
+    const c: Conn = { key, session: s, saved, hash: '', live: true };
     const i = conns.findIndex((x) => x.key === key);
     if (i < 0) conns.push(c);
     else conns[i] = { ...c, saved: { ...conns[i].saved, ...saved! } };
@@ -94,11 +118,12 @@
     const known = conns.find((c) => c.key === key);
     if (known) return known;
     const s = new Session(resolve({ ...options, api: url, ws, transport: undefined }));
-    s.start();
     setup(s);
     conns.push({ key, session: s, saved: saved ? { key, api: url, ws } : null, hash: '' });
     remember();
-    return conns[conns.length - 1];
+    const c = conns[conns.length - 1];
+    peek(c);
+    return c;
   }
 
   function remember() {
@@ -109,7 +134,7 @@
     const s = c.session;
     if (s?.loaded) return s.nodeLabel('/');
     const saved = c.saved;
-    return saved?.label ?? (saved && 'api' in saved ? new URL(saved.api).host : screen.t('Connecting…'));
+    return c.peek?.label ?? saved?.label ?? (saved && 'api' in saved ? new URL(saved.api).host : screen.t('Connecting…'));
   }
 
   // Shown: the others keep only their remote nodes' stubs watched, for the
@@ -121,6 +146,7 @@
       const s = was.session;
       s?.subs.want([...new Set(s.nodes().map(parentPath))].map((path) => ({ path, depth: 1 })));
     }
+    if (c) open(c);
     history.replaceState(null, '', hash ?? c?.hash ?? '#');
     if (c?.session) c.session.all = shown.all;
     active = c;
@@ -189,14 +215,16 @@
       }
     }
   });
-  // Apply to all, turned off: every connection's marks go.
+  // Apply to all, turned on, reaches every connection: each opens. Turned
+  // off, every connection's marks go.
   $effect(() => {
-    if (!shown.all) for (const c of conns) if (c.session) c.session.applied = {};
+    for (const c of conns) if (shown.all) open(c);
+    else if (c.session) c.session.applied = {};
   });
 
   function tabsOf(c: Conn, paths: string[] | null): Tab[] {
     const s = c.session;
-    if (!s || !paths) return [{ key: c.key, label: label(c), off: s?.state !== 'open', go: () => (s ? activate(c) : reopen(c)) }];
+    if (!s || !paths) return [{ key: c.key, label: label(c), off: c.live ? s?.state !== 'open' : !c.peek?.ok, go: () => (s ? activate(c) : reopen(c)) }];
     return paths.map((p) => {
       const stub = s.schemaAt(p);
       return {
@@ -234,7 +262,7 @@
       nearby = null;
       return;
     }
-    const roots = conns.map((c) => c.session?.loaded && c.session.root.id);
+    const roots = conns.map((c) => (c.session?.loaded ? c.session.root.id : c.peek?.id));
     for (const n of nearby.nodes) {
       const key = `api:${n.api} ${n.ws ?? ''}`;
       if (!dismissed.has(key) && !(n.device && roots.includes(n.device))) network(n.api, n.ws, false);

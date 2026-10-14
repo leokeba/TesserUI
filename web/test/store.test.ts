@@ -223,16 +223,22 @@ describe('subscriptions (DESIGN §7.3)', () => {
     subs.stop();
     expect(sent()).toEqual(['unsub /b', 'unsub /']);
   });
-  it('gives the events up beyond the node\'s budget', async () => {
+  it("tries the events again a minute after the node refused them", async () => {
+    vi.useFakeTimers();
     const { client, store } = setup();
-    client.answer = (r) => (r === EVENTS ? { status: 'busy', body: { error: 'busy', message: 'too many subscriptions' } } : { status: 'ok', body: null });
+    let refuse = true;
+    client.answer = (r) => (r === EVENTS && refuse ? { status: 'busy', body: { error: 'busy', message: 'too many subscriptions' } } : { status: 'ok', body: null });
     const subs = new Subscriptions(() => client, store);
     subs.want([{ path: '/a' }]);
-    await tick();
+    await vi.advanceTimersByTimeAsync(0);
     client.sent = [];
-    subs.renew();
-    await tick();
-    expect(client.sent.map((r) => r.path)).toEqual(['/a']);
+    await vi.advanceTimersByTimeAsync(55000);
+    expect(client.sent.filter((r) => r === EVENTS)).toHaveLength(0);
+    refuse = false;
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(client.sent.filter((r) => r === EVENTS)).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(60000);
+    expect(client.sent.filter((r) => r === EVENTS)).toHaveLength(1);
     subs.stop();
   });
   it('finds common ancestors', () => {
@@ -427,5 +433,95 @@ describe('a node short of memory', () => {
     expect(client.sent.map((r) => `${r.path} ${r.depth}`)).toEqual(['/ 3', '/ 1', '/a 2', '/a 1']);
     expect(s.schemaAt('/a/x')).toEqual({ type: 'integer' });
     expect(s.store.toasts.list).toEqual([]);
+  });
+});
+
+describe('a node under load (DESIGN §7.3)', () => {
+  const gets = (c: FakeClient) => c.sent.splice(0).filter((r) => r.op === 'get').length;
+
+  it('polls one read at a time, less often while it is busy, and marks its values stale', async () => {
+    vi.useFakeTimers();
+    const { client, store } = setup();
+    client.subscribes = false;
+    let busy = false;
+    client.answer = (r) => (r.op !== 'get' ? { status: 'ok', body: null } : busy ? { status: 'busy', body: { error: 'busy', message: 'too many pending requests' } } : undefined);
+    const subs = new Subscriptions(() => client, store);
+    subs.want([{ path: '/a', depth: 1 }]);
+    // A read the node doesn't answer isn't asked again meanwhile.
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(gets(client)).toBe(1);
+    client.reply('ok', { x: 1 });
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(gets(client)).toBe(1);
+    client.reply('ok', { x: 2 });
+    busy = true;
+    // Busy: 1 s, then 2, 4, 8 s between reads.
+    await vi.advanceTimersByTimeAsync(1000 + 2000 + 4000 + 8000);
+    expect(gets(client)).toBe(4);
+    expect(store.isStale('/a/x')).toBe(true);
+    expect(store.isStale('/b')).toBe(false);
+    busy = false;
+    // The next read, 16 s later (on the next second's tick), brings them back.
+    await vi.advanceTimersByTimeAsync(17000);
+    client.reply('ok', { x: 3 });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(store.isStale('/a/x')).toBe(false);
+    expect(store.get('/a/x')).toBe(3);
+    subs.stop();
+  });
+
+  it('pauses polls while the page is hidden', async () => {
+    vi.useFakeTimers();
+    const doc = { hidden: true };
+    vi.stubGlobal('document', doc);
+    const { client, store } = setup();
+    client.subscribes = false;
+    client.answer = () => ({ status: 'ok', body: {} });
+    const subs = new Subscriptions(() => client, store);
+    subs.want([{ path: '/a' }]);
+    await vi.advanceTimersByTimeAsync(0);
+    gets(client);
+    await vi.advanceTimersByTimeAsync(10000);
+    expect(gets(client)).toBe(0);
+    doc.hidden = false;
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(gets(client)).toBe(1);
+    subs.stop();
+    vi.unstubAllGlobals();
+  });
+
+  it('subscribes again once the node has a subscription to spare', async () => {
+    vi.useFakeTimers();
+    const { client, store } = setup();
+    let full = true;
+    client.answer = (r) =>
+      r.op === 'sub' && r !== EVENTS && full ? { status: 'busy', body: { error: 'busy', message: 'too many subscriptions' } } : { status: 'ok', body: r.op === 'get' ? {} : null };
+    const subs = new Subscriptions(() => client, store);
+    subs.want([{ path: '/a' }]);
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(gets(client)).toBeGreaterThan(0);
+    full = false;
+    await vi.advanceTimersByTimeAsync(5000);
+    client.sent = [];
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(client.sent.filter((r) => r.op !== 'sub' || r === EVENTS)).toEqual([]);
+    subs.stop();
+  });
+});
+
+describe('apply to all, while dragging (DESIGN §6.6)', () => {
+  it('sends the final value once', async () => {
+    vi.useFakeTimers();
+    const { client, store } = setup();
+    client.answer = (r) => ({ status: 'ok', body: r.body });
+    const applied: unknown[] = [];
+    store.onWrite = (_p, v) => applied.push(v);
+    for (let v = 1; v <= 10; v++) {
+      store.writeSoon('/speed', v);
+      await vi.advanceTimersByTimeAsync(50);
+    }
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(client.sent.filter((r) => r.op === 'set').length).toBeGreaterThan(2);
+    expect(applied).toEqual([10]);
   });
 });

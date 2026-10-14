@@ -15,6 +15,11 @@ export interface SubSpec {
 export const MAX_SUBSCRIPTIONS = 3;
 export const POLL_MS = 1000;
 const RETRY_MS = 5000;
+// A poll the node didn't answer waits twice as long each time, up to this.
+const MAX_POLL_MS = 30000;
+// Values not refreshed for this long, while the node fails to answer, are
+// marked stale.
+export const STALE_MS = 5000;
 
 // Events from the whole tree, for those that toast wherever the user is
 // (DESIGN.md §7.8): a fourth subscription (TesserAPI allows 4 per client),
@@ -26,10 +31,17 @@ interface Active {
   spec: SubSpec;
   mode: 'sub' | 'poll';
   // A failed subscribe (peer offline, timeout) is retried; one the node had
-  // no memory for, not before `next`, waiting longer each time.
+  // no memory for, or refused (its subscription limit), not before `next`,
+  // waiting longer each time.
   failed: boolean;
   tries: number;
   next: number;
+  // Polls: one read at a time, every `wait` ms, not before `due`.
+  reading?: boolean;
+  wait: number;
+  due: number;
+  // The last time its values came.
+  ok: number;
 }
 
 const keyOf = (s: SubSpec) => `${s.path}|${s.keys ?? ''}|${s.depth ?? ''}`;
@@ -38,8 +50,10 @@ export class Subscriptions {
   private active = new Map<string, Active>();
   private pollTimer: ReturnType<typeof setInterval> | undefined;
   private retryTimer: ReturnType<typeof setInterval> | undefined;
-  // The events subscription: 'none' once the node refused it (its budget).
+  // The events subscription: 'none' once stopped; one that failed is tried
+  // again from `eventsAt`.
   private events: 'off' | 'on' | 'failed' | 'none' = 'off';
+  private eventsAt = 0;
   // Names of the children of a path, for reading a too-large page in pieces.
   childNames: (path: string) => string[] = () => [];
 
@@ -63,6 +77,7 @@ export class Subscriptions {
     for (const [k, a] of this.active) {
       if (!nextKeys.has(k)) {
         this.active.delete(k);
+        delete this.store.stale[a.spec.path];
         if (a.mode === 'sub' && !a.failed) {
           this.client().request({ op: 'unsub', path: a.spec.path });
           // That removed the events subscription too.
@@ -76,10 +91,10 @@ export class Subscriptions {
       if (this.active.has(k)) continue;
       const mode = this.client().subscribes && subs < MAX_SUBSCRIPTIONS ? 'sub' : 'poll';
       if (mode === 'sub') subs++;
-      const a: Active = { spec, mode, failed: false, tries: 0, next: 0 };
+      const a: Active = { spec, mode, failed: false, tries: 0, next: 0, wait: POLL_MS, due: 0, ok: Date.now() };
       this.active.set(k, a);
       if (mode === 'sub') this.subscribe(a);
-      else this.read(spec);
+      else this.poll(a);
     }
     // After the page's: they come first within the node's budget.
     if (this.events === 'off') this.subscribeEvents();
@@ -94,7 +109,7 @@ export class Subscriptions {
     for (const a of this.active.values()) {
       if (a.mode === 'sub' && fresh && !a.failed) this.client().request({ op: 'unsub', path: a.spec.path });
       if (a.mode === 'sub') this.subscribe(a);
-      else this.read(a.spec);
+      else this.poll(a);
       root ||= a.mode === 'sub' && a.spec.path === '/';
     }
     if (this.events === 'none') return;
@@ -124,6 +139,7 @@ export class Subscriptions {
   forget() {
     this.active.clear();
     this.events = 'off';
+    this.store.stale = {};
   }
 
   stop() {
@@ -135,11 +151,13 @@ export class Subscriptions {
     clearInterval(this.retryTimer);
   }
 
+  // Polls and retries pause while the page is hidden (DESIGN.md §7.3).
   private schedule() {
     const polls = [...this.active.values()].some((a) => a.mode === 'poll');
     if (polls && !this.pollTimer) {
       this.pollTimer = setInterval(() => {
-        for (const a of this.active.values()) if (a.mode === 'poll') this.read(a.spec);
+        if (hidden()) return;
+        for (const a of this.active.values()) if (a.mode === 'poll' && !a.reading && Date.now() >= a.due) this.poll(a);
       }, POLL_MS);
     } else if (!polls && this.pollTimer) {
       clearInterval(this.pollTimer);
@@ -147,10 +165,30 @@ export class Subscriptions {
     }
     if (!this.retryTimer) {
       this.retryTimer = setInterval(() => {
+        if (hidden()) return;
         for (const a of this.active.values()) if (a.failed && Date.now() >= a.next) this.subscribe(a);
-        if (this.events === 'failed') this.subscribeEvents();
+        if (this.events === 'failed' && Date.now() >= this.eventsAt) this.subscribeEvents();
       }, RETRY_MS);
     }
+  }
+
+  // One read at a time: a node that is busy or slow to answer is asked
+  // less often, and its values marked stale after a while.
+  private async poll(a: Active) {
+    a.reading = true;
+    const fresh = await this.read(a.spec);
+    a.reading = false;
+    a.wait = fresh ? POLL_MS : Math.min(a.wait * 2, MAX_POLL_MS);
+    a.due = Date.now() + a.wait;
+    this.mark(a, fresh);
+  }
+
+  private mark(a: Active, fresh: boolean) {
+    const now = Date.now();
+    if (fresh) a.ok = now;
+    if (!this.isCurrent(a)) return;
+    if (fresh) delete this.store.stale[a.spec.path];
+    else if (now - a.ok > STALE_MS) this.store.stale[a.spec.path] = true;
   }
 
   private async subscribe(a: Active) {
@@ -161,20 +199,27 @@ export class Subscriptions {
       r = await this.client().request({ op: 'sub', path, keys, depth, interval: 100, snapshot: false });
       if (r.status === 'ok') {
         a.failed = false;
-        await this.readInPieces(a.spec);
+        a.mode = 'sub';
+        this.mark(a, await this.readInPieces(a.spec));
         return;
       }
     }
     if (r.status === 'ok') {
       a.failed = false;
       a.tries = 0;
+      a.mode = 'sub';
       this.store.snapshot(path, r.body, depth, keys);
+      this.mark(a, true);
     } else if (r.status === 'not_allowed' || (r.status === 'busy' && !transient(r))) {
-      // No subscription to be had here (budget, or below a list): poll.
+      // No subscription to be had here (below a list; the node's limit,
+      // which other clients may free: tried again after 5 s, 10 s... 160 s):
+      // poll.
       a.mode = 'poll';
-      a.failed = false;
+      a.failed = r.status === 'busy';
+      a.next = Date.now() + RETRY_MS * 2 ** Math.min(a.tries++, 5);
       this.schedule();
     } else {
+      this.mark(a, false);
       a.failed = true;
       if (lowMemory(r)) {
         // A snapshot too large for the node's free memory, such as a peer's
@@ -191,30 +236,39 @@ export class Subscriptions {
     this.events = 'on';
     const r = await this.client().request(EVENTS);
     if (this.events !== 'on' || r.status === 'ok') return;
+    // Refused (the node's streams, held by other pages): again in a minute.
     const passing = ['timeout', 'disconnected'].includes(r.status) || (r.status === 'busy' && transient(r));
-    this.events = passing ? 'failed' : 'none';
+    this.events = 'failed';
+    this.eventsAt = Date.now() + (passing ? 0 : 60000);
   }
 
-  private async read(spec: SubSpec): Promise<Reply> {
+  // Whether the values came: whole, or in pieces when too large (not for
+  // want of memory: the node is short of it).
+  private async read(spec: SubSpec): Promise<boolean> {
     const r = await this.client().request({ op: 'get', path: spec.path, keys: spec.keys, depth: spec.depth });
     if (r.status === 'ok') this.store.snapshot(spec.path, r.body, spec.depth, spec.keys);
-    else if (r.status === 'too_large' || lowMemory(r)) await this.readInPieces(spec);
-    return r;
+    else if (r.status === 'too_large' || lowMemory(r)) return (await this.readInPieces(spec)) && !lowMemory(r);
+    return r.status === 'ok';
   }
 
   // One get per child, when the whole page doesn't fit in a response.
-  private async readInPieces(spec: SubSpec) {
+  private async readInPieces(spec: SubSpec): Promise<boolean> {
     const names = spec.keys ? spec.keys.split(',') : this.childNames(spec.path);
+    let all = true;
     for (const name of names) {
       const r = await this.client().request({ op: 'get', path: spec.path, keys: name, depth: spec.depth });
       if (r.status === 'ok') this.store.snapshot(spec.path, r.body, spec.depth, name);
+      else all = false;
     }
+    return all;
   }
 
   private isCurrent(a: Active) {
     return this.active.get(keyOf(a.spec)) === a;
   }
 }
+
+const hidden = () => !!globalThis.document?.hidden;
 
 // `busy` for a reason that passes: a peer that can't be reached, too many
 // forwarded calls at once, a full queue, not enough memory for the reply. Any other `busy` is the node's

@@ -20,6 +20,8 @@
       (!!leaf.enabledWhen && !holds(leaf.enabledWhen, get)),
   );
   const modified = $derived(!!draft && leaf.path in draft.values);
+  // Not refreshed for a while: the node is busy or doesn't answer (DESIGN.md §7.3).
+  const stale = $derived(store.isStale(leaf.path));
   const value = $derived(modified ? draft!.values[leaf.path] : store.get(leaf.path));
   const error = $derived(store.errors[leaf.path]);
   const id = $derived(`t${leaf.path.replace(/[^\w-]/g, '_')}`);
@@ -71,7 +73,7 @@
 </script>
 
 {#if visible}
-  <div class="row {layout}" class:modified class:warning={leaf.style === 'warning'}>
+  <div class="row {layout}" class:modified class:stale class:warning={leaf.style === 'warning'} title={stale ? session.t('Not up to date') : undefined}>
     {#if layout !== 'bare' && leaf.label}
       <label for={leaf.editable ? id : undefined} title={leaf.description}>
         {#if leaf.icon || leaf.style === 'warning'}<Icon name={leaf.icon ?? 'alert'} />{/if}
@@ -103,6 +105,9 @@
   .row.wide,
   .row.bare {
     grid-template-columns: minmax(0, 1fr);
+  }
+  .row.stale {
+    opacity: 0.6;
   }
   .row.warning {
     grid-template-columns: minmax(0, 1fr);

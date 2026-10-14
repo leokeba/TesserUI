@@ -26,6 +26,9 @@ export class Store {
   pending: Record<string, number> = $state({});
   errors: Record<string, string> = $state({});
   events: Record<string, EventEntry[]> = $state({});
+  // Paths whose values the node hasn't sent for a while (DESIGN.md §7.3):
+  // what is under them shows as stale.
+  stale: Record<string, boolean> = $state({});
   readonly toasts = new Toasts();
   // Bumped when chart history grows.
   historyTick = $state(0);
@@ -170,12 +173,17 @@ export class Store {
     if (v !== undefined) this.applyAt(segments(path), v);
   }
 
-  // Optimistic write of a value: shown at once, sent, then reconciled.
-  async write(path: string, value: unknown): Promise<Reply> {
+  isStale(path: string) {
+    return Object.keys(this.stale).some((p) => isUnder(path, p));
+  }
+
+  // Optimistic write of a value: shown at once, sent, then reconciled. A
+  // drag's writes go to other nodes (onWrite) once, with its final value.
+  async write(path: string, value: unknown, drag = false): Promise<Reply> {
     this.hold(path);
     delete this.errors[path];
     this.put(path, value);
-    this.onWrite?.(path, value);
+    if (!drag) this.onWrite?.(path, value);
     const r = await this.client().request({ op: 'set', path, body: value });
     if (r.status === 'ok') this.succeed(path, r.body);
     else this.fail(path, r);
@@ -215,13 +223,14 @@ export class Store {
         drag.timer = undefined;
         drag.last = Date.now();
         const sent = drag.value;
-        this.write(path, sent).then(() => {
+        this.write(path, sent, true).then(() => {
           if (drag.timer || drag.value !== sent) return;
           // The drag ends once it has been quiet for `ms` after the last reply.
           drag.end = setTimeout(() => {
             if (drag.timer || drag.value !== sent || this.drags.get(path) !== drag) return;
             this.drags.delete(path);
             this.release(path);
+            this.onWrite?.(path, sent);
           }, ms);
         });
       },
