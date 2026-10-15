@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { EnvelopeClient, serialLink } from '../src/client/envelope';
+import { bleLink, EnvelopeClient, serialLink } from '../src/client/envelope';
 
 const enc = new TextEncoder();
 const dec = new TextDecoder();
@@ -54,5 +54,62 @@ describe('envelopes over a line (DESIGN §9.2)', () => {
     push('{"op":"change","path":"/b","body":2}\n');
     await flush();
     expect(notes).toEqual(['/b']);
+  });
+});
+
+// A Nordic UART device whose RX writes fail while `failing` says so,
+// recording each write, and whether the page dropped the connection.
+function fakeBle() {
+  const writes: string[] = [];
+  const f = { writes, failing: (_: string) => false, dropped: false };
+  const tx = Object.assign(new EventTarget(), { startNotifications: async () => tx });
+  const rx = {
+    async writeValueWithResponse(chunk: Uint8Array) {
+      const text = dec.decode(chunk);
+      if (f.failing(text)) throw new Error('GATT operation failed');
+      writes.push(text);
+    },
+  };
+  // One object as both characteristics, as the types want.
+  const service = { getCharacteristic: async () => Object.assign(tx, rx) };
+  const device = Object.assign(new EventTarget(), {
+    gatt: { connect: async () => ({ getPrimaryService: async () => service }), disconnect: () => void (f.dropped = true) },
+  });
+  return { f, device };
+}
+
+describe('envelopes over Bluetooth (DESIGN §9.2)', () => {
+  async function connected() {
+    const b = fakeBle();
+    const client = new EnvelopeClient('ble', () => bleLink(b.device));
+    client.connect();
+    await flush();
+    expect(client.state).toBe('open');
+    return { ...b, client };
+  }
+
+  it('ends a line it failed to write, and fails its request at once', async () => {
+    const { client, f } = await connected();
+    // A long message: its second chunk fails.
+    f.failing = (text) => text.startsWith('x');
+    const failed = await client.request({ op: 'set', path: '/a', body: 'x'.repeat(1000) });
+    expect(failed.status).toBe('disconnected');
+    expect(f.writes.length).toBe(2);
+    expect(f.writes[0]).toMatch(/^\{"id":1,/);
+    expect(f.writes[1]).toBe('\n');
+    // The next envelope goes whole, on a line of its own.
+    f.failing = () => false;
+    void client.request({ op: 'get', path: '/b' });
+    await flush();
+    expect(f.writes[2]).toBe('{"id":2,"op":"get","path":"/b"}\n');
+    expect(f.dropped).toBe(false);
+  });
+
+  it('drops the link when even the newline fails', async () => {
+    const { client, f } = await connected();
+    f.failing = () => true;
+    expect((await client.request({ op: 'get', path: '/a' })).status).toBe('disconnected');
+    await flush();
+    expect(f.dropped).toBe(true);
   });
 });

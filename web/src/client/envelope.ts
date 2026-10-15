@@ -7,7 +7,8 @@ import { REQUEST_TIMEOUT_MS, type Client, type ConnState, type Notification, typ
 export interface Link {
   // Resolves once the link can send; onClose fires once, whenever it ends.
   open(onMessage: (text: string) => void, onClose: () => void): Promise<void>;
-  send(text: string): void;
+  // May return a promise, rejected when the message couldn't be written.
+  send(text: string): void | Promise<void>;
   close(): void;
 }
 
@@ -90,15 +91,21 @@ export class EnvelopeClient implements Client {
     return new Promise((resolve) => {
       if (!this.link || this.state !== 'open') return resolve({ status: 'disconnected', body: null });
       const id = this.nextId++;
-      const timer = setTimeout(() => {
-        this.pending.delete(id);
-        resolve({ status: 'timeout', body: { error: 'timeout', message: 'no reply' } });
-      }, timeoutMs);
+      const timer = setTimeout(() => this.settle(id, { status: 'timeout', body: { error: 'timeout', message: 'no reply' } }), timeoutMs);
       this.pending.set(id, { resolve, timer });
       const env: Record<string, unknown> = { id, ...r };
       if (r.body === undefined) delete env.body;
-      this.link.send(stringify(env));
+      // A message the link couldn't write fails at once.
+      this.link.send(stringify(env))?.catch(() => this.settle(id, { status: 'disconnected', body: null }));
     });
+  }
+
+  private settle(id: number, r: Reply) {
+    const p = this.pending.get(id);
+    if (!p) return;
+    this.pending.delete(id);
+    clearTimeout(p.timer);
+    p.resolve(r);
   }
 
   private receive(text: string) {
@@ -112,11 +119,7 @@ export class EnvelopeClient implements Client {
     // A reply carries the id of a pending request, a status and a body, as
     // every TesserAPI reply does: a line that only looks like one is ignored.
     if (typeof msg.id === 'number' && typeof msg.status === 'string' && 'body' in msg) {
-      const p = this.pending.get(msg.id);
-      if (!p) return;
-      this.pending.delete(msg.id);
-      clearTimeout(p.timer);
-      p.resolve({ status: msg.status, body: msg.body ?? null });
+      this.settle(msg.id, { status: msg.status, body: msg.body });
     } else if ((msg.op === 'change' || msg.op === 'event') && typeof msg.path === 'string') {
       const n = msg as unknown as Notification;
       for (const fn of this.notify) fn(n);
@@ -231,7 +234,7 @@ export function serialLink(port: SerialPortLike, baudRate = 115200): Link {
       })();
     },
     send(text) {
-      writer?.write(enc.encode(text + '\n'));
+      return writer?.write(enc.encode(text + '\n'));
     },
     close() {
       reader?.cancel().catch(() => {});
@@ -295,10 +298,15 @@ export function bleLink(device: BluetoothDeviceLike): Link {
     send(text) {
       const bytes = enc.encode(text + '\n');
       // One write at a time: Web Bluetooth refuses overlapping operations.
-      for (let i = 0; i < bytes.length; i += 512) {
-        const chunk = bytes.subarray(i, i + 512);
-        queue = queue.then(() => rx?.writeValueWithResponse(chunk)).catch(() => {});
-      }
+      const sent = queue.then(async () => {
+        for (let i = 0; i < bytes.length; i += 512) await rx!.writeValueWithResponse(bytes.subarray(i, i + 512));
+      });
+      // A write that fails leaves part of a line on the device: the rest of
+      // the message is dropped and a newline ends the line, so the device
+      // drops it too and reads the next envelope whole. When even that
+      // fails, the link goes (and opens again).
+      queue = sent.catch(() => rx!.writeValueWithResponse(enc.encode('\n')).catch(() => device.gatt?.disconnect()));
+      return sent;
     },
     close() {
       device.gatt?.disconnect();
