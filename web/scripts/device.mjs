@@ -165,8 +165,13 @@ async function file(url, req, res, raw) {
     const filename = url.searchParams.get('filename') ?? undefined;
     let r = await ask({ size: raw.length, filename });
     const chunk = r.body?.chunk;
-    for (let at = 0; r.status === 'ok' && at < raw.length; at += chunk) {
+    // From the reply's received: a node short of memory may take only part
+    // of a chunk. The completing chunk's reply is the upload's.
+    for (let at = 0; r.status === 'ok' && at < raw.length; ) {
+      const last = at + chunk >= raw.length;
       r = await ask({ offset: at, data: raw.subarray(at, at + chunk).toString('base64') });
+      if (last) break;
+      at = r.body?.received;
     }
     end(r);
   } finally {

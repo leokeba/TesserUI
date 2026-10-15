@@ -14,6 +14,10 @@ class Device implements Client {
   subscribes = true;
   features?: string[];
   cut: (r: Request, n: number) => boolean = () => false;
+  // Short of memory: takes half of each chunk's new bytes, and refuses the
+  // completing chunk `refuse` times (busy).
+  half = false;
+  refuse = 0;
   sent: Request[] = [];
   stored: number[] = [];
   expected = 0;
@@ -52,7 +56,10 @@ class Device implements Client {
     if (offset > this.stored.length) return { status: 'bad_request', body: { error: 'bad_request' } };
     const bytes = Uint8Array.from(atob(r.data ?? ''), (c) => c.charCodeAt(0));
     if (typeof r.crc32 === 'number' && r.crc32 !== crc32(bytes)) return { status: 'bad_request', body: { error: 'bad_request', reason: 'checksum' } };
-    this.stored.push(...bytes.subarray(this.stored.length - offset));
+    let fresh = bytes.subarray(this.stored.length - offset);
+    if (this.stored.length + fresh.length === this.expected && this.refuse-- > 0) return { status: 'busy', body: { error: 'busy', reason: 'low_memory' } };
+    if (this.half && this.stored.length + fresh.length < this.expected) fresh = fresh.subarray(0, Math.ceil(fresh.length / 2));
+    this.stored.push(...fresh);
     if (this.stored.length === this.expected) return { status: 'ok', body: this.final };
     return { status: 'ok', body: { received: this.stored.length } };
   }
@@ -142,6 +149,28 @@ describe('uploads in envelopes', () => {
     vi.useRealTimers();
     expect((await done).status).toBe('ok');
     expect(d.stored).toEqual([...bytes(10)]);
+  });
+
+  // TesserAPI d70e8f3: a device short of memory takes part of a chunk, and
+  // takes the completing one whole or refuses it.
+  it('goes on from received when the device takes part of each chunk', async () => {
+    const d = Object.assign(new Device(new Uint8Array(), 8), { half: true, refuse: 2, features: ['crc32'] });
+    const seen: number[] = [];
+    vi.useFakeTimers();
+    const done = upload(d, '/sys/firmware', file(20), (f) => seen.push(f));
+    await vi.runAllTimersAsync();
+    vi.useRealTimers();
+    expect(await done).toEqual({ status: 'ok', body: { ok: true } });
+    expect(d.stored).toEqual([...bytes(20)]);
+    expect(d.sent.slice(1).map((s) => [s.offset, atob(s.data!).length])).toEqual([
+      [0, 8],
+      [4, 8],
+      [8, 8],
+      [12, 8],
+      [12, 8],
+      [12, 8],
+    ]);
+    expect(seen).toEqual([0.2, 0.4, 0.6]);
   });
 
   it("doesn't ask the opening or the last chunk again", async () => {

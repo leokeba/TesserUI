@@ -31,20 +31,22 @@ export function crc32(bytes: Uint8Array): number {
 // `timeout`.
 const CHUNK_TIMEOUT_MS = 10000;
 
-// Asked again while it times out, or a moment later while it is `busy`: a
-// gateway still relaying the try given up on, or at its maxPending. Sent
-// again too, up to five times, when bytes were lost on the way: the device
-// didn't take it (line_overrun, checksum), or its reply isn't `intact`. The
-// device took nothing then, so this holds for the opening and the last
-// chunk of an upload too.
-async function ask(client: Client, r: Request, tries = 4, timeoutMs = CHUNK_TIMEOUT_MS, intact = (_: Reply) => true) {
+// Asked again while it times out, unless `once`, or a moment later while
+// it is `busy`: a gateway still relaying the try given up on, or at its
+// maxPending, or a device short of memory; four tries in all. Sent again
+// too, up to five times, when bytes were lost on the way: the device didn't
+// take it (line_overrun, checksum), or its reply isn't `intact`. A refused
+// envelope wasn't taken, so the opening and last chunk of an upload, `once`
+// (a timeout may hide a reply that ended it), are sent again too.
+async function ask(client: Client, r: Request, once = false, timeoutMs = CHUNK_TIMEOUT_MS, intact = (_: Reply) => true) {
+  let tries = 4;
   for (let lost = 0; ; ) {
     const reply = await client.request(r, timeoutMs);
     if (reply.status === 'ok' ? !intact(reply) : /^(line_overrun|checksum)$/.test(reason(reply))) {
       if (++lost < 5) continue;
       return reply.status === 'ok' ? { status: 'bad_request', body: { error: 'bad_request', reason: 'checksum', message: 'the data arrived damaged' } } : reply;
     }
-    if (!--tries || (reply.status !== 'timeout' && reply.status !== 'busy')) return reply;
+    if (!--tries || (reply.status === 'timeout' ? once : reply.status !== 'busy')) return reply;
     if (reply.status === 'busy') await new Promise((done) => setTimeout(done, 1000));
   }
 }
@@ -70,7 +72,7 @@ export async function download(client: Client, path: string, progress: (f: numbe
     return !sums || b.crc32 === crc32(bytes);
   };
   for (;;) {
-    const r = await ask(client, { op: 'download', path, offset, ...(sums && { crc32: true }) }, 4, CHUNK_TIMEOUT_MS, intact);
+    const r = await ask(client, { op: 'download', path, offset, ...(sums && { crc32: true }) }, false, CHUNK_TIMEOUT_MS, intact);
     if (r.status !== 'ok') return r;
     const b = r.body as Chunk;
     head ??= b;
@@ -88,7 +90,7 @@ export async function upload(client: Client, path: string, file: File, progress:
   // Opened without data, to learn the device's chunk. Not asked again
   // unless the device didn't take it: an opening restarts the upload, and
   // the node's handler may take long (erasing a firmware partition).
-  let r = await ask(client, { op: 'upload', path, size, filename: file.name }, 1, DEFERRED_TIMEOUT_MS);
+  let r = await ask(client, { op: 'upload', path, size, filename: file.name }, true, DEFERRED_TIMEOUT_MS);
   if (r.status !== 'ok' || !size) return r;
   const chunk = (r.body as { chunk: number }).chunk;
   const sums = client.features?.includes('crc32');
@@ -99,8 +101,10 @@ export async function upload(client: Client, path: string, file: File, progress:
     // the device has it. Its handler's finish() may take long too.
     const last = end === size;
     const send: Request = { op: 'upload', path, offset: received, data: base64(part), ...(sums && { crc32: crc32(part) }) };
-    r = await ask(client, send, last ? 1 : 4, last ? DEFERRED_TIMEOUT_MS : CHUNK_TIMEOUT_MS);
+    r = await ask(client, send, last, last ? DEFERRED_TIMEOUT_MS : CHUNK_TIMEOUT_MS);
     if (r.status !== 'ok' || last) return r;
+    // Where the device goes on: short of memory, it may take only part of
+    // a chunk (the one completing the upload is taken whole, or refused).
     received = (r.body as { received: number }).received;
     progress(received / size);
   }
