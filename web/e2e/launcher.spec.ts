@@ -132,7 +132,10 @@ test('a page can be a launcher with its own title', async ({ page }) => {
 });
 
 // A fake navigator.serial and navigator.bluetooth, relaying to the device.
+// `window.calls` counts ports opened and choosers shown.
 function fakeDevices() {
+  const calls: Record<string, number> = ((window as unknown as { calls: object }).calls = {});
+  const record = (what: string) => void (calls[what] = (calls[what] ?? 0) + 1);
   const enc = new TextEncoder();
   const dec = new TextDecoder();
   const connect = async () => {
@@ -169,6 +172,7 @@ function fakeDevices() {
     writable: null as WritableStream<Uint8Array> | null,
     ws: null as WebSocket | null,
     async open() {
+      record('opened');
       const ws = (this.ws = await connect());
       this.readable = new ReadableStream({
         start(c) {
@@ -185,12 +189,14 @@ function fakeDevices() {
     // A CP2102's, as on an ESP32 devkit.
     getInfo: () => ({ usbVendorId: 0x10c4, usbProductId: 0xea60 }),
   };
-  // A port given once is the page's from then on (getPorts).
+  // A port given once is the page's from then on (getPorts); with `twin`,
+  // so is another board of the same kind.
   let given = sessionStorage.getItem('port') === '1';
+  const twin = { ...port };
   Object.defineProperty(navigator, 'serial', {
     value: {
-      requestPort: async () => (sessionStorage.setItem('port', '1'), (given = true), port),
-      getPorts: async () => (given ? [port] : []),
+      requestPort: async () => (record('chooser'), sessionStorage.setItem('port', '1'), (given = true), port),
+      getPorts: async () => (given ? (sessionStorage.getItem('twin') ? [twin, port] : [port]) : []),
     },
   });
 
@@ -242,20 +248,33 @@ for (const [way, button] of [
   });
 }
 
-// DESIGN.md §9.7.2: a port this page was given opens again by itself.
-test('a USB port opens again on the next visit, without the chooser', async ({ page }) => {
-  await page.addInitScript(fakeDevices);
-  await page.goto('/');
-  await page.getByRole('button', { name: 'Choose a port' }).click();
-  await expect(page.locator('.state')).toHaveText('USB');
-  await expect(page.locator('.brand')).toHaveText('TesserUI demo');
-  expect(JSON.parse((await page.evaluate(() => localStorage.getItem('tesserui:nodes')))!)).toEqual([
-    { key: 'usb:4292:60000:0', usb: [4292, 60000], label: 'TesserUI demo' },
-  ]);
-  await page.reload();
-  await expect(page.locator('.state')).toHaveText('USB');
-  await expect(page.locator('.brand')).toHaveText('TesserUI demo');
-});
+// DESIGN.md §9.7.2: a remembered port is a tab on the next visit, opened
+// only on a click (opening it resets the board), without the chooser when
+// it is the only port of its kind this page was given.
+const calls = (page: Page) => page.evaluate(() => (window as unknown as { calls: Record<string, number> }).calls);
+for (const twin of [false, true]) {
+  test(`a remembered USB port opens on a click${twin ? ', through the chooser beside a twin' : ''}`, async ({ page }) => {
+    await page.addInitScript(fakeDevices);
+    await page.goto('/');
+    await page.getByRole('button', { name: 'Choose a port' }).click();
+    await expect(page.locator('.state')).toHaveText('USB');
+    await expect(page.locator('.brand')).toHaveText('TesserUI demo');
+    expect(JSON.parse((await page.evaluate(() => localStorage.getItem('tesserui:nodes')))!)).toEqual([
+      { key: 'usb:4292:60000:0', usb: [4292, 60000], label: 'TesserUI demo' },
+    ]);
+    if (twin) await page.evaluate(() => sessionStorage.setItem('twin', '1'));
+    await page.reload();
+    const tab = page.locator('nav.tabs').getByRole('link', { name: 'TesserUI demo' });
+    await expect(tab).toBeVisible();
+    await expect(page.locator('h2')).toHaveText('Connect to a node');
+    await page.waitForTimeout(500);
+    expect(await calls(page)).toEqual({});
+    await tab.click();
+    await expect(page.locator('.state')).toHaveText('USB');
+    await expect(page.locator('.brand')).toHaveText('TesserUI demo');
+    expect(await calls(page)).toEqual(twin ? { chooser: 1, opened: 1 } : { opened: 1 });
+  });
+}
 
 // Lines present the token in an auth envelope (TesserAPI §10.4): the stored
 // one after connecting, an empty one to sign out.

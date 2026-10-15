@@ -1,8 +1,8 @@
 <script lang="ts">
   // A launcher's workspace (DESIGN.md §9.7.2): several connections at once,
   // each a Session, every node of every connection a tab. The connections
-  // are remembered and opened again on the next visit, and the nodes the
-  // bridge finds join by themselves. One device reached several ways is one
+  // are remembered for the next visit (USB ports open on a click), and the
+  // nodes the bridge finds join by themselves. One device reached several ways is one
   // tab (devices.ts).
   import App, { type Tab } from '../App.svelte';
   import { NUS_SERVICE } from '../client/envelope';
@@ -57,7 +57,9 @@
   // device's id when the browser gives them.
   class Line extends Session {
     key?: string;
+    port?: Port;
     useSerial(port: Port) {
+      this.port = port;
       super.useSerial(port);
       const i = (port as { getInfo?(): { usbVendorId?: number; usbProductId?: number } }).getInfo?.();
       const usb: [number, number] | null = i?.usbVendorId ? [i.usbVendorId, i.usbProductId ?? 0] : null;
@@ -165,14 +167,24 @@
     activate(conns.find((x) => x.session) ?? null);
   }
 
-  // A remembered port or device that didn't open by itself: the browser's
-  // chooser, narrowed to it.
+  // A remembered port, or a device that didn't open by itself, opens on a
+  // click: opening a port resets most boards, a running motor controller
+  // included. A port this page was given before opens at once when it is
+  // the only one with its USB ids not open already; otherwise the browser's
+  // chooser, narrowed to them, lets the user tell boards of a kind apart.
   async function reopen(c: Conn) {
     const saved = c.saved!;
     const s = line(c.key);
     try {
-      if ('usb' in saved) s.useSerial(await nav.serial!.requestPort({ filters: [{ usbVendorId: saved.usb[0], usbProductId: saved.usb[1] }] }));
-      else if ('ble' in saved) s.useBle(await nav.bluetooth!.requestDevice({ filters: [{ services: [NUS_SERVICE] }] }));
+      if ('usb' in saved) {
+        const [vendor, product] = saved.usb;
+        const used = conns.map((x) => (x.session as Line | null)?.port);
+        const free = ((await nav.serial!.getPorts?.()) ?? []).filter((p) => {
+          const i = (p as { getInfo?(): { usbVendorId?: number; usbProductId?: number } }).getInfo?.();
+          return !used.includes(p) && i?.usbVendorId === vendor && i?.usbProductId === product;
+        });
+        s.useSerial(free.length === 1 ? free[0] : await nav.serial!.requestPort({ filters: [{ usbVendorId: vendor, usbProductId: product }] }));
+      } else if ('ble' in saved) s.useBle(await nav.bluetooth!.requestDevice({ filters: [{ services: [NUS_SERVICE] }] }));
     } catch {
       // dismissed
     }
@@ -278,9 +290,10 @@
     return () => clearInterval(timer);
   });
 
-  // The remembered connections, opened again: ports and devices this browser
-  // was given before open without asking (opening a port resets most
-  // boards). Then ?api= joins, and is shown.
+  // The remembered connections, as tabs: a USB port waits for a click
+  // (reopen), since opening it resets the board; a Bluetooth device this
+  // browser was given before connects without asking. Then ?api= joins, and
+  // is shown.
   (async () => {
     let saved: Saved[] = [];
     try {
@@ -288,7 +301,6 @@
     } catch {
       // a broken entry: forgotten
     }
-    const ports = (await nav.serial?.getPorts?.().catch(() => [])) ?? [];
     const devices = (await nav.bluetooth?.getDevices?.().catch(() => [])) ?? [];
     for (const s of saved) {
       if ('api' in s) {
@@ -296,16 +308,8 @@
         continue;
       }
       conns.push({ key: s.key, session: null, saved: s, hash: '' });
-      if ('usb' in s) {
-        const i = ports.findIndex((p) => {
-          const info = (p as { getInfo?(): { usbVendorId?: number; usbProductId?: number } }).getInfo?.();
-          return info?.usbVendorId === s.usb[0] && info?.usbProductId === s.usb[1];
-        });
-        if (i >= 0) line(s.key).useSerial(ports.splice(i, 1)[0]);
-      } else {
-        const d = devices.find((x) => x.id === s.ble);
-        if (d) line(s.key).useBle(d);
-      }
+      const d = 'ble' in s && devices.find((x) => x.id === s.ble);
+      if (d) line(s.key).useBle(d);
     }
     ready = true;
     const last = storageGet(ACTIVE);
