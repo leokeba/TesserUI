@@ -118,4 +118,16 @@ describe('HTTP: the events stream', () => {
     expect(got).toEqual(['/b']);
     expect(calls.filter((x) => x.url.includes('?sub')).length).toBe(2);
   });
+
+  // DESIGN §9.2: a node that doesn't answer is probed every 2 s, until closed.
+  it('stops probing an offline node once closed', async () => {
+    const c = new HttpClient('http://node.local/api', () => null);
+    const probes = () => calls.filter((x) => x.url === 'http://node.local/api/?depth=0').length;
+    c.connect();
+    await vi.advanceTimersByTimeAsync(4500);
+    expect(probes()).toBe(3);
+    c.close();
+    await vi.advanceTimersByTimeAsync(60000);
+    expect(probes()).toBe(3);
+  });
 });

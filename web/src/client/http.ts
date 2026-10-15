@@ -47,11 +47,12 @@ export class HttpClient implements Client {
   }
 
   private retry: ReturnType<typeof setTimeout> | undefined;
+  private closed = false;
 
   private setState(s: ConnState) {
     // While the node doesn't answer, keep probing so that callers waiting for
-    // 'open' (the first schema load) are woken up.
-    if (s === 'down' && this.retry === undefined) {
+    // 'open' (the first schema load) are woken up; not once closed.
+    if (s === 'down' && this.retry === undefined && !this.closed) {
       this.retry = setTimeout(() => {
         this.retry = undefined;
         this.connect();
@@ -64,10 +65,14 @@ export class HttpClient implements Client {
 
   connect() {
     // There is no connection: the first request tells whether the node answers.
+    this.closed = false;
     this.request({ op: 'get', path: '/', depth: 0 });
   }
 
   close() {
+    this.closed = true;
+    clearTimeout(this.retry);
+    this.retry = undefined;
     this.request({ op: 'unsub', path: '/' });
   }
 

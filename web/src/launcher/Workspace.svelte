@@ -90,7 +90,10 @@
 
   async function peek(c: Conn) {
     const s = c.session!;
-    const r = await new HttpClient(s.apiUrl(), () => s.token()).request({ op: 'get', path: '/', view: 'schema', depth: 0 }, 5000);
+    // Its own client, closed after: a failed read would probe on otherwise.
+    const client = new HttpClient(s.apiUrl(), () => s.token());
+    const r = await client.request({ op: 'get', path: '/', view: 'schema', depth: 0 }, 5000);
+    client.close();
     const b = r.status === 'ok' ? (r.body as Schema) : null;
     if (!c.live) c.peek = { ok: !!b || r.status === 'unauthorized', label: b?.label, id: b?.id };
   }
