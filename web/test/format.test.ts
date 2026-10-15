@@ -47,6 +47,8 @@ describe('lossless JSON', () => {
     expect(v.f).toBe(1.5);
     expect(v.e).toBe(1e300);
     expect(stringify(v)).toBe('{"big":-9007199254740993,"huge":18446744073709551615,"f":1.5,"e":1e+300}');
+    expect(stringify({ huge: v.huge }, 2)).toBe('{\n  "huge": 18446744073709551615\n}');
+    expect(formatValue({ huge: v.huge }, { type: 'object' })).toBe('{"huge":18446744073709551615}');
   });
 });
 

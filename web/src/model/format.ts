@@ -1,5 +1,7 @@
 // Labels and value formatting (DESIGN.md §4, §5.2).
 
+import { stringify } from '../client/json';
+
 // brightnessMax → "Brightness max", pid_kp → "Pid kp", HTTPPort → "HTTP port".
 export function humanize(name: string): string {
   const words = name
@@ -49,7 +51,7 @@ export function formatValue(v: unknown, f: NumberFormat): string {
   } else if (typeof v === 'bigint' || typeof v === 'string' || typeof v === 'boolean') {
     text = String(v);
   } else {
-    text = JSON.stringify(v);
+    text = stringify(v);
   }
   return f.unit ? `${text} ${f.unit}` : text;
 }

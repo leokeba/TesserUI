@@ -56,7 +56,7 @@ describe.each([1, 2])('reconnection, protocol %i (DESIGN §7.5)', (protocol) => 
     };
     const s = new Session({ api: '/api', ws: '/ws', transport: 'ws' });
     (s as unknown as { use(c: FakeClient): void }).use(client);
-    return { s, client, dev };
+    return { s, client, dev, saved };
   }
   const settle = async () => {
     for (let i = 0; i < 10; i++) await tick();
@@ -119,5 +119,27 @@ describe.each([1, 2])('reconnection, protocol %i (DESIGN §7.5)', (protocol) => 
     await settle();
     expect(s.loaded).toBe(true);
     expect(schemaReads(client)).toBe(1);
+  });
+
+  // 64-bit values (TesserAPI's uint64_t) go through the schema cache and
+  // toasts exactly; a broken cache entry is read again from the node.
+  it('caches and shows 64-bit values exactly', async () => {
+    const { s, client, dev, saved } = node();
+    const big = 18446744073709551615n;
+    dev.tree.children!.old = { type: 'integer', max: big as unknown as number };
+    dev.tree.children!.alarm = { type: 'event', ui: { toast: 'warn' } };
+    client.state('open');
+    await settle();
+    expect(s.loaded).toBe(true);
+    client.sent.length = 0;
+    expect(await s.fetchSchema('/', 3)).toBe(true);
+    expect(schemaReads(client)).toBe(0);
+    expect(s.schemaAt('/old')?.max).toBe(big);
+    for (const k of saved.keys()) if (k.startsWith('tesserui:schema:')) saved.set(k, '{');
+    expect(await s.fetchSchema('/', 3)).toBe(true);
+    expect(schemaReads(client)).toBe(1);
+    client.push({ op: 'event', path: '/alarm', body: { count: big } });
+    await settle();
+    expect(s.store.toasts.list.map((t) => t.text)).toEqual(['{"count":18446744073709551615}']);
   });
 });

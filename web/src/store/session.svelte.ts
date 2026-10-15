@@ -3,7 +3,7 @@
 
 import { bleLink, EnvelopeClient, serialLink, webSocketLink } from '../client/envelope';
 import { HttpClient } from '../client/http';
-import { isObject } from '../client/json';
+import { isObject, parse, stringify } from '../client/json';
 import { errorText, lowMemory, reason, type Client, type ConnState, type Notification, type Reply, type Request } from '../client/types';
 import type { Firmware } from '../flash/firmware';
 import { toastKind, visiblePaths, type Item, type Leaf, type Page, type Section } from '../model/model';
@@ -483,7 +483,7 @@ export class Session {
     if (s?.ui?.hidden !== true && this.subs.covers(n.path)) this.store.notify(n);
     if (!s && (await this.ensure(parentPath(n.path), 1))) s = this.schemaAt(n.path);
     const kind = s?.type === 'event' ? toastKind(s.ui?.toast) : undefined;
-    if (kind) this.store.toasts.show(n.body === null ? '' : typeof n.body === 'string' ? n.body : JSON.stringify(n.body), kind, n.path);
+    if (kind) this.store.toasts.show(n.body === null ? '' : typeof n.body === 'string' ? n.body : stringify(n.body), kind, n.path);
   }
 
   private refreshStub(path: string) {
@@ -605,11 +605,13 @@ export class Session {
     const remote = remoteOf(this.root, path);
     const hash = remote ? remote.stub.schema : this.rootHash;
     const cacheKey = hash && 'tesserui:schema:' + JSON.stringify([this.lineKey || this.apiUrl(), this.identity, remote?.path ?? '', hash, path.slice(remote?.path.length ?? 0) || '/', depth]);
-    if (cacheKey) {
-      const cached = storageGet(cacheKey);
-      if (cached) {
-        this.merge(path, JSON.parse(cached));
+    const cached = cacheKey && storageGet(cacheKey);
+    if (cached) {
+      try {
+        this.merge(path, parse(cached) as Schema);
         return true;
+      } catch {
+        // a broken entry: read again
       }
     }
     const r = await this.ask({ op: 'get', path, view: 'schema', depth }, depth > 1);
@@ -628,7 +630,7 @@ export class Session {
       return false;
     }
     this.merge(path, r.body as Schema);
-    if (cacheKey) storageSet(cacheKey, JSON.stringify(r.body));
+    if (cacheKey) storageSet(cacheKey, stringify(r.body));
     return true;
   }
 

@@ -17,8 +17,8 @@ export function parse(text: string): unknown {
 
 const rawJSON = (JSON as unknown as { rawJSON?: (text: string) => unknown }).rawJSON;
 
-export function stringify(value: unknown): string {
-  return JSON.stringify(value, (_key, v) => (typeof v === 'bigint' ? (rawJSON ? rawJSON(v.toString()) : Number(v)) : v));
+export function stringify(value: unknown, space?: number): string {
+  return JSON.stringify(value, (_key, v) => (typeof v === 'bigint' ? (rawJSON ? rawJSON(v.toString()) : Number(v)) : v), space);
 }
 
 export type Json = null | boolean | number | bigint | string | Json[] | { [key: string]: Json };

@@ -5,7 +5,7 @@
   import type { WidgetProps } from './types';
   let { leaf, value, set, disabled, id }: WidgetProps = $props();
 
-  const pretty = (v: unknown) => (v === undefined ? '' : JSON.stringify(JSON.parse(stringify(v)), null, 2));
+  const pretty = (v: unknown) => (v === undefined ? '' : stringify(v, 2));
   const session = useSession();
   const t = (text: string) => session.t(text);
   let editing = $state(false);

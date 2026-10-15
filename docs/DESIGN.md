@@ -448,7 +448,7 @@ web/
 
   For development, the query string overrides the page's: `?api=http://<ip>/api`, `?ws=` (empty: HTTP only), `?transport=serial`.
 - **Fallback:** if the WebSocket never opens, the client switches to HTTP for good. Once it has opened, it reconnects with backoff (§7.5).
-- **Numbers:** integers beyond 2^53 (TesserAPI serves 64-bit values) are parsed as `BigInt` and written back exactly (`JSON.rawJSON`).
+- **Numbers:** integers beyond 2^53 (TesserAPI serves 64-bit values) are parsed as `BigInt` and written back exactly (`JSON.rawJSON`). Everything the renderer turns into JSON text or reads back from it goes the same way: the schema cache, toasts of event bodies, object values shown as text, the JSON editor. A schema cache entry that doesn't parse is read again from the node.
 
 ### 9.3 Look
 
