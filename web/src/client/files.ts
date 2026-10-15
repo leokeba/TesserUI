@@ -94,7 +94,7 @@ export async function upload(client: Client, path: string, file: File, progress:
   if (r.status !== 'ok' || !size) return r;
   const chunk = (r.body as { chunk: number }).chunk;
   const sums = client.features?.includes('crc32');
-  for (let received = 0; ; ) {
+  for (let received = 0, stuck = 0; ; ) {
     const end = Math.min(received + chunk, size);
     const part = bytes.subarray(received, end);
     // The last chunk's reply can't be asked again: the upload is over once
@@ -105,7 +105,12 @@ export async function upload(client: Client, path: string, file: File, progress:
     if (r.status !== 'ok' || last) return r;
     // Where the device goes on: short of memory, it may take only part of
     // a chunk (the one completing the upload is taken whole, or refused).
-    received = (r.body as { received: number }).received;
+    // One that takes nothing three times running is given up on.
+    const next = (r.body as { received: number }).received;
+    if (next > received) {
+      received = next;
+      stuck = 0;
+    } else if (++stuck === 3) return { status: 'internal', body: { error: 'internal', message: 'the device stopped taking the upload' } };
     progress(received / size);
   }
 }

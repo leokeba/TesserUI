@@ -173,6 +173,18 @@ describe('uploads in envelopes', () => {
     expect(seen).toEqual([0.2, 0.4, 0.6]);
   });
 
+  it('gives up on a device that stops taking the upload', async () => {
+    const d = new Device(new Uint8Array(), 4);
+    const stalled = Object.assign(d, {
+      request: async (r: Request): Promise<Reply> => (r.offset === 4 ? (d.sent.push(r), { status: 'ok', body: { received: 4 } }) : Device.prototype.request.call(d, r)),
+    });
+    expect(await upload(stalled, '/f', file(10), () => {})).toEqual({
+      status: 'internal',
+      body: { error: 'internal', message: 'the device stopped taking the upload' },
+    });
+    expect(d.sent.slice(1).map((s) => s.offset)).toEqual([0, 4, 4, 4]);
+  });
+
   it("doesn't ask the opening or the last chunk again", async () => {
     const d = new Device(new Uint8Array(), 4);
     d.lose = (r) => r.size !== undefined;
