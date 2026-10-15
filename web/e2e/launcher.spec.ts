@@ -324,6 +324,11 @@ for (const [way, button] of [
     );
     expect(uploads[0]).toMatchObject({ path: '/system/backup', size: 7000, filename: 'mine.bin' });
     expect(uploads.slice(1).map((u) => u.offset)).toEqual([0, 2880, 5760]);
+    // The demo node lists crc32: every chunk carries its own, and every
+    // download asks for them.
+    expect(uploads.slice(1).every((u) => typeof u.crc32 === 'number')).toBe(true);
+    const downloads = await page.evaluate(() => (window as unknown as { sent: string[] }).sent.filter((l) => l.includes('"op":"download"')).map((l) => JSON.parse(l)));
+    expect(downloads.every((d) => d.crc32 === true)).toBe(true);
     expect((await fetch()).bytes.equals(bytes)).toBe(true);
   });
 }

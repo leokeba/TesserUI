@@ -23,6 +23,8 @@ export interface Request {
   data?: string;
   size?: number;
   filename?: string;
+  // An upload chunk's CRC-32, or true for a download's (feature crc32).
+  crc32?: number | boolean;
   body?: unknown;
 }
 
@@ -56,8 +58,9 @@ export interface Client {
   // false for plain HTTP: the store polls instead.
   readonly subscribes: boolean;
   // The node's protocol (TesserAPI §10.1.2), once read: 1 for one that
-  // predates view=info.
+  // predates view=info; and the features its view=info lists.
   protocol?: number;
+  features?: string[];
   // timeoutMs: REQUEST_TIMEOUT_MS by default; longer for deferred actions.
   request(r: Request, timeoutMs?: number): Promise<Reply>;
   onNotify(fn: (n: Notification) => void): void;

@@ -356,13 +356,14 @@ export class Session {
   private identity = '';
   private async identify(): Promise<string> {
     const r = await this.patient({ op: 'get', path: '/', view: 'info' });
-    let info = r.status === 'ok' ? (r.body as { protocol?: number; hash?: unknown; id?: string }) : null;
+    let info = r.status === 'ok' ? (r.body as { protocol?: number; features?: string[]; hash?: unknown; id?: string }) : null;
     if (r.status === 'bad_request') {
       const h = await this.patient({ op: 'get', path: '/', view: 'hash' });
       const s = await this.client.request({ op: 'get', path: '/', view: 'schema', depth: 0 });
       info = { protocol: 1, hash: h.status === 'ok' && h.body, id: (s.body as Schema | null)?.id };
     }
     this.client.protocol = info?.protocol;
+    this.client.features = info?.features;
     this.rootHash = typeof info?.hash === 'string' ? info.hash : null;
     return JSON.stringify([this.rootHash, info?.id]);
   }

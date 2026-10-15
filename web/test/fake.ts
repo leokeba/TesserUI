@@ -6,6 +6,7 @@ export class FakeClient implements Client {
   kind = 'ws' as const;
   subscribes = true;
   protocol?: number;
+  features?: string[];
   sent: Request[] = [];
   held: { req: Request; resolve: (r: Reply) => void }[] = [];
   answer: ((r: Request) => Reply | undefined) | null = null;

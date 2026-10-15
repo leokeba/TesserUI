@@ -82,6 +82,7 @@ describe.each([1, 2])('reconnection, protocol %i (DESIGN §7.5)', (protocol) => 
       ['sub', null],
     ]);
     expect(client.protocol).toBe(protocol);
+    expect(client.features).toEqual(protocol > 1 ? ['info'] : undefined);
   });
 
   it('reads everything again after a new firmware (another hash)', async () => {

@@ -1,14 +1,19 @@
 import { describe, expect, it, vi } from 'vitest';
-import { download, upload } from '../src/client/files';
+import { crc32, download, upload } from '../src/client/files';
 import type { Client, Reply, Request } from '../src/client/types';
 
 // A file node behind a line, as TesserAPI's FileSession serves it (§10.1.1):
 // chunks of `chunk` bytes, the bytes before `received` skipped, the last
 // download chunk sent again at its own offset. `lose` drops the reply to the
-// envelopes it picks: the device has acted, the client times out.
+// envelopes it picks: the device has acted, the client times out. `cut`
+// loses four base64 characters of the envelopes it picks (an upload's on
+// the way in, a download's reply on the way out), which still decode.
+// With the crc32 feature, the device checks and gives each chunk's.
 class Device implements Client {
   kind = 'serial' as const;
   subscribes = true;
+  features?: string[];
+  cut: (r: Request, n: number) => boolean = () => false;
   sent: Request[] = [];
   stored: number[] = [];
   expected = 0;
@@ -23,7 +28,9 @@ class Device implements Client {
 
   async request(r: Request): Promise<Reply> {
     this.sent.push(r);
-    const reply = this.handle(r);
+    const cut = this.cut(r, this.sent.length);
+    const reply = this.handle(cut && r.data ? { ...r, data: r.data.slice(4) } : r);
+    if (cut && r.op === 'download') (reply.body as { data: string }).data = (reply.body as { data: string }).data.slice(4);
     return this.lose(r, this.sent.length) ? { status: 'timeout', body: null } : reply;
   }
 
@@ -44,6 +51,7 @@ class Device implements Client {
     }
     if (offset > this.stored.length) return { status: 'bad_request', body: { error: 'bad_request' } };
     const bytes = Uint8Array.from(atob(r.data ?? ''), (c) => c.charCodeAt(0));
+    if (typeof r.crc32 === 'number' && r.crc32 !== crc32(bytes)) return { status: 'bad_request', body: { error: 'bad_request', reason: 'checksum' } };
     this.stored.push(...bytes.subarray(this.stored.length - offset));
     if (this.stored.length === this.expected) return { status: 'ok', body: this.final };
     return { status: 'ok', body: { received: this.stored.length } };
@@ -54,7 +62,8 @@ class Device implements Client {
     let s = '';
     for (const b of bytes) s += String.fromCharCode(b);
     const head = opening ? { size: this.content.length, filename: 'backup.json', contentType: 'application/json', chunk: this.chunk } : {};
-    return { status: 'ok', body: { ...head, offset, data: btoa(s), end: offset + this.chunk >= this.content.length } };
+    const sum = this.features && { crc32: crc32(bytes) };
+    return { status: 'ok', body: { ...head, offset, data: btoa(s), ...sum, end: offset + this.chunk >= this.content.length } };
   }
 
   onNotify() {}
@@ -150,5 +159,82 @@ describe('uploads in envelopes', () => {
     const d = new Device(new Uint8Array(), 4);
     expect(await upload(d, '/f', file(0), () => {})).toEqual({ status: 'ok', body: { ok: true } });
     expect(d.sent).toHaveLength(1);
+  });
+});
+
+// TesserAPI §10.1.1: a serial line can lose bytes and still be base64.
+describe('checksums (feature crc32)', () => {
+  const file = (n: number) => new File([bytes(n)], 'fw.bin');
+  const device = (content: Uint8Array) => Object.assign(new Device(content, 6), { features: ['crc32'] });
+
+  it("computes zlib's CRC-32", () => {
+    expect(crc32(new TextEncoder().encode('123456789'))).toBe(0xcbf43926);
+    expect(crc32(new Uint8Array())).toBe(0);
+  });
+
+  it('sends each upload chunk with its own, and again when it arrives damaged', async () => {
+    const d = device(new Uint8Array());
+    // The second chunk and the last lose bytes on the way.
+    d.cut = (r, n) => !!r.data && (n === 3 || r.offset === 12) && d.sent.filter((x) => x.offset === r.offset).length === 1;
+    expect((await upload(d, '/f', file(16), () => {})).status).toBe('ok');
+    expect(d.stored).toEqual([...bytes(16)]);
+    expect(d.sent.slice(1).map((s) => s.offset)).toEqual([0, 6, 6, 12, 12]);
+    for (const s of d.sent.slice(1)) expect(s.crc32).toBe(crc32(bytes(16).subarray(s.offset!, s.offset! + 6)));
+  });
+
+  it("sends a line the device lost bytes of again at once, the opening too", async () => {
+    const d = device(new Uint8Array());
+    // The opening and the second chunk, once each.
+    const lost = new Set<string>();
+    const lossy = Object.assign(d, {
+      request: async (r: Request): Promise<Reply> => {
+        const which = r.size !== undefined ? 'open' : String(r.offset);
+        if (!['open', '6'].includes(which) || lost.has(which)) return Device.prototype.request.call(d, r);
+        lost.add(which);
+        d.sent.push(r);
+        return { status: 'busy', body: { error: 'busy', reason: 'line_overrun' } };
+      },
+    });
+    expect((await upload(lossy, '/f', file(10), () => {})).status).toBe('ok');
+    expect(d.stored).toEqual([...bytes(10)]);
+    expect(d.sent.map((s) => s.offset ?? 'open')).toEqual(['open', 'open', 0, 6, 6]);
+  });
+
+  it('asks for download chunks with theirs, and again when one arrives damaged', async () => {
+    const d = device(bytes(16));
+    d.cut = (_, n) => n === 2;
+    const r = await download(d, '/f', () => {});
+    expect(new Uint8Array(await (r.body as File).arrayBuffer())).toEqual(bytes(16));
+    expect(d.sent.map((s) => [s.offset, s.crc32])).toEqual([
+      [0, true],
+      [6, true],
+      [6, true],
+      [12, true],
+    ]);
+  });
+
+  it('gives up on a chunk damaged five times', async () => {
+    const d = device(bytes(16));
+    d.cut = () => true;
+    expect(await download(d, '/f', () => {})).toMatchObject({ status: 'bad_request', body: { reason: 'checksum' } });
+    expect(d.sent).toHaveLength(5);
+  });
+
+  it("sends none to a node without the feature, and still asks again for a chunk that doesn't decode", async () => {
+    const up = new Device(new Uint8Array(), 6);
+    expect((await upload(up, '/f', file(10), () => {})).status).toBe('ok');
+    expect(up.sent.some((s) => 'crc32' in s)).toBe(false);
+    const down = new Device(bytes(10), 6);
+    const broken = Object.assign(down, {
+      request: async (r: Request): Promise<Reply> => {
+        const reply = await Device.prototype.request.call(down, r);
+        if (down.sent.length === 1) (reply.body as { data: string }).data += '=';
+        return reply;
+      },
+    });
+    const r = await download(broken, '/f', () => {});
+    expect(new Uint8Array(await (r.body as File).arrayBuffer())).toEqual(bytes(10));
+    expect(down.sent.some((s) => 'crc32' in s)).toBe(false);
+    expect(down.sent.map((s) => s.offset)).toEqual([0, 0, 6]);
   });
 });
