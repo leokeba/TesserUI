@@ -109,7 +109,9 @@ export class EnvelopeClient implements Client {
       return;
     }
     if (!isObject(msg)) return;
-    if (typeof msg.id === 'number' && typeof msg.status === 'string') {
+    // A reply carries the id of a pending request, a status and a body, as
+    // every TesserAPI reply does: a line that only looks like one is ignored.
+    if (typeof msg.id === 'number' && typeof msg.status === 'string' && 'body' in msg) {
       const p = this.pending.get(msg.id);
       if (!p) return;
       this.pending.delete(msg.id);
@@ -164,8 +166,10 @@ export function webSocketLink(url: string): Link {
 }
 
 // Newline-delimited envelopes over a byte stream (Web Serial, Bluetooth).
-// Lines that don't contain an envelope are log output; parsing starts at the
-// first {" of a line, since ESP log lines interleave (DESIGN.md §9.7).
+// An envelope is a whole line, after any noise a UART picks up while the
+// board resets (control bytes, 0xff), as TesserAPI's LineTransport reads
+// them. Every other line is log output, even one holding JSON (DESIGN.md
+// §9.2).
 function lineReader(onMessage: (text: string) => void) {
   const dec = new TextDecoder();
   let buf = '';
@@ -175,8 +179,8 @@ function lineReader(onMessage: (text: string) => void) {
     while ((nl = buf.indexOf('\n')) >= 0) {
       const line = buf.slice(0, nl);
       buf = buf.slice(nl + 1);
-      const start = line.indexOf('{"');
-      if (start >= 0) onMessage(line.slice(start));
+      const text = line.replace(/^[^!-~]+/, '');
+      if (text.startsWith('{"')) onMessage(text);
     }
   };
 }

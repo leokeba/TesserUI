@@ -156,9 +156,9 @@ function fakeDevices() {
     };
   };
   // Frames from the device as lines cut into `size`-byte pieces, with log
-  // output before them and on the same line.
+  // output before them, some of it holding JSON that looks like a reply.
   const pieces = (text: string, size: number) => {
-    const bytes = enc.encode(`I (42) app: log line\n\x1b[0;32mW (43) wifi: noise ${text}\n`);
+    const bytes = enc.encode(`I (42) app: log line\n\x1b[0;32mW (43) wifi: noise\x1b[0m\nI (44) app: sent ${text.replace(/"body":.*/, '"body":"log"}')}\n${text}\n`);
     const out: Uint8Array[] = [];
     for (let i = 0; i < bytes.length; i += size) out.push(bytes.slice(i, i + size));
     return out;
