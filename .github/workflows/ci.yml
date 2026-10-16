@@ -22,6 +22,13 @@ jobs:
         run: |
           ./build/tesserui_fixtures fixtures
           git diff --exit-code -- fixtures
+      # The LVGL renderer's pages of the demo tree, for review.
+      - name: LCD screenshots
+        run: mkdir -p lcd-shots && ./build/tesserui_lcd demo --shots lcd-shots
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lcd-shots
+          path: lcd-shots
 
   esp-idf:
     runs-on: ubuntu-latest
@@ -47,9 +54,10 @@ jobs:
           esp_idf_version: ${{ matrix.idf }}
           target: ${{ matrix.target }}
           path: examples/idf
-          # Paths relative to each example's directory.
+          # Paths relative to each example's directory. lcd_local is made for
+          # a classic ESP32 board (its pins).
           command: |
-            for e in self_hosted bluetooth usb_gateway; do
+            for e in self_hosted bluetooth usb_gateway ${{ matrix.target == 'esp32' && 'lcd_local' || '' }}; do
               TESSERAPI_PATH=../../../TesserAPI NOWTP_PATH=../../../NowTP idf.py -C $e -B $e/build build || exit 1
             done
 

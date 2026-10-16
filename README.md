@@ -7,7 +7,7 @@ User interfaces for [TesserAPI](https://github.com/leokeba/TesserAPI) nodes, ren
   <img alt="A motor's page in TesserUI: a knob for its speed, a stepper for its duty cycle, a live chart of its position, and Run, Stop and Home buttons; a menu of the node's other pages on the left, and tabs for the nodes around it at the top" src="docs/images/motor-light.png">
 </picture>
 
-> **Status: early development.** The web renderer is complete enough for real devices: self-hosted, UI hosts over ESP-NOW, stub pages, the launcher (USB, Bluetooth, network), views, charts, forms, files, notifications, custom elements and embedding. The LVGL touchscreen renderer is not started. The API will change before 1.0; the specification is [docs/DESIGN.md](docs/DESIGN.md).
+> **Status: early development.** The web renderer is complete enough for real devices: self-hosted, UI hosts over ESP-NOW, stub pages, the launcher (USB, Bluetooth, network), views, charts, forms, files, notifications, custom elements and embedding. The LVGL touchscreen renderer has a first version with the basic widgets (switches, sliders, numbers, choices, text, buttons, readouts), tested on a 320×240 ESP32 board. The API will change before 1.0; the specification is [docs/DESIGN.md](docs/DESIGN.md).
 >
 > The npm packages (`tesserui`, `tesserui-bridge`) are not published yet. Until they are, run the bridge from this repository (`node bridge/bridge.mjs`) or download it for macOS (below), and point stub pages at the launcher's copy of the bundle (`https://leokeba.github.io/TesserUI/ui.js`) or at a UI host.
 
@@ -93,6 +93,7 @@ The full vocabulary is in [DESIGN.md §5](docs/DESIGN.md#5-hints-tier-1).
 | UI host | One ESP with spare flash, also a NowTP gateway | `nowApi.mountPeers(api.object("peers"))`: every nearby node gets a page at `#/peers/<name>`, forwarded over ESP-NOW |
 | Stub | A CDN or the UI host | `web.serveStub(http.handle(), "https://cdn.jsdelivr.net/npm/tesserui@0.1.0/dist/ui.js")`: a 300-byte page |
 | Launcher | GitHub Pages | Pick a node: USB (Web Serial), Bluetooth (Web Bluetooth), or its address on the network; or install firmware |
+| Touchscreen | n/a (LVGL 9) | `tesserui::LvglUi ui(client, display); ui.begin("/");` with a `tesser::LocalClient` for the node on the chip, then `ui.loop()` and `lv_timer_handler()` in the UI task |
 
 A NowTP-only node with no Wi-Fi needs nothing but its tree and `nowApi.advertise()`: the UI host renders it.
 
@@ -165,6 +166,7 @@ The interface's colors (`theme`) and its own text (`strings`) are options too: `
 | A NowTP gateway on USB, for the launcher | [UsbGateway](examples/arduino/UsbGateway) | [usb_gateway](examples/idf/usb_gateway) |
 | A node over Bluetooth LE, for the launcher | [Bluetooth](examples/arduino/Bluetooth) | [bluetooth](examples/idf/bluetooth) |
 | A node over classic Bluetooth serial (ESP32 only) | [BluetoothSerial](examples/arduino/BluetoothSerial) | |
+| A touchscreen UI for the node on the chip (the "cheap yellow display" with two USB ports) | | [lcd_local](examples/idf/lcd_local) |
 
 ## Development
 
@@ -173,10 +175,11 @@ cd web && pnpm install && pnpm test && pnpm build    # web renderer; regenerates
 pnpm dev                                              # then http://localhost:5173/?api=http://<node-ip>/api
 cmake -S . -B build && cmake --build build -j && ctest --test-dir build   # C++ (TesserAPI from ../TesserAPI or GitHub)
 node web/scripts/device.mjs demo                      # the demo node on the host: http://localhost:8090/
+./build/tesserui_lcd demo                             # the LVGL renderer on the demo node, in a window (SDL2)
 cd web && pnpm e2e                                    # Playwright, against the demo node (after both builds)
 ```
 
-No board is needed: the demo node runs TesserAPI on the host, and the browser talks to it as to a real one. The screenshots in [docs/images](docs/images) are of it. The web renderer is TypeScript and Svelte 5; both it and the future LVGL renderer test against the schemas and expected UI models in [fixtures/](fixtures). Behaviour changes go into [docs/DESIGN.md](docs/DESIGN.md) with the code.
+No board is needed: the demo node runs TesserAPI on the host, and the browser talks to it as to a real one. The screenshots in [docs/images](docs/images) are of it. The web renderer is TypeScript and Svelte 5; both it and the LVGL renderer (C++) test against the schemas and expected UI models in [fixtures/](fixtures). Behaviour changes go into [docs/DESIGN.md](docs/DESIGN.md) with the code.
 
 ## Requirements
 
