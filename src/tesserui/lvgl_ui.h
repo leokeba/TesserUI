@@ -16,6 +16,7 @@
 
 #include <stdint.h>
 
+#include <functional>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -61,8 +62,11 @@ public:
 private:
     struct Route {
         std::string path;
-        std::string root;
+        std::string root;     // the node's path; empty: this node's (begin())
+        bool menu = false;    // the node's menu, not a page
+        bool status = false;  // the node's own values only (its menu's Status)
     };
+    using SchemaHandler = std::function<void(tesser::Status, JsonVariantConst)>;
     struct Bound;
     using Status = tesser::Status;
 
@@ -73,8 +77,17 @@ private:
     void requestShow();
     void show();
     void showMenu();
+    void showNodeMenu();
     void showPage();
     void clearPage();
+    void clearContent();
+    void drawMenu(const std::vector<model::MenuEntry>& menu, const std::string& home, const std::string& root);
+    void refreshMenu();
+    void schema(const std::string& path, int depth, SchemaHandler done);
+    void failed(const char* what, tesser::Status s, JsonVariantConst body);
+    static size_t entries(const std::vector<model::MenuEntry>& menu);
+    static std::string only(const std::vector<model::MenuEntry>& menu, const std::string& home);
+    static bool same(const std::vector<model::MenuEntry>& a, const std::vector<model::MenuEntry>& b);
     void message(const char* text, bool retry);
     void setTitle(const std::string& title);
     void subscribe();
@@ -88,7 +101,8 @@ private:
     void items(lv_obj_t* parent, const std::vector<model::Item>& list);
     void advanced(lv_obj_t* parent, const std::vector<model::Item>& list);
     void leaf(lv_obj_t* parent, const model::Item& item);
-    void link(lv_obj_t* parent, const model::Item& item, std::string_view root);
+    void link(lv_obj_t* parent, const model::Item& item, const Route& target);
+    void dot(lv_obj_t* parent, bool online);
     void action(lv_obj_t* parent, const model::Item& item);
     void webOnly(lv_obj_t* parent, const std::string& text);
     lv_obj_t* control(Bound& b, lv_obj_t* parent, model::Widget w);
@@ -169,6 +183,9 @@ private:
     bool hasValues_ = false;
     std::string subscribed_;  // the path subscribed to, if any
     bool polling_ = false;    // a poll's read is in flight
+    bool watching_ = false;   // the subscription is the menu's, for nodes coming and going
+    bool refreshing_ = false;
+    lv_timer_t* menuTimer_ = nullptr;
     std::vector<std::unique_ptr<Bound>> bound_;
     bool online_ = true;
 };

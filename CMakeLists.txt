@@ -137,7 +137,7 @@ if(TESSERUI_BUILD_TESTS)
         set_target_properties(tesserui_lvgl PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
         target_compile_options(tesserui_lvgl PRIVATE ${TESSERUI_WARNINGS})
 
-        add_executable(tesserui_lcd_tests test/lcd_tests.cpp test/lcd_host.cpp)
+        add_executable(tesserui_lcd_tests test/lcd_tests.cpp test/lcd_host.cpp test/trees.cpp)
         add_executable(tesserui_lcd test/lcd_main.cpp test/lcd_host.cpp test/trees.cpp)
         foreach(t tesserui_lcd_tests tesserui_lcd)
             target_link_libraries(${t} PRIVATE tesserui_lvgl)

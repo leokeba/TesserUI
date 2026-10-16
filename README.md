@@ -167,6 +167,7 @@ The interface's colors (`theme`) and its own text (`strings`) are options too: `
 | A node over Bluetooth LE, for the launcher | [Bluetooth](examples/arduino/Bluetooth) | [bluetooth](examples/idf/bluetooth) |
 | A node over classic Bluetooth serial (ESP32 only) | [BluetoothSerial](examples/arduino/BluetoothSerial) | |
 | A touchscreen UI for the node on the chip (the "cheap yellow display" with two USB ports) | | [lcd_local](examples/idf/lcd_local) |
+| A touchscreen remote for the NowTP nodes around it: lists them, opens any of them (same board) | | [lcd_remote](examples/idf/lcd_remote) |
 
 ## Development
 

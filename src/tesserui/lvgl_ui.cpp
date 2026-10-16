@@ -94,6 +94,16 @@ std::vector<std::string_view> segmentsOf(std::string_view path) {
     return out;
 }
 
+bool hasNull(JsonVariantConst v) {
+    if (v.isNull()) return true;
+    if (v.is<JsonObjectConst>()) {
+        for (JsonPairConst kv : v.as<JsonObjectConst>()) {
+            if (hasNull(kv.value())) return true;
+        }
+    }
+    return false;
+}
+
 void merge(JsonObject dst, JsonObjectConst patch) {
     for (JsonPairConst kv : patch) {
         JsonVariantConst v = kv.value();
@@ -204,7 +214,7 @@ struct LvglUi::Bound {
     std::string dropdownText;      // a value that isn't among the options
     lv_timer_t* hold = nullptr;
     Widget fieldWidget = Widget::Readout;  // an action's argument input
-    std::string openPath, openRoot;  // links and menu entries
+    Route target;  // links and menu entries: where they go
 };
 
 LvglUi::LvglUi(tesser::ApiClient& client, lv_display_t* display)
@@ -372,55 +382,88 @@ void LvglUi::begin(std::string_view root) {
     loadRoot();
 }
 
+// A schema read that asks for less when the reply wouldn't fit: over NowTP
+// replies are capped at 16 KB, and a node short of memory refuses a large
+// one (section 7.2).
+void LvglUi::schema(const std::string& path, int depth, SchemaHandler done) {
+    tesser::Query q;
+    q.view = tesser::View::Schema;
+    q.depth = depth;
+    std::weak_ptr<int> alive = alive_;
+    uint32_t gen = gen_;
+    bool sent = client_.get(
+        path,
+        [this, alive, gen, path, depth, done](Status s, JsonVariantConst body) {
+            if (alive.expired() || gen != gen_) return;
+            const char* reason = body["reason"];
+            bool smaller = s == Status::TooLarge || (s == Status::Busy && reason && strcmp(reason, "low_memory") == 0);
+            if (smaller && depth > 1) {
+                schema(path, depth - 1, done);
+                return;
+            }
+            if (s == Status::Timeout) {
+                connection(false);
+            } else if (s == Status::Ok) {
+                connection(true);
+            }
+            done(s, body);
+        },
+        q);
+    if (!sent) done(Status::Internal, JsonVariantConst());
+}
+
+void LvglUi::failed(const char* what, Status s, JsonVariantConst body) {
+    loading_ = false;
+    lv_obj_clean(content_);
+    const char* msg = body["message"];
+    std::string t = what;
+    t += msg ? msg : s == Status::Timeout ? "no answer" : tesser::toString(s);
+    message(t.c_str(), true);
+}
+
 void LvglUi::loadRoot() {
     clearPage();
     setTitle("");
     message("Loading...", false);
     loading_ = true;
-    tesser::Query q;
-    q.view = tesser::View::Schema;
-    q.depth = 2;  // the menu: the root's children, and theirs for sub-entries
-    std::weak_ptr<int> alive = alive_;
-    uint32_t gen = gen_;
-    bool sent = client_.get(
-        root_,
-        [this, alive, gen](Status s, JsonVariantConst body) {
-            if (alive.expired() || gen != gen_) return;
-            loading_ = false;
-            if (s != Status::Ok) {
-                if (s == Status::Timeout) connection(false);
-                clearPage();
-                message("The node doesn't answer.", true);
-                return;
-            }
-            connection(true);
-            JsonObjectConst schema = body;
-            const char* label = schema["label"];
-            rootLabel_ = label ? label : "Device";
-            menu_ = model::buildMenu(schema, root_);
-            rootLoaded_ = true;
-            route_.clear();
-            size_t entries = 0;
-            for (const model::MenuEntry& e : menu_) entries += e.path.empty() ? e.children.size() : 1;
-            // A single entry is the start page itself.
-            menuShown_ = entries > 1;
-            if (!menuShown_) {
-                std::string start = root_;
-                if (entries == 1) start = menu_[0].path.empty() ? menu_[0].children[0].path : menu_[0].path;
-                route_.push_back({start, ""});
-            }
-            show();
-        },
-        q);
-    if (!sent) {
+    // The menu: the root's children, and theirs for sub-entries.
+    schema(root_, 2, [this](Status s, JsonVariantConst body) {
         loading_ = false;
-        clearPage();
-        message("Couldn't send to the node.", true);
-    }
+        if (s != Status::Ok) {
+            failed("The node doesn't answer: ", s, body);
+            return;
+        }
+        JsonObjectConst sch = body;
+        const char* label = sch["label"];
+        rootLabel_ = label ? label : "Device";
+        menu_ = model::buildMenu(sch, root_);
+        rootLoaded_ = true;
+        route_.clear();
+        // A single entry is the start page itself.
+        menuShown_ = entries(menu_) > 1;
+        if (!menuShown_) route_.push_back({only(menu_, root_), "", false, false});
+        show();
+    });
+}
+
+size_t LvglUi::entries(const std::vector<model::MenuEntry>& menu) {
+    size_t n = 0;
+    for (const model::MenuEntry& e : menu) n += e.path.empty() ? e.children.size() : 1;
+    return n;
+}
+
+// The page a menu of at most one entry stands for.
+std::string LvglUi::only(const std::vector<model::MenuEntry>& menu, const std::string& home) {
+    if (menu.empty()) return home;
+    if (!menu[0].path.empty()) return menu[0].path;
+    return menu[0].children.empty() ? home : menu[0].children[0].path;
 }
 
 void LvglUi::open(std::string_view path, std::string_view root) {
-    route_.push_back({std::string(path), std::string(root)});
+    Route r{std::string(path), std::string(root), false, false};
+    // A remote node's root: its own menu.
+    if (!r.root.empty() && r.path == r.root && r.root != root_) r.menu = true;
+    route_.push_back(std::move(r));
     requestShow();
 }
 
@@ -449,6 +492,8 @@ void LvglUi::requestShow() {
 void LvglUi::show() {
     if (route_.empty()) {
         showMenu();
+    } else if (route_.back().menu) {
+        showNodeMenu();
     } else {
         showPage();
     }
@@ -462,59 +507,61 @@ void LvglUi::clearPage() {
         lv_msgbox_close(msgbox_);
         msgbox_ = nullptr;
     }
-    for (auto& b : bound_) {
-        if (b->hold) lv_timer_delete(b->hold);
-    }
-    if (content_) {
-        lv_obj_clean(content_);
-        lv_obj_scroll_to_y(content_, 0, LV_ANIM_OFF);
-    }
-    lv_group_remove_all_objs(group_);
-    retry_ = nullptr;
-    bound_.clear();
+    if (menuTimer_) lv_timer_delete(menuTimer_);
+    menuTimer_ = nullptr;
+    watching_ = false;
+    clearContent();
+    if (content_) lv_obj_scroll_to_y(content_, 0, LV_ANIM_OFF);
     page_ = model::Page();
     values_.clear();
     hasValues_ = false;
     loading_ = false;
 }
 
-void LvglUi::showMenu() {
-    clearPage();
-    setTitle(rootLabel_);
-    for (const model::MenuEntry& top : menu_) {
-        auto entry = [this](lv_obj_t* parent, const model::MenuEntry& e, bool sub) {
-            lv_obj_t* b = lv_button_create(parent);
-            lv_obj_set_size(b, LV_PCT(100), 40);
-            lv_obj_set_flex_flow(b, LV_FLEX_FLOW_ROW);
-            lv_obj_set_flex_align(b, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-            lv_obj_set_style_pad_left(b, sub ? 24 : 10, 0);
-            lv_obj_set_style_pad_column(b, 8, 0);
-            // Rows of a list rather than call-to-action buttons.
-            lv_obj_set_style_bg_color(b, lv_color_hex(sub ? 0x24272b : 0x2c3036), 0);
-            lv_obj_set_style_bg_color(b, lv_color_hex(0x3b4048), LV_STATE_PRESSED);
-            lv_obj_set_style_shadow_width(b, 0, 0);
-            label(b, e.label, true);
-            if (e.remote) {
-                lv_obj_t* d = lv_obj_create(b);
-                lv_obj_set_size(d, 10, 10);
-                lv_obj_set_style_radius(d, LV_RADIUS_CIRCLE, 0);
-                lv_obj_set_style_border_width(d, 0, 0);
-                lv_obj_set_style_bg_color(d, e.online ? lv_palette_main(LV_PALETTE_GREEN) : lv_palette_main(LV_PALETTE_GREY), 0);
-            }
-            lv_obj_t* chevron = lv_label_create(b);
-            lv_label_set_text(chevron, LV_SYMBOL_RIGHT);
-            lv_obj_set_style_text_color(chevron, lv_palette_main(LV_PALETTE_BLUE), 0);
-            auto bound = std::make_unique<Bound>();
-            bound->ui = this;
-            bound->index = bound_.size();
-            bound->widget = Widget::Link;
-            bound->control = b;
-            bound->openPath = e.path;
-            bound->openRoot = e.remote ? e.path : std::string();
-            lv_obj_add_event_cb(b, onEvent, LV_EVENT_CLICKED, bound.get());
-            lv_group_add_obj(group_, b);
-            bound_.push_back(std::move(bound));
-        };
+void LvglUi::clearContent() {
+    for (auto& b : bound_) {
+        if (b->hold) lv_timer_delete(b->hold);
+    }
+    if (content_) lv_obj_clean(content_);
+    lv_group_remove_all_objs(group_);
+    retry_ = nullptr;
+    bound_.clear();
+}
+
+void LvglUi::drawMenu(const std::vector<model::MenuEntry>& menu, const std::string& home, const std::string& root) {
+    auto entry = [this, &home, &root](lv_obj_t* parent, const model::MenuEntry& e, bool sub) {
+        lv_obj_t* b = lv_button_create(parent);
+        lv_obj_set_size(b, LV_PCT(100), 40);
+        lv_obj_set_flex_flow(b, LV_FLEX_FLOW_ROW);
+        lv_obj_set_flex_align(b, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+        lv_obj_set_style_pad_left(b, sub ? 24 : 10, 0);
+        lv_obj_set_style_pad_column(b, 8, 0);
+        // Rows of a list rather than call-to-action buttons.
+        lv_obj_set_style_bg_color(b, lv_color_hex(sub ? 0x24272b : 0x2c3036), 0);
+        lv_obj_set_style_bg_color(b, lv_color_hex(0x3b4048), LV_STATE_PRESSED);
+        lv_obj_set_style_shadow_width(b, 0, 0);
+        label(b, e.label, true);
+        if (e.remote) dot(b, e.online);
+        lv_obj_t* chevron = lv_label_create(b);
+        lv_label_set_text(chevron, LV_SYMBOL_RIGHT);
+        lv_obj_set_style_text_color(chevron, lv_palette_main(LV_PALETTE_BLUE), 0);
+        auto bound = std::make_unique<Bound>();
+        bound->ui = this;
+        bound->index = bound_.size();
+        bound->widget = Widget::Link;
+        bound->control = b;
+        if (e.path == home) {
+            bound->target = {e.path, root, false, true};  // Status: the node's own values
+        } else if (e.remote) {
+            bound->target = {e.path, e.path, true, false};
+        } else {
+            bound->target = {e.path, root, false, false};
+        }
+        lv_obj_add_event_cb(b, onEvent, LV_EVENT_CLICKED, bound.get());
+        lv_group_add_obj(group_, b);
+        bound_.push_back(std::move(bound));
+    };
+    for (const model::MenuEntry& top : menu) {
         if (top.path.empty()) {
             // A ui.group heading.
             lv_obj_t* h = label(content_, top.label, false);
@@ -525,6 +572,108 @@ void LvglUi::showMenu() {
         entry(content_, top, false);
         for (const model::MenuEntry& c : top.children) entry(content_, c, true);
     }
+    if (menu.empty()) message("Nothing to show here.", false);
+}
+
+void LvglUi::showMenu() {
+    clearPage();
+    setTitle(rootLabel_);
+    drawMenu(menu_, root_, "");
+    // Live: nodes come and go under a gateway. A stub's change is a null in
+    // a notification of its parent (section 7.3): read the menu again then.
+    tesser::Query q;
+    q.depth = 2;
+    q.interval = 1000;
+    std::weak_ptr<int> alive = alive_;
+    uint32_t gen = gen_;
+    subscribed_ = root_;
+    watching_ = true;
+    bool sent = client_.subscribe(
+        root_,
+        [this, alive, gen](Status s, JsonVariantConst) {
+            if (alive.expired() || gen != gen_ || s == Status::Ok) return;
+            // No subscription: read it every 10 s instead.
+            subscribed_.clear();
+            menuTimer_ = lv_timer_create(
+                [](lv_timer_t* t) { static_cast<LvglUi*>(lv_timer_get_user_data(t))->refreshMenu(); }, 10000, this);
+        },
+        q);
+    if (!sent) subscribed_.clear();
+    refreshMenu();  // what changed since it was read
+}
+
+void LvglUi::refreshMenu() {
+    if (refreshing_) return;
+    refreshing_ = true;
+    tesser::Query q;
+    q.view = tesser::View::Schema;
+    q.depth = 2;
+    std::weak_ptr<int> alive = alive_;
+    uint32_t gen = gen_;
+    bool sent = client_.get(
+        root_,
+        [this, alive, gen](Status s, JsonVariantConst body) {
+            if (alive.expired()) return;
+            refreshing_ = false;
+            if (s != Status::Ok) return;
+            std::vector<model::MenuEntry> fresh = model::buildMenu(body, root_);
+            const char* label = body["label"];
+            rootLabel_ = label ? label : "Device";
+            if (!same(fresh, menu_)) {
+                menu_ = std::move(fresh);
+                if (gen == gen_ && route_.empty()) {
+                    // Drawn again where it was scrolled to.
+                    int32_t y = lv_obj_get_scroll_y(content_);
+                    clearContent();
+                    drawMenu(menu_, root_, "");
+                    lv_obj_update_layout(content_);
+                    lv_obj_scroll_to_y(content_, y, LV_ANIM_OFF);
+                }
+            }
+            if (gen == gen_ && route_.empty()) setTitle(rootLabel_);
+        },
+        q);
+    if (!sent) refreshing_ = false;
+}
+
+bool LvglUi::same(const std::vector<model::MenuEntry>& a, const std::vector<model::MenuEntry>& b) {
+    if (a.size() != b.size()) return false;
+    for (size_t i = 0; i < a.size(); i++) {
+        if (a[i].label != b[i].label || a[i].path != b[i].path || a[i].online != b[i].online ||
+            a[i].remote != b[i].remote || !same(a[i].children, b[i].children)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// A remote node's menu: its own entries, read through the gateway.
+void LvglUi::showNodeMenu() {
+    clearPage();
+    Route r = route_.back();
+    std::string_view name = r.path;
+    name = name.substr(name.rfind('/') + 1);
+    setTitle(std::string(name));
+    message("Loading...", false);
+    loading_ = true;
+    schema(r.path, 2, [this, r](Status s, JsonVariantConst body) {
+        if (s != Status::Ok) {
+            failed("The node doesn't answer: ", s, body);
+            return;
+        }
+        loading_ = false;
+        std::vector<model::MenuEntry> menu = model::buildMenu(body, r.path);
+        if (entries(menu) <= 1) {
+            // One entry: the node's page itself, in the menu's place.
+            route_.back() = {only(menu, r.path), r.path, false, false};
+            show();
+            return;
+        }
+        const char* label = body["label"];
+        if (label) setTitle(label);
+        lv_obj_clean(content_);
+        drawMenu(menu, r.path, r.path);
+    });
 }
 
 void LvglUi::showPage() {
@@ -536,63 +685,42 @@ void LvglUi::showPage() {
     setTitle(last.empty() ? rootLabel_ : model::humanize(last));
     message("Loading...", false);
     loading_ = true;
-    tesser::Query q;
-    q.view = tesser::View::Schema;
-    q.depth = 3;  // section 7.2
-    std::weak_ptr<int> alive = alive_;
-    uint32_t gen = gen_;
-    bool sent = client_.get(
-        r.path,
-        [this, alive, gen, r](Status s, JsonVariantConst reply) {
-            if (alive.expired() || gen != gen_) return;
-            lv_obj_clean(content_);
-            if (s != Status::Ok) {
-                loading_ = false;
-                if (s == Status::Timeout) connection(false);
-                const char* msg = reply["message"];
-                std::string t = "Couldn't read the page: ";
-                t += msg ? msg : tesser::toString(s);
-                message(t.c_str(), true);
-                return;
-            }
-            connection(true);
-            std::string root = r.root.empty() ? root_ : r.root;
-            bool menu = r.path == root_ && menuShown_;
-            page_ = model::buildPage(reply, r.path, root, menu);
-            if (r.path == root_ && menuShown_) {
-                setTitle("Status");
-            } else if (r.path == root_) {
-                setTitle(rootLabel_);
-            } else {
-                setTitle(page_.label);
-            }
-            for (const Item& a : page_.actions) action(content_, a);
-            for (const Item& c : page_.cards) {
-                if (c.hidden) continue;
-                if (c.form) {
-                    webOnly(card(c), c.label.empty() ? page_.label : c.label);
-                    continue;
-                }
-                lv_obj_t* body = card(c);
-                Bound& b = bind(c, lv_obj_get_parent(body) == content_ ? body : lv_obj_get_parent(body));
-                b.section = true;
-                bool hasItems = anyShown(c.items);
-                items(body, c.items);
-                if (hasItems) {
-                    advanced(body, c.advancedItems);
-                } else {
-                    items(body, c.advancedItems);
-                }
-            }
-            if (page_.cards.empty() && page_.actions.empty()) message("Nothing to show here.", false);
-            subscribe();
-        },
-        q);
-    if (!sent) {
-        loading_ = false;
+    schema(r.path, 3, [this, r](Status s, JsonVariantConst reply) {
+        if (s != Status::Ok) {
+            failed("Couldn't read the page: ", s, reply);
+            return;
+        }
         lv_obj_clean(content_);
-        message("Couldn't send to the node.", true);
-    }
+        std::string root = r.root.empty() ? root_ : r.root;
+        page_ = model::buildPage(reply, r.path, root, r.status);
+        if (r.status) {
+            setTitle("Status");
+        } else if (r.path == root_) {
+            setTitle(rootLabel_);
+        } else {
+            setTitle(page_.label);
+        }
+        for (const Item& a : page_.actions) action(content_, a);
+        for (const Item& c : page_.cards) {
+            if (c.hidden) continue;
+            if (c.form) {
+                webOnly(card(c), c.label.empty() ? page_.label : c.label);
+                continue;
+            }
+            lv_obj_t* body = card(c);
+            Bound& b = bind(c, lv_obj_get_parent(body) == content_ ? body : lv_obj_get_parent(body));
+            b.section = true;
+            bool hasItems = anyShown(c.items);
+            items(body, c.items);
+            if (hasItems) {
+                advanced(body, c.advancedItems);
+            } else {
+                items(body, c.advancedItems);
+            }
+        }
+        if (page_.cards.empty() && page_.actions.empty()) message("Nothing to show here.", false);
+        subscribe();
+    });
 }
 
 // ---- Data --------------------------------------------------------------------
@@ -679,7 +807,24 @@ void LvglUi::unsubscribe() {
 void LvglUi::onNotification(JsonObjectConst envelope) {
     const char* op = envelope["op"];
     const char* path = envelope["path"];
-    if (!op || !path || strcmp(op, "change") != 0 || !hasValues_) return;
+    if (!op || !path || strcmp(op, "change") != 0) return;
+    if (watching_) {
+        // The menu: a stub changed (a null), or notifications were lost.
+        if (envelope["overflow"].as<bool>() || hasNull(envelope["body"])) {
+            if (!menuTimer_) {
+                menuTimer_ = lv_timer_create(
+                    [](lv_timer_t* t) {
+                        LvglUi* ui = static_cast<LvglUi*>(lv_timer_get_user_data(t));
+                        lv_timer_delete(t);
+                        ui->menuTimer_ = nullptr;
+                        ui->refreshMenu();
+                    },
+                    300, this);  // a few mounts at once: one read
+            }
+        }
+        return;
+    }
+    if (!hasValues_) return;
     if (envelope["overflow"].as<bool>()) {
         // Notifications were lost: read the page again.
         poll();
@@ -955,7 +1100,11 @@ void LvglUi::items(lv_obj_t* parent, const std::vector<Item>& list) {
                 leaf(parent, item);
                 break;
             case ItemKind::Link:
-                link(parent, item, item.remote ? std::string_view(item.path) : std::string_view(route_.back().root));
+                if (item.remote) {
+                    link(parent, item, {item.path, item.path, true, false});  // the peer's menu
+                } else {
+                    link(parent, item, {item.path, route_.back().root, false, false});
+                }
                 break;
             case ItemKind::Section: {
                 // Collapsible groups, tabs and what the schema's depth cut
@@ -967,7 +1116,7 @@ void LvglUi::items(lv_obj_t* parent, const std::vector<Item>& list) {
                     break;
                 }
                 if (item.lazy || item.tabs || item.level >= 3) {
-                    link(parent, item, route_.back().root);
+                    link(parent, item, {item.path, route_.back().root, false, false});
                     break;
                 }
                 lv_obj_t* sub = row(parent, true);
@@ -994,24 +1143,25 @@ void LvglUi::advanced(lv_obj_t* parent, const std::vector<Item>& list) {
     items(collapsible(parent, "Advanced", false), list);
 }
 
-void LvglUi::link(lv_obj_t* parent, const Item& item, std::string_view root) {
+void LvglUi::dot(lv_obj_t* parent, bool online) {
+    lv_obj_t* d = lv_obj_create(parent);
+    lv_obj_set_size(d, 10, 10);
+    lv_obj_set_style_radius(d, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_border_width(d, 0, 0);
+    lv_obj_set_style_bg_color(d, online ? lv_palette_main(LV_PALETTE_GREEN) : lv_palette_main(LV_PALETTE_GREY), 0);
+}
+
+void LvglUi::link(lv_obj_t* parent, const Item& item, const Route& target) {
     lv_obj_t* r = row(parent, false);
     lv_obj_set_clickable(r, true);
     label(r, item.label, true);
-    if (item.remote) {
-        lv_obj_t* d = lv_obj_create(r);
-        lv_obj_set_size(d, 10, 10);
-        lv_obj_set_style_radius(d, LV_RADIUS_CIRCLE, 0);
-        lv_obj_set_style_border_width(d, 0, 0);
-        lv_obj_set_style_bg_color(d, item.online ? lv_palette_main(LV_PALETTE_GREEN) : lv_palette_main(LV_PALETTE_GREY), 0);
-    }
+    if (item.remote) dot(r, item.online);
     lv_obj_t* chevron = lv_label_create(r);
     lv_label_set_text(chevron, LV_SYMBOL_RIGHT);
     Bound& b = bind(item, r);
     b.widget = Widget::Link;
     b.control = r;
-    b.openPath = item.path;
-    b.openRoot = std::string(root);
+    b.target = target;
     lv_obj_add_event_cb(r, onEvent, LV_EVENT_CLICKED, &b);
     lv_group_add_obj(group_, r);
 }
@@ -1305,7 +1455,8 @@ void LvglUi::event(Bound& b, lv_event_t* e) {
     lv_event_code_t code = lv_event_get_code(e);
     lv_obj_t* target = lv_event_get_target_obj(e);
     if (b.widget == Widget::Link) {
-        open(b.openPath, b.openRoot);  // clears the page: nothing below may touch `b`
+        route_.push_back(b.target);
+        requestShow();
         return;
     }
     const Item& item = *b.item;

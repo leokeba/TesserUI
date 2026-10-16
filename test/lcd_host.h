@@ -29,7 +29,7 @@ public:
     // The first visible label showing `text`, in drawing order, or null.
     lv_obj_t* label(const char* text) const;
     // The control on the row of the label showing `text`: the row's last
-    // child, or its first child's last child for two-line rows.
+    // child, or the line below for two-line rows.
     lv_obj_t* control(const char* text) const;
     // Taps the centre of `obj` (or a point in it, as fractions of its size).
     void tap(lv_obj_t* obj, const std::function<void()>& each = nullptr, float fx = 0.5f, float fy = 0.5f);

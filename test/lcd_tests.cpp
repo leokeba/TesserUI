@@ -4,6 +4,7 @@
 //
 //   ./tesserui_lcd_tests [filter]
 #include <math.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include <string>
@@ -12,6 +13,7 @@
 #include "check.h"
 #include "lcd_host.h"
 #include "tesserui/lvgl_ui.h"
+#include "trees.h"
 
 namespace {
 
@@ -199,6 +201,97 @@ TEST(lcd_refused_write_restores) {
     r.screen.run(200, r.each);
     CHECK_EQ(std::string(r.node.name), "lamp");
     CHECK_EQ(std::string(lv_textarea_get_text(ta)), "lamp");
+}
+
+// ---- Peers behind a gateway (the remote controller) -----------------------
+
+namespace {
+
+// The demo tree: a gateway with peers behind an in-memory NowTP link.
+struct Gateway {
+    trees::Demo demo;
+    tesser::LocalClient client{demo.api};
+    lcd::Screen screen;
+    tesserui::LvglUi ui{client, screen.display()};
+    std::function<void()> each = [this] {
+        uint32_t now = lv_tick_get();
+        demo.pump(now);
+        demo.api.poll(now);
+        ui.loop();
+    };
+
+    Gateway() {
+        ui.begin("/");
+        screen.run(300, each);
+    }
+    void tap(const char* text) {
+        lv_obj_t* l = screen.label(text);
+        CHECK(l != nullptr);
+        if (!l) return;
+        screen.tap(l, each);
+        screen.run(400, each);
+    }
+    // A menu entry's online dot: green or grey.
+    bool online(const char* text) {
+        lv_obj_t* l = screen.label(text);
+        if (!l) return false;
+        lv_obj_t* d = lv_obj_get_child(lv_obj_get_parent(l), 1);
+        lv_color_t c = lv_obj_get_style_bg_color(d, LV_PART_MAIN);
+        return lv_color_eq(c, lv_palette_main(LV_PALETTE_GREEN));
+    }
+};
+
+}  // namespace
+
+TEST(lcd_peers_in_the_menu) {
+    Gateway g;
+    CHECK(g.screen.label("Nodes") != nullptr);
+    CHECK(g.screen.label("porch-lamp") != nullptr);
+    CHECK(g.online("porch-lamp"));
+    CHECK(!g.online("kitchen-lamp"));
+}
+
+TEST(lcd_peer_opens_on_its_menu) {
+    Gateway g;
+    g.tap("porch-lamp");
+    CHECK_EQ(g.ui.current(), "/peers/porch-lamp");
+    CHECK(g.screen.label("Porch lamp") != nullptr);  // its label, as the title
+    CHECK(g.screen.label("Sensors") != nullptr);
+    g.tap("Lamp");
+    CHECK_EQ(g.ui.current(), "/peers/porch-lamp/lamp");
+    if (getenv("LCD_SHOT")) g.screen.png(getenv("LCD_SHOT"));
+    lv_obj_t* sw = g.screen.control("On");
+    CHECK(sw && lv_obj_check_type(sw, &lv_switch_class));
+    if (!sw) return;
+    CHECK(lv_obj_has_state(sw, LV_STATE_CHECKED));
+    g.screen.tap(sw, g.each);
+    g.screen.run(400, g.each);
+    CHECK(!g.demo.porch.on);  // written over the link
+    // And the other way: the peer's own change, forwarded.
+    g.demo.porch.on = true;
+    g.screen.run(600, g.each);
+    CHECK(lv_obj_has_state(sw, LV_STATE_CHECKED));
+    g.ui.back();
+    g.screen.run(300, g.each);
+    CHECK_EQ(g.ui.current(), "/peers/porch-lamp");
+    g.ui.back();
+    g.screen.run(300, g.each);
+    CHECK(g.ui.current().empty());
+}
+
+TEST(lcd_menu_follows_peers) {
+    Gateway g;
+    CHECK(!g.online("kitchen-lamp"));
+    g.demo.hear("kitchen-lamp", true);
+    g.screen.run(1500, g.each);
+    CHECK(g.online("kitchen-lamp"));
+    CHECK(g.screen.label("garden") == nullptr);
+    g.demo.hear("garden", true);
+    g.screen.run(1500, g.each);
+    CHECK(g.screen.label("garden") != nullptr);
+    g.demo.hear("garden", false);
+    g.screen.run(1500, g.each);
+    CHECK(!g.online("garden"));
 }
 
 int main(int argc, char** argv) { return check::run(argc > 1 ? argv[1] : nullptr) ? 1 : 0; }

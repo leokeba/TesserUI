@@ -142,11 +142,14 @@ lv_obj_t* Screen::control(const char* text) const {
     lv_obj_t* l = label(text);
     if (!l) return nullptr;
     lv_obj_t* row = lv_obj_get_parent(l);
-    lv_obj_t* outer = lv_obj_get_parent(row);
-    if (outer && lv_obj_get_index(row) == 0 && lv_obj_get_child_count(outer) == 2) {
-        return lv_obj_get_child(outer, 1);  // two lines: the control is below
+    lv_obj_t* last = lv_obj_get_child(row, static_cast<int32_t>(lv_obj_get_child_count(row)) - 1);
+    // A row ending with text (the label, or a value beside it) is the top
+    // line of a two-line row: the control is the line below.
+    if (lv_obj_check_type(last, &lv_label_class)) {
+        lv_obj_t* outer = lv_obj_get_parent(row);
+        if (outer && lv_obj_get_child_count(outer) > 1) return lv_obj_get_child(outer, 1);
     }
-    return lv_obj_get_child(row, static_cast<int32_t>(lv_obj_get_child_count(row)) - 1);
+    return last;
 }
 
 void Screen::press(int32_t x, int32_t y) {

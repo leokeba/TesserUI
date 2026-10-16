@@ -2,7 +2,7 @@
 // the board's own hardware (its RGB LED, backlight and light sensor) as a
 // TesserAPI tree, rendered by TesserUI's LVGL renderer through a
 // LocalClient. Made for the "cheap yellow display" with two USB ports
-// (board.h); another board needs its own board.cpp.
+// (../components/cyd); another board needs its own drivers.
 //
 // The console's UART carries API envelopes too: the same tree from the
 // launcher's USB way (https://leokeba.github.io/TesserUI/), or a script.

@@ -54,10 +54,10 @@ jobs:
           esp_idf_version: ${{ matrix.idf }}
           target: ${{ matrix.target }}
           path: examples/idf
-          # Paths relative to each example's directory. lcd_local is made for
-          # a classic ESP32 board (its pins).
+          # Paths relative to each example's directory. lcd_local and lcd_remote
+          # are made for a classic ESP32 board (its pins).
           command: |
-            for e in self_hosted bluetooth usb_gateway ${{ matrix.target == 'esp32' && 'lcd_local' || '' }}; do
+            for e in self_hosted bluetooth usb_gateway ${{ matrix.target == 'esp32' && 'lcd_local lcd_remote' || '' }}; do
               TESSERAPI_PATH=../../../TesserAPI NOWTP_PATH=../../../NowTP idf.py -C $e -B $e/build build || exit 1
             done
 
