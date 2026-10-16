@@ -111,6 +111,7 @@ Screen::Screen(int32_t width, int32_t height) : pixels_(static_cast<size_t>(widt
 }
 
 Screen::~Screen() {
+    if (encoder_) lv_indev_delete(encoder_);
     lv_indev_delete(pointer_);
     lv_display_delete(display_);
 }
@@ -122,6 +123,38 @@ void Screen::read(lv_indev_t* indev, lv_indev_data_t* data) {
     data->point.x = s->x_;
     data->point.y = s->y_;
     data->state = s->pressed_ ? LV_INDEV_STATE_PRESSED : LV_INDEV_STATE_RELEASED;
+}
+
+lv_indev_t* Screen::encoder() {
+    if (!encoder_) {
+        encoder_ = lv_indev_create();
+        lv_indev_set_type(encoder_, LV_INDEV_TYPE_ENCODER);
+        lv_indev_set_read_cb(encoder_, readEncoder);
+        lv_indev_set_user_data(encoder_, this);
+        lv_indev_set_display(encoder_, display_);
+    }
+    return encoder_;
+}
+
+void Screen::readEncoder(lv_indev_t* indev, lv_indev_data_t* data) {
+    Screen* s = static_cast<Screen*>(lv_indev_get_user_data(indev));
+    data->enc_diff = static_cast<int16_t>(s->diff_);
+    s->diff_ = 0;
+    data->state = s->encPressed_ ? LV_INDEV_STATE_PRESSED : LV_INDEV_STATE_RELEASED;
+}
+
+void Screen::turn(int n, const std::function<void()>& each) {
+    for (int i = 0; i < (n < 0 ? -n : n); i++) {
+        diff_ = n < 0 ? -1 : 1;
+        run(50, each);
+    }
+}
+
+void Screen::push(const std::function<void()>& each) {
+    encPressed_ = true;
+    run(80, each);
+    encPressed_ = false;
+    run(150, each);
 }
 
 void Screen::run(uint32_t ms, const std::function<void()>& each) {

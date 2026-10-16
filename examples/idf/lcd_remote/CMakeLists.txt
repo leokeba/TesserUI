@@ -18,7 +18,16 @@ foreach(p TESSERAPI_PATH NOWTP_PATH)
                             "next to this repository, or set ${p}")
     endif()
 endforeach()
-# ../components: the board's drivers, shared with lcd_local.
-set(EXTRA_COMPONENT_DIRS "${TESSERUI_PATH}" "${TESSERAPI_PATH}" "${NOWTP_PATH}" "${CMAKE_CURRENT_LIST_DIR}/../components")
+# The board's drivers, from ../components: cyd (the two-port cheap yellow
+# display, touch) by default, or tdisplay (LilyGO T-Display, two buttons):
+#   idf.py -DBOARD=tdisplay -B build-tdisplay build
+if(NOT BOARD)
+    set(BOARD cyd)
+endif()
+set(BOARD "${BOARD}" CACHE STRING "The board: cyd or tdisplay" FORCE)
+if(NOT EXISTS "${CMAKE_CURRENT_LIST_DIR}/../components/${BOARD}/board.h")
+    message(FATAL_ERROR "BOARD=${BOARD}: no such board in ../components (cyd, tdisplay)")
+endif()
+set(EXTRA_COMPONENT_DIRS "${TESSERUI_PATH}" "${TESSERAPI_PATH}" "${NOWTP_PATH}" "${CMAKE_CURRENT_LIST_DIR}/../components/${BOARD}")
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 project(tesserui_lcd_remote)

@@ -44,11 +44,22 @@ public:
     void loop();
 
     // Each page's focusable controls, for an encoder or a keypad: attach it
-    // with lv_indev_set_group().
+    // with lv_indev_set_group(), or let input() do it.
     lv_group_t* group() {
         useGroup_ = true;
         return group_;
     }
+    // Buttons or an encoder instead of touch (an LV_INDEV_TYPE_ENCODER or
+    // KEYPAD): the UI moves it between its groups (the page, a question,
+    // the keyboard). Call it before begin().
+    void input(lv_indev_t* indev) {
+        indev_ = indev;
+        useGroup_ = true;
+        if (indev) lv_indev_set_group(indev, group_);
+    }
+    // What a back button does: leaves editing, closes a question or the
+    // keyboard, else goes back a page.
+    void escape();
     // The font of every text, for units beyond ASCII and degrees (µ, Ω).
     // Call it before begin().
     void font(const lv_font_t* font) { font_ = font; }
@@ -153,6 +164,11 @@ private:
     lv_obj_t* row(lv_obj_t* parent, bool column);
     lv_obj_t* label(lv_obj_t* parent, const std::string& text, bool grow);
     void focusable(lv_obj_t* obj);
+    void outline(lv_obj_t* obj);
+    void focusFirst();
+    void modal(lv_obj_t* const* objs, size_t n, bool editing);
+    void endModal();
+    static void onSliderKey(lv_event_t* e);
     lv_obj_t* collapsible(lv_obj_t* parent, const std::string& title, bool open);
 
     // Values
@@ -206,6 +222,16 @@ private:
     const lv_font_t* font_ = nullptr;
     lv_group_t* group_ = nullptr;
     bool useGroup_ = false;
+    lv_indev_t* indev_ = nullptr;
+    lv_group_t* modal_ = nullptr;      // a question's or the keyboard's buttons, while shown
+    lv_obj_t* firstFocus_ = nullptr;   // focused when the page is drawn
+    lv_obj_t* typingArea_ = nullptr;   // the field the keyboard types into
+    // Sizes, smaller on small screens (a 135-pixel side).
+    struct Metrics {
+        bool compact = false;
+        int32_t header = 36, row = 32, entry = 40, listRow = 36, pad = 6, cardPad = 8, button = 32, fieldPad = 6,
+                chart = 70, segmented = 38;
+    } m_;
     std::shared_ptr<int> alive_;
 
     // Chrome

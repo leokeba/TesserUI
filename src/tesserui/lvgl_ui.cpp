@@ -19,7 +19,6 @@ namespace {
 constexpr uint32_t kThrottleMs = 100;  // sliders: one write per 100 ms while dragging (section 7.4)
 constexpr uint32_t kRetryMs = 5000;
 constexpr uint32_t kPollMs = 1000;
-constexpr int32_t kHeaderHeight = 36;
 
 std::string jsonString(std::string_view s) {
     JsonDocument d;
@@ -289,6 +288,7 @@ LvglUi::~LvglUi() {
     if (screen_) lv_obj_clean(screen_);
     if (toast_) lv_obj_delete(toast_);
     if (msgbox_) lv_msgbox_close(msgbox_);
+    if (modal_) lv_group_delete(modal_);
     lv_group_delete(group_);
 }
 
@@ -296,6 +296,22 @@ LvglUi::~LvglUi() {
 
 void LvglUi::chrome() {
     if (!font_) font_ = LV_FONT_DEFAULT;
+    int32_t shortSide = lv_display_get_horizontal_resolution(display_);
+    if (lv_display_get_vertical_resolution(display_) < shortSide) shortSide = lv_display_get_vertical_resolution(display_);
+    if (shortSide < 200) {
+        // A 135x240 screen: everything tighter.
+        m_.compact = true;
+        m_.header = 24;
+        m_.row = 24;
+        m_.entry = 28;
+        m_.listRow = 26;
+        m_.pad = 3;
+        m_.cardPad = 4;
+        m_.button = 24;
+        m_.fieldPad = 2;
+        m_.chart = 40;
+        m_.segmented = 28;
+    }
     lv_theme_t* theme = lv_theme_default_init(display_, lv_palette_main(LV_PALETTE_BLUE), lv_palette_main(LV_PALETTE_ORANGE),
                                               true, font_);
     lv_display_set_theme(display_, theme);
@@ -308,7 +324,7 @@ void LvglUi::chrome() {
     lv_obj_set_scrollable(screen_, false);
 
     header_ = lv_obj_create(screen_);
-    lv_obj_set_size(header_, LV_PCT(100), kHeaderHeight);
+    lv_obj_set_size(header_, LV_PCT(100), m_.header);
     lv_obj_set_flex_flow(header_, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(header_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_set_style_pad_hor(header_, 4, 0);
@@ -319,7 +335,7 @@ void LvglUi::chrome() {
     lv_obj_set_scrollable(header_, false);
 
     backButton_ = lv_button_create(header_);
-    lv_obj_set_size(backButton_, 40, 28);
+    lv_obj_set_size(backButton_, m_.compact ? 30 : 40, m_.header - 8);
     lv_obj_t* arrow = lv_label_create(backButton_);
     lv_label_set_text(arrow, LV_SYMBOL_LEFT);
     lv_obj_center(arrow);
@@ -330,7 +346,7 @@ void LvglUi::chrome() {
     lv_obj_set_flex_grow(title_, 1);
     lv_label_set_long_mode(title_, LV_LABEL_LONG_MODE_DOTS);
 #if LV_FONT_MONTSERRAT_16
-    lv_obj_set_style_text_font(title_, &lv_font_montserrat_16, 0);
+    if (!m_.compact) lv_obj_set_style_text_font(title_, &lv_font_montserrat_16, 0);
 #endif
     lv_label_set_text(title_, "");
 
@@ -345,8 +361,8 @@ void LvglUi::chrome() {
     lv_obj_set_width(content_, LV_PCT(100));
     lv_obj_set_flex_grow(content_, 1);
     lv_obj_set_flex_flow(content_, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_style_pad_all(content_, 6, 0);
-    lv_obj_set_style_pad_row(content_, 6, 0);
+    lv_obj_set_style_pad_all(content_, m_.pad, 0);
+    lv_obj_set_style_pad_row(content_, m_.pad, 0);
     lv_obj_set_style_radius(content_, 0, 0);
     lv_obj_set_style_border_width(content_, 0, 0);
     lv_obj_set_scroll_dir(content_, LV_DIR_VER);
@@ -372,7 +388,88 @@ void LvglUi::chrome() {
 // Into the page's group, once an encoder or a keypad uses it (group()): on
 // a touchscreen alone, the group's focus would show a cursor in a field.
 void LvglUi::focusable(lv_obj_t* obj) {
-    if (useGroup_) lv_group_add_obj(group_, obj);
+    if (!useGroup_) return;
+    lv_group_add_obj(group_, obj);
+    lv_obj_set_scroll_on_focus(obj, true);
+    outline(obj);
+    if (!firstFocus_) firstFocus_ = obj;
+}
+
+// Where the focus is, always: the theme outlines only what keys focused,
+// not what the UI focuses itself (a page's first control).
+void LvglUi::outline(lv_obj_t* obj) {
+    lv_obj_set_style_outline_width(obj, 2, LV_STATE_FOCUSED);
+    lv_obj_set_style_outline_color(obj, lv_palette_lighten(LV_PALETTE_ORANGE, 1), LV_STATE_FOCUSED);
+    lv_obj_set_style_outline_pad(obj, 1, LV_STATE_FOCUSED);
+}
+
+// The page's first control, rather than the back button.
+void LvglUi::focusFirst() {
+    if (useGroup_ && firstFocus_) lv_group_focus_obj(firstFocus_);
+}
+
+// A question's or the keyboard's controls, alone in the input's group
+// until endModal(): the page behind can't take the focus.
+void LvglUi::modal(lv_obj_t* const* objs, size_t n, bool editing) {
+    if (!indev_) return;
+    if (!modal_) modal_ = lv_group_create();
+    lv_group_remove_all_objs(modal_);
+    for (size_t i = 0; i < n; i++) {
+        lv_group_add_obj(modal_, objs[i]);
+        outline(objs[i]);
+    }
+    if (n) lv_group_focus_obj(objs[0]);
+    lv_group_set_editing(modal_, editing);
+    lv_indev_set_group(indev_, modal_);
+}
+
+void LvglUi::endModal() {
+    if (!indev_) return;
+    if (modal_) lv_group_remove_all_objs(modal_);
+    lv_indev_set_group(indev_, group_);
+}
+
+void LvglUi::escape() {
+    if (msgbox_) {
+        lv_msgbox_close(msgbox_);
+        msgbox_ = nullptr;
+        confirmed_ = nullptr;
+        endModal();
+        return;
+    }
+    if (typing_ && typingArea_) {
+        lv_obj_send_event(typingArea_, LV_EVENT_CANCEL, nullptr);  // as the keyboard's cancel key
+        hideKeyboard();
+        return;
+    }
+    if (useGroup_ && lv_group_get_editing(group_)) {
+        lv_obj_t* f = lv_group_get_focused(group_);
+        if (f && lv_obj_check_type(f, &lv_dropdown_class) && lv_dropdown_is_open(f)) lv_dropdown_close(f);
+        lv_group_set_editing(group_, false);
+        return;
+    }
+    back();
+}
+
+// Encoder clicks move a slider by a twentieth of its range (or its step,
+// when larger): one unit, its precision's, would take hundreds of clicks.
+void LvglUi::onSliderKey(lv_event_t* e) {
+    uint32_t key = lv_event_get_key(e);
+    int dir = key == LV_KEY_RIGHT || key == LV_KEY_UP ? 1 : key == LV_KEY_LEFT || key == LV_KEY_DOWN ? -1 : 0;
+    if (!dir) return;
+    lv_obj_t* sl = lv_event_get_target_obj(e);
+    Bound* b = static_cast<Bound*>(lv_event_get_user_data(e));
+    int32_t lo = lv_slider_get_min_value(sl), hi = lv_slider_get_max_value(sl);
+    int32_t step = (hi - lo) / 20;
+    if (b->widget == Widget::Slider && b->item) {
+        int32_t own = static_cast<int32_t>(lround(stepFor(*b->item) * b->scale));
+        if (own > step) step = own;
+    }
+    if (step < 1) step = 1;
+    int32_t v = lv_slider_get_value(sl) + dir * step;
+    lv_slider_set_value(sl, v < lo ? lo : v > hi ? hi : v, LV_ANIM_OFF);
+    lv_event_stop_processing(e);
+    lv_obj_send_event(sl, LV_EVENT_VALUE_CHANGED, nullptr);
 }
 
 void LvglUi::onChrome(lv_event_t* e) {
@@ -388,6 +485,14 @@ void LvglUi::onChrome(lv_event_t* e) {
 void LvglUi::setTitle(const std::string& title) {
     lv_label_set_text(title_, title.c_str());
     bool canGoBack = !route_.empty() && (menuShown_ || route_.size() > 1);
+    if (useGroup_) {
+        outline(backButton_);
+        if (canGoBack) {
+            lv_group_add_obj(group_, backButton_);
+        } else {
+            lv_group_remove_obj(backButton_);
+        }
+    }
     lv_obj_set_hidden(backButton_, !(canGoBack));
 }
 
@@ -405,6 +510,8 @@ void LvglUi::message(const char* textToShow, bool retry) {
         lv_obj_t* t = lv_label_create(retry_);
         lv_label_set_text(t, "Retry");
         lv_obj_add_event_cb(retry_, onChrome, LV_EVENT_CLICKED, this);
+        focusable(retry_);
+        focusFirst();
     }
 }
 
@@ -570,6 +677,7 @@ void LvglUi::clearPage() {
     if (msgbox_) {
         lv_msgbox_close(msgbox_);
         msgbox_ = nullptr;
+        endModal();
     }
     if (menuTimer_) lv_timer_delete(menuTimer_);
     menuTimer_ = nullptr;
@@ -594,6 +702,7 @@ void LvglUi::clearContent() {
     }
     if (content_) lv_obj_clean(content_);
     lv_group_remove_all_objs(group_);
+    firstFocus_ = nullptr;
     retry_ = nullptr;
     bound_.clear();
 }
@@ -601,7 +710,7 @@ void LvglUi::clearContent() {
 void LvglUi::drawMenu(const std::vector<model::MenuEntry>& menu, const std::string& home, const std::string& root) {
     auto entry = [this, &home, &root](lv_obj_t* parent, const model::MenuEntry& e, bool sub) {
         lv_obj_t* b = lv_button_create(parent);
-        lv_obj_set_size(b, LV_PCT(100), 40);
+        lv_obj_set_size(b, LV_PCT(100), m_.entry);
         lv_obj_set_flex_flow(b, LV_FLEX_FLOW_ROW);
         lv_obj_set_flex_align(b, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
         lv_obj_set_style_pad_left(b, sub ? 24 : 10, 0);
@@ -643,6 +752,7 @@ void LvglUi::drawMenu(const std::vector<model::MenuEntry>& menu, const std::stri
         for (const model::MenuEntry& c : top.children) entry(content_, c, true);
     }
     if (menu.empty()) message("Nothing to show here.", false);
+    focusFirst();
 }
 
 void LvglUi::showMenu() {
@@ -829,6 +939,7 @@ void LvglUi::showPage() {
         }
         if (!r.list.empty() && listEditable_) removeFooter();
         if (page_.cards.empty() && page_.actions.empty()) message("Nothing to show here.", false);
+        focusFirst();
         subscribe();
     });
 }
@@ -1314,7 +1425,7 @@ lv_obj_t* LvglUi::row(lv_obj_t* parent, bool column) {
     lv_obj_set_flex_align(r, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_set_style_pad_row(r, 4, 0);
     lv_obj_set_style_pad_column(r, 6, 0);
-    if (!column) lv_obj_set_style_min_height(r, 32, 0);
+    if (!column) lv_obj_set_style_min_height(r, m_.row, 0);
     lv_obj_set_scrollable(r, false);
     return r;
 }
@@ -1360,14 +1471,14 @@ lv_obj_t* LvglUi::card(const Item& section) {
     lv_obj_t* c = lv_obj_create(content_);
     lv_obj_set_size(c, LV_PCT(100), LV_SIZE_CONTENT);
     lv_obj_set_flex_flow(c, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_style_pad_all(c, 8, 0);
-    lv_obj_set_style_pad_row(c, 4, 0);
+    lv_obj_set_style_pad_all(c, m_.cardPad, 0);
+    lv_obj_set_style_pad_row(c, m_.compact ? 2 : 4, 0);
     lv_obj_set_scrollable(c, false);
     if (section.label.empty()) return c;
     if (section.collapsed) return collapsible(c, section.label, false);
     lv_obj_t* t = label(c, section.label, false);
 #if LV_FONT_MONTSERRAT_16
-    lv_obj_set_style_text_font(t, &lv_font_montserrat_16, 0);
+    if (!m_.compact) lv_obj_set_style_text_font(t, &lv_font_montserrat_16, 0);
 #endif
     return c;
 }
@@ -1533,6 +1644,7 @@ lv_obj_t* LvglUi::control(Bound& b, lv_obj_t* parent, Widget w) {
             lv_slider_set_range(c, static_cast<int32_t>(lround(item.min * b.scale)),
                                 static_cast<int32_t>(lround(item.max * b.scale)));
             on(c, {LV_EVENT_VALUE_CHANGED, LV_EVENT_RELEASED});
+            lv_obj_add_event_cb(c, onSliderKey, static_cast<lv_event_code_t>(LV_EVENT_KEY | LV_EVENT_PREPROCESS), &b);
             break;
         case Widget::Bar:
             c = lv_bar_create(parent);
@@ -1545,7 +1657,7 @@ lv_obj_t* LvglUi::control(Bound& b, lv_obj_t* parent, Widget w) {
             lv_obj_set_width(box, LV_SIZE_CONTENT);
             lv_obj_set_style_pad_column(box, 4, 0);
             b.minus = lv_button_create(box);
-            lv_obj_set_size(b.minus, 32, 32);
+            lv_obj_set_size(b.minus, m_.button, m_.button);
             lv_obj_t* m = lv_label_create(b.minus);
             lv_label_set_text(m, LV_SYMBOL_MINUS);
             lv_obj_center(m);
@@ -1553,16 +1665,16 @@ lv_obj_t* LvglUi::control(Bound& b, lv_obj_t* parent, Widget w) {
             lv_textarea_set_one_line(c, true);
             lv_textarea_set_accepted_chars(c, "0123456789.-");
             lv_textarea_set_max_length(c, 16);
-            lv_obj_set_width(c, 76);
-            lv_obj_set_style_pad_ver(c, 6, 0);
+            lv_obj_set_width(c, m_.compact ? 60 : 76);
+            lv_obj_set_style_pad_ver(c, m_.fieldPad, 0);
             if (!item.unit.empty()) label(box, item.unit, false);
             b.plus = lv_button_create(box);
-            lv_obj_set_size(b.plus, 32, 32);
+            lv_obj_set_size(b.plus, m_.button, m_.button);
             lv_obj_t* p = lv_label_create(b.plus);
             lv_label_set_text(p, LV_SYMBOL_PLUS);
             lv_obj_center(p);
             for (lv_obj_t* o : {b.minus, b.plus}) on(o, {LV_EVENT_CLICKED, LV_EVENT_LONG_PRESSED_REPEAT});
-            on(c, {LV_EVENT_CLICKED, LV_EVENT_READY, LV_EVENT_CANCEL});
+            on(c, {LV_EVENT_CLICKED, LV_EVENT_FOCUSED, LV_EVENT_READY, LV_EVENT_CANCEL});
             break;
         }
         case Widget::Segmented: {
@@ -1573,7 +1685,7 @@ lv_obj_t* LvglUi::control(Bound& b, lv_obj_t* parent, Widget w) {
             lv_buttonmatrix_set_map(c, b.map.data());
             lv_buttonmatrix_set_button_ctrl_all(c, LV_BUTTONMATRIX_CTRL_CHECKABLE);
             lv_buttonmatrix_set_one_checked(c, true);
-            lv_obj_set_size(c, LV_PCT(100), 38);
+            lv_obj_set_size(c, LV_PCT(100), m_.segmented);
             lv_obj_set_style_pad_all(c, 3, 0);
             on(c, {LV_EVENT_VALUE_CHANGED});
             break;
@@ -1586,7 +1698,7 @@ lv_obj_t* LvglUi::control(Bound& b, lv_obj_t* parent, Widget w) {
                 options += o.label;
             }
             lv_dropdown_set_options(c, options.c_str());
-            lv_obj_set_width(c, b.forAction ? LV_PCT(55) : 140);
+            lv_obj_set_width(c, b.forAction ? LV_PCT(55) : m_.compact ? 110 : 140);
             on(c, {LV_EVENT_VALUE_CHANGED});
             break;
         }
@@ -1600,7 +1712,7 @@ lv_obj_t* LvglUi::control(Bound& b, lv_obj_t* parent, Widget w) {
             } else {
                 lv_textarea_set_one_line(c, true);
             }
-            lv_obj_set_style_pad_ver(c, 6, 0);
+            lv_obj_set_style_pad_ver(c, m_.fieldPad, 0);
             if (item.maxLength) lv_textarea_set_max_length(c, item.maxLength);
             if (w == Widget::Password || item.secret) {
                 lv_textarea_set_password_mode(c, true);
@@ -1608,11 +1720,11 @@ lv_obj_t* LvglUi::control(Bound& b, lv_obj_t* parent, Widget w) {
             } else if (!item.placeholder.empty()) {
                 lv_textarea_set_placeholder_text(c, item.placeholder.c_str());
             }
-            on(c, {LV_EVENT_CLICKED, LV_EVENT_READY, LV_EVENT_CANCEL});
+            on(c, {LV_EVENT_CLICKED, LV_EVENT_FOCUSED, LV_EVENT_READY, LV_EVENT_CANCEL});
             break;
         case Widget::Chart: {
             c = lv_chart_create(parent);
-            lv_obj_set_size(c, LV_PCT(100), 70);
+            lv_obj_set_size(c, LV_PCT(100), m_.chart);
             lv_chart_set_type(c, LV_CHART_TYPE_LINE);
             lv_chart_set_div_line_count(c, 3, 0);
             lv_obj_set_style_size(c, 0, 0, LV_PART_INDICATOR);  // no point markers
@@ -1649,6 +1761,7 @@ lv_obj_t* LvglUi::control(Bound& b, lv_obj_t* parent, Widget w) {
                 lv_obj_set_style_margin_right(sl, 10, 0);
                 lv_slider_set_range(sl, 0, 255);
                 on(sl, {LV_EVENT_VALUE_CHANGED, LV_EVENT_RELEASED});
+                lv_obj_add_event_cb(sl, onSliderKey, static_cast<lv_event_code_t>(LV_EVENT_KEY | LV_EVENT_PREPROCESS), &b);
                 focusable(sl);
             }
             break;
@@ -1803,6 +1916,12 @@ std::string LvglUi::controlJson(Bound& b) {
 void LvglUi::event(Bound& b, lv_event_t* e) {
     lv_event_code_t code = lv_event_get_code(e);
     lv_obj_t* target = lv_event_get_target_obj(e);
+    if (code == LV_EVENT_FOCUSED) {
+        // An encoder's press puts a field in edit mode (and focuses it
+        // again) rather than clicking it: the keyboard then.
+        if (!useGroup_ || !lv_group_get_editing(group_) || lv_group_get_focused(group_) != target || typing_) return;
+        code = LV_EVENT_CLICKED;
+    }
     if (b.widget == Widget::Link) {
         route_.push_back(b.target);
         requestShow();
@@ -1960,6 +2079,9 @@ void LvglUi::textDone(Bound& b, bool ok) {
 
 void LvglUi::keyboard(Bound& b, lv_obj_t* textarea, bool numeric) {
     typing_ = &b;
+    typingArea_ = textarea;
+    lv_obj_t* keys = keyboard_;
+    modal(&keys, 1, true);  // the encoder types on the keyboard
     lv_keyboard_set_textarea(keyboard_, textarea);
     lv_keyboard_set_mode(keyboard_, numeric ? LV_KEYBOARD_MODE_NUMBER : LV_KEYBOARD_MODE_TEXT_LOWER);
     lv_obj_set_hidden(keyboard_, false);
@@ -1972,11 +2094,17 @@ void LvglUi::keyboard(Bound& b, lv_obj_t* textarea, bool numeric) {
 }
 
 void LvglUi::hideKeyboard() {
+    bool was = typing_ != nullptr;
     typing_ = nullptr;
+    typingArea_ = nullptr;
     if (!keyboard_) return;
+    if (was) {
+        endModal();
+        if (useGroup_) lv_group_set_editing(group_, false);  // the field is done
+    }
     lv_keyboard_set_textarea(keyboard_, nullptr);
     lv_obj_set_hidden(keyboard_, true);
-    if (content_) lv_obj_set_style_pad_bottom(content_, 6, 0);
+    if (content_) lv_obj_set_style_pad_bottom(content_, m_.pad, 0);
 }
 
 // ---- Writes and calls ----------------------------------------------------------
@@ -2043,11 +2171,14 @@ void LvglUi::ask(const std::string& question, std::function<void()> yes) {
     lv_msgbox_add_text(msgbox_, question.c_str());
     lv_obj_t* cancel = lv_msgbox_add_footer_button(msgbox_, "Cancel");
     confirmOk_ = lv_msgbox_add_footer_button(msgbox_, "OK");
+    lv_obj_t* answers[2] = {cancel, confirmOk_};
+    modal(answers, 2, false);
     auto onAnswer = [](lv_event_t* e) {
         LvglUi* ui = static_cast<LvglUi*>(lv_event_get_user_data(e));
         bool ok = lv_event_get_target_obj(e) == ui->confirmOk_;
         lv_msgbox_close(ui->msgbox_);
         ui->msgbox_ = nullptr;
+        ui->endModal();
         std::function<void()> then = std::move(ui->confirmed_);
         ui->confirmed_ = nullptr;
         if (ok && then && ui->confirmGen_ == ui->gen_) then();
@@ -2373,7 +2504,7 @@ void LvglUi::rows(Bound& b, JsonVariantConst v) {
             if (sumCol) summary = shown(at(e, sumCol->path), *sumCol);
         }
         lv_obj_t* r = row(b.control, false);
-        lv_obj_set_style_min_height(r, 36, 0);
+        lv_obj_set_style_min_height(r, m_.listRow, 0);
         lv_obj_set_style_border_side(r, LV_BORDER_SIDE_BOTTOM, 0);
         lv_obj_set_style_border_width(r, 1, 0);
         lv_obj_set_style_border_color(r, lv_palette_main(LV_PALETTE_GREY), 0);
@@ -2426,10 +2557,10 @@ void LvglUi::rows(Bound& b, JsonVariantConst v) {
         add->field = lv_textarea_create(r);
         lv_textarea_set_one_line(add->field, true);
         lv_obj_set_flex_grow(add->field, 1);
-        lv_obj_set_style_pad_ver(add->field, 6, 0);
+        lv_obj_set_style_pad_ver(add->field, m_.fieldPad, 0);
         std::string placeholder = "New " + model::humanize(item.key);
         lv_textarea_set_placeholder_text(add->field, placeholder.c_str());
-        for (lv_event_code_t code : {LV_EVENT_CLICKED, LV_EVENT_READY, LV_EVENT_CANCEL}) {
+        for (lv_event_code_t code : {LV_EVENT_CLICKED, LV_EVENT_FOCUSED, LV_EVENT_READY, LV_EVENT_CANCEL}) {
             lv_obj_add_event_cb(add->field, onRow, code, add);
         }
     }
@@ -2469,6 +2600,10 @@ void LvglUi::rowEvent(RowRef& r, lv_event_t* e) {
         }
         case RowRef::Add:
             if (target == r.field) {
+                if (code == LV_EVENT_FOCUSED) {
+                    if (!useGroup_ || !lv_group_get_editing(group_) || typing_) return;
+                    code = LV_EVENT_CLICKED;  // an encoder's press: edit mode
+                }
                 if (code == LV_EVENT_CLICKED) {
                     keyboard(b, r.field, false);  // the rows aren't redrawn while it is open
                     return;

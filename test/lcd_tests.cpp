@@ -499,6 +499,110 @@ TEST(lcd_array) {
     if (r.node.gains.size() > 1) CHECK(r.node.gains[1] > 95);  // near the top: a tap's precision
 }
 
+// ---- Two buttons: an encoder (the T-Display) -------------------------------
+
+namespace {
+
+// The small node on a 240x135 screen, driven by an encoder.
+struct Buttons {
+    Node node;
+    tesser::LocalClient client{node.api};
+    lcd::Screen screen{240, 135};
+    tesserui::LvglUi ui{client, screen.display()};
+    std::function<void()> each = [this] {
+        node.api.poll(lv_tick_get());
+        ui.loop();
+    };
+    Buttons() {
+        ui.input(screen.encoder());
+        ui.begin("/");
+        screen.run(300, each);
+    }
+    lv_obj_t* focused() { return lv_group_get_focused(ui.group()); }
+    // Turns until the focus is on `obj` (at most 30 steps).
+    bool focus(lv_obj_t* obj) {
+        for (int i = 0; i < 30 && focused() != obj; i++) screen.turn(1, each);
+        return focused() == obj;
+    }
+};
+
+}  // namespace
+
+TEST(lcd_encoder_navigates) {
+    Buttons b;
+    CHECK(b.ui.current().empty());
+    // The first entry is focused; the next one is More.
+    lv_obj_t* lamp = b.screen.label("Lamp");
+    CHECK(lamp && b.focused() == lv_obj_get_parent(lamp));
+    b.screen.push(b.each);
+    b.screen.run(300, b.each);
+    CHECK_EQ(b.ui.current(), "/lamp");
+    // The page's first control, not the back button.
+    lv_obj_t* press = b.screen.label("Press");
+    CHECK(press && b.focused() == lv_obj_get_parent(press));
+    b.screen.push(b.each);
+    CHECK_EQ(b.node.presses, 1);
+    b.ui.escape();
+    b.screen.run(300, b.each);
+    CHECK(b.ui.current().empty());
+}
+
+TEST(lcd_encoder_edits_a_slider) {
+    Buttons b;
+    b.ui.open("/lamp");
+    b.screen.run(300, b.each);
+    lv_obj_t* l = b.screen.label("Level");
+    lv_obj_t* slider = l ? lv_obj_get_child(lv_obj_get_parent(lv_obj_get_parent(l)), 1) : nullptr;
+    CHECK(slider && b.focus(slider));
+    if (!slider) return;
+    b.screen.push(b.each);  // edit
+    CHECK(lv_group_get_editing(b.ui.group()));
+    b.screen.turn(2, b.each);  // two twentieths of 0..100
+    b.screen.run(300, b.each);
+    CHECK_EQ(b.node.level, 20);
+    b.ui.escape();  // leaves editing, stays on the page
+    b.screen.run(100, b.each);
+    CHECK(!lv_group_get_editing(b.ui.group()));
+    CHECK_EQ(b.ui.current(), "/lamp");
+}
+
+TEST(lcd_encoder_answers_a_question) {
+    Buttons b;
+    b.ui.open("/lamp");
+    b.screen.run(300, b.each);
+    lv_obj_t* reset = b.screen.label("Reset");
+    CHECK(reset && b.focus(lv_obj_get_parent(reset)));
+    if (!reset) return;
+    b.screen.push(b.each);
+    CHECK(b.screen.label("Reset the lamp?") != nullptr);
+    // Cancel first; the page behind can't take the focus.
+    b.screen.turn(1, b.each);
+    b.screen.turn(1, b.each);
+    b.screen.turn(1, b.each);
+    b.screen.push(b.each);  // OK, three turns round two buttons
+    CHECK_EQ(b.node.resets, 1);
+    CHECK(b.screen.label("Reset the lamp?") == nullptr);
+}
+
+TEST(lcd_encoder_types_with_the_keyboard) {
+    Buttons b;
+    b.ui.open("/lamp");
+    b.screen.run(300, b.each);
+    lv_obj_t* name = b.screen.control("Name");
+    CHECK(name && b.focus(name));
+    if (!name) return;
+    b.screen.push(b.each);  // opens the keyboard, which takes the encoder
+    lv_obj_t* kb = lv_obj_get_child(lv_display_get_screen_active(b.screen.display()), -1);
+    CHECK(kb && lv_obj_check_type(kb, &lv_keyboard_class) && !lv_obj_is_hidden(kb));
+    b.ui.escape();  // cancel: the value again
+    b.screen.run(100, b.each);
+    CHECK(kb && lv_obj_is_hidden(kb));
+    CHECK_EQ(std::string(lv_textarea_get_text(name)), "lamp");
+    b.ui.escape();
+    b.screen.run(300, b.each);
+    CHECK(b.ui.current().empty());
+}
+
 // ---- Peers behind a gateway (the remote controller) -----------------------
 
 namespace {

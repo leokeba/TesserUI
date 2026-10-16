@@ -60,6 +60,11 @@ jobs:
             for e in self_hosted bluetooth usb_gateway ${{ matrix.target == 'esp32' && 'lcd_local lcd_remote' || '' }}; do
               TESSERAPI_PATH=../../../TesserAPI NOWTP_PATH=../../../NowTP idf.py -C $e -B $e/build build || exit 1
             done
+            # The remote for the LilyGO T-Display too (two buttons, no touch).
+            if [ "${{ matrix.target }}" = esp32 ]; then
+              TESSERAPI_PATH=../../../TesserAPI NOWTP_PATH=../../../NowTP idf.py -C lcd_remote -B lcd_remote/build-tdisplay \
+                -DBOARD=tdisplay -DSDKCONFIG=lcd_remote/build-tdisplay/sdkconfig build || exit 1
+            fi
 
   arduino:
     runs-on: ubuntu-latest

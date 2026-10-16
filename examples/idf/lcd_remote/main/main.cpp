@@ -18,8 +18,11 @@
 // join" on one of them (TesserKIT: NowTP > Pairing), then "Join" here
 // (This remote > Pairing). The key is kept in NVS.
 //
-// Made for the "cheap yellow display" with two USB ports
-// (../components/cyd). The console's UART carries API envelopes too.
+// Boards (../components): the "cheap yellow display" with two USB ports,
+// by touch (cyd, the default), or the LilyGO T-Display, by its two buttons
+// (idf.py -DBOARD=tdisplay): GPIO 35 moves between controls, GPIO 0
+// presses or edits one, held it goes back. The console's UART carries API
+// envelopes too.
 #include <string>
 
 #include "esp_system.h"
@@ -130,11 +133,13 @@ extern "C" void app_main() {
 
     tesser::LocalClient client(api);
     tesserui::LvglUi ui(client, display);
+    if (lv_indev_t* buttons = board::buttons()) ui.input(buttons);  // no touchscreen
     ui.begin("/");
     ESP_ERROR_CHECK(serialApi.begin());  // requests over the console, in its own task
 
     for (;;) {
         if (orientation != shown) board::orientation(shown = orientation);
+        if (board::backPressed()) ui.escape();
         if (backlight != lit) board::backlight(static_cast<uint8_t>(lit = backlight));
         api.poll(now());  // forwarded notifications, watched values, saving settings
         ui.loop();

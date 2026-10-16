@@ -44,4 +44,8 @@ struct Stats {
 };
 const Stats& stats();
 
+// Touch only: no buttons (the T-Display's, ../tdisplay, are an encoder).
+inline lv_indev_t* buttons() { return nullptr; }
+inline bool backPressed() { return false; }
+
 }  // namespace board

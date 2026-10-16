@@ -38,6 +38,12 @@ public:
     void press(int32_t x, int32_t y);
     void release();
 
+    // An encoder (LV_INDEV_TYPE_ENCODER), created on first use: what two
+    // buttons give. turn(n) moves the focus (or edits), push() presses.
+    lv_indev_t* encoder();
+    void turn(int n, const std::function<void()>& each = nullptr);
+    void push(const std::function<void()>& each = nullptr);
+
     // Turns the screen (same number of pixels): landscape to portrait.
     void resize(int32_t width, int32_t height);
 
@@ -47,6 +53,10 @@ public:
 private:
     static void flush(lv_display_t* d, const lv_area_t* area, uint8_t* px);
     static void read(lv_indev_t* indev, lv_indev_data_t* data);
+    static void readEncoder(lv_indev_t* indev, lv_indev_data_t* data);
+    lv_indev_t* encoder_ = nullptr;
+    int diff_ = 0;
+    bool encPressed_ = false;
 
     lv_display_t* display_ = nullptr;
     lv_indev_t* pointer_ = nullptr;
