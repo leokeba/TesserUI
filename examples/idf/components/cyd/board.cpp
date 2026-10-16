@@ -229,7 +229,8 @@ lv_display_t* begin(Orientation o) {
     ioc.trans_queue_depth = 4;
     ioc.on_color_trans_done = flushed;
     ioc.user_ctx = display;
-    ESP_ERROR_CHECK(esp_lcd_new_panel_io_spi(SPI2_HOST, &ioc, &io));
+    // The bus: its host number, which ESP-IDF 5.1 takes as a pointer-sized handle.
+    ESP_ERROR_CHECK(esp_lcd_new_panel_io_spi((esp_lcd_spi_bus_handle_t)SPI2_HOST, &ioc, &io));
     esp_lcd_panel_dev_config_t pc = {};
     pc.reset_gpio_num = GPIO_NUM_NC;  // tied to EN
 #if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 2, 0)

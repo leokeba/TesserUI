@@ -61,7 +61,8 @@ jobs:
               TESSERAPI_PATH=../../../TesserAPI NOWTP_PATH=../../../NowTP idf.py -C $e -B $e/build build || exit 1
             done
             # The remote for the LilyGO T-Display too (two buttons, no touch).
-            # SDKCONFIG is relative to the example's folder unless absolute.
+            # SDKCONFIG is relative to the example folder unless absolute. No
+            # apostrophes in this command: the action runs it inside bash -c.
             if [ "${{ matrix.target }}" = esp32 ]; then
               TESSERAPI_PATH=../../../TesserAPI NOWTP_PATH=../../../NowTP idf.py -C lcd_remote -B lcd_remote/build-tdisplay \
                 -DBOARD=tdisplay -DSDKCONFIG="$PWD/lcd_remote/build-tdisplay/sdkconfig" build || exit 1
