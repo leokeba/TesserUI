@@ -671,11 +671,13 @@ void lvglTask() {
 | `table` | `lv_list` of rows; a row opens its element as a page |
 | `link` | a menu entry with an online dot |
 | `confirm` | `lv_msgbox` |
-| `json`, `color` | not rendered *(color later)* |
-| `form` sections | "web only" *(later: a draft, sent on submit as on the web, §7.4)* |
+| `color` | a swatch and three sliders (R, G, B) |
+| `flags` | one `lv_checkbox` per bit, labelled by `ui.labels` |
+| `json` | not rendered |
+| `form` sections, object arguments | their controls edit a draft, sent as one patch (§7.4) |
 | custom elements (§9.8) | the tier 0 widget |
 
-- **Not drawn yet** *(later)*: `table`, `list`, `chart` of an array, `file`, `flags` and actions with an object argument show their label and "web only"; `events` and `log` aren't shown (toasts, §7.8, *later*). A `chart` of a value is its readout.
+- **Not drawn yet** *(later)*: `file` shows its label and "web only"; `events` and `log` aren't shown, their events are toasts (§10.4). A custom element on an object is "web only" too.
 - **Units:** LVGL's built-in Montserrat fonts cover ASCII and `°`. Other units (`µ`, `Ω`) need the application to provide a font, set with `ui.font()`.
 - **Monochrome displays** (SSD1306 128×64 with buttons or an encoder) *(later)*: a compact profile with one row per line, no cards, and value editing on a focus-and-edit screen.
 
@@ -687,9 +689,14 @@ void lvglTask() {
 - **The menu follows the nodes:** while it is shown, it subscribes to the root (`depth` 2, `interval` 1 s). A `null` in a notification is a stub that changed (a node mounted, gone offline, back, §7.3): the menu's schema is read again and redrawn where it was scrolled to. It is also read again each time the menu is shown, and every 10 s when the subscription is refused.
 - **Data:** one subscription per page, with the page's `keys` and `depth`, `interval` 100 ms; polled once a second when the node refuses it (`busy`, `not_allowed`), tried again every 5 s after a timeout. Notifications are merge patches into the page's values; `overflow` reads the page again. Navigating unsubscribes first.
 - **Writes** follow §7.4: shown at once, pending until the reply, whose value replaces it; an error restores the confirmed value and shows its message as a toast. Sliders send at most one write per 100 ms while dragged, and the final value; a dragged slider isn't moved by notifications. Text and numbers are sent when the keyboard's check key is pressed, restored by its cancel key. `secret` fields start empty and are emptied after sending. Actions are disabled while in flight, show a reply other than `null` under their button, and ask first with `confirm` (`lv_msgbox`); `hold` sends `true` on press and every `keepalive` ms, `false` on release.
+- **Forms and object arguments:** a form's controls (`ui.form`), or the fields of an action taking an object, edit a draft instead of writing: notifications don't move an edited control. The form's Apply (its submit action's label) sends one patch to the object, the edited values and the submit action (`{"az": 120, "go": null}`), after `confirm`; Reset discards the draft. An action's button sends the edited fields as its argument, untouched ones left out (the device's defaults); number fields start at their lowest value, else 0.
+- **Lists, tables and arrays:** one row per element: its key (keyed lists), else its first field's value, else its number; one more short value; its first writable boolean as a switch, written through the element (`/lists/sources/Sun/on`). A row opens its element as a page, built from the list's `items` and subscribed through the list, since subscriptions below a list are refused (TesserAPI §4.4); a keyed element renamed there moves to its new key. Lists are changed whole: adding to a keyed list asks for the key and sends the keys alone, an indexed list gets one more `{}` (patches keep the others), an array one more value (its range's lowest, else 0, `""`, `false`). Remove, on the element's page after a confirmation, sends the others: keys, `{}` for the elements before it, the writable fields of those after it, which move down one. `maxSize` and `fixed` are respected.
+- **Charts:** a value's chart keeps the last `ui.history` values (at most 120) while shown, an array's plots its elements; the range is the value's, else the samples' with a margin.
+- **Toasts** (§7.8): one events-only subscription per node (`changes: false`, no snapshot) at the root of the node on screen, this one's or a peer's, kept across its pages; page and menu subscriptions leave events out. An event's schema is read the first time it comes (its `ui.toast` and label, 24 kept); those with `ui.toast` show "Label: payload", coloured by kind, for 3 s.
+- **Focus:** controls join the encoder group only once the application asks for it (`group()`), so a touchscreen shows no focus cursor.
 - **Conditions** (§5.3) on paths inside the page hide rows and disable controls; paths outside it aren't read yet, and pass *(later: their own subscription, §7.3)*.
 - **Connection:** the header's dot turns red after a request times out, green with the next answer.
-- *(later)*: `ui.keepalive` re-sends of values (the device's own timeout stops it meanwhile, which is safe), access levels (`whoami`), views (§8), toasts for events, the string arena of §10.2 (descriptors hold their strings for now), and memory checked per page on target.
+- *(later)*: `ui.keepalive` re-sends of values (the device's own timeout stops it meanwhile, which is safe), access levels (`whoami`), views (§8), reordering rows (`ui.reorder`), the string arena of §10.2 (descriptors hold their strings for now), and memory checked per page on target.
 
 ## 11. Testing
 

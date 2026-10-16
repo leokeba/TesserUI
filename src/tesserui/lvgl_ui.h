@@ -45,7 +45,10 @@ public:
 
     // Each page's focusable controls, for an encoder or a keypad: attach it
     // with lv_indev_set_group().
-    lv_group_t* group() const { return group_; }
+    lv_group_t* group() {
+        useGroup_ = true;
+        return group_;
+    }
     // The font of every text, for units beyond ASCII and degrees (µ, Ω).
     // Call it before begin().
     void font(const lv_font_t* font) { font_ = font; }
@@ -65,7 +68,41 @@ private:
         std::string root;     // the node's path; empty: this node's (begin())
         bool menu = false;    // the node's menu, not a page
         bool status = false;  // the node's own values only (its menu's Status)
+        // A list's or an array's element: its page follows the list, since
+        // subscriptions below a list are refused.
+        std::string list;      // the list's path; empty: not an element
+        std::string keyField;  // keyed lists: the field naming elements
+        std::string id;        // the element's key, or its index
+        bool scalar = false;   // an array's element: one value
+        std::string title;
+
+        static Route to(std::string path, std::string root, bool menu = false, bool status = false) {
+            Route r;
+            r.path = std::move(path);
+            r.root = std::move(root);
+            r.menu = menu;
+            r.status = status;
+            return r;
+        }
     };
+    // A form, or an action's object argument: controls that edit a draft,
+    // sent as one patch (section 7.4).
+    struct Draft {
+        std::string path;     // the form's object, or the action
+        std::string submit;   // the form's submit action (empty: none)
+        bool action = false;  // an action's argument
+        const model::Item* item = nullptr;  // the form's section, or the action
+        lv_obj_t* reset = nullptr;
+        lv_obj_t* apply = nullptr;
+        lv_obj_t* result = nullptr;
+        bool busy = false;
+    };
+    struct EventInfo {
+        std::string path;
+        model::Toast toast = model::Toast::None;
+        std::string label;
+    };
+    struct RowRef;
     using SchemaHandler = std::function<void(tesser::Status, JsonVariantConst)>;
     struct Bound;
     using Status = tesser::Status;
@@ -95,6 +132,7 @@ private:
     void unsubscribe();
     void onNotification(JsonObjectConst envelope);
     void apply(std::string_view path, JsonVariantConst body);
+    void setValues(JsonVariantConst body);
 
     // Rendering
     lv_obj_t* card(const model::Item& section);
@@ -104,11 +142,17 @@ private:
     void link(lv_obj_t* parent, const model::Item& item, const Route& target);
     void dot(lv_obj_t* parent, bool online);
     void action(lv_obj_t* parent, const model::Item& item);
+    void form(lv_obj_t* parent, const model::Item& section);
+    void params(lv_obj_t* parent, const model::Item& action);
+    void list(lv_obj_t* parent, const model::Item& item);
+    void rows(Bound& b, JsonVariantConst value);
+    void removeFooter();
     void webOnly(lv_obj_t* parent, const std::string& text);
     lv_obj_t* control(Bound& b, lv_obj_t* parent, model::Widget w);
     Bound& bind(const model::Item& item, lv_obj_t* row);
     lv_obj_t* row(lv_obj_t* parent, bool column);
     lv_obj_t* label(lv_obj_t* parent, const std::string& text, bool grow);
+    void focusable(lv_obj_t* obj);
     lv_obj_t* collapsible(lv_obj_t* parent, const std::string& title, bool open);
 
     // Values
@@ -121,11 +165,28 @@ private:
 
     // Writes and calls
     void write(Bound& b, const std::string& json);
+    // A value from a control: written, or kept in its draft.
+    void commit(Bound& b, const std::string& json);
+    void draftChanged(size_t draft);
+    void submitDraft(size_t draft);
+    void resetDraft(size_t draft);
+    // A write nothing on screen waits for (a list's row switch, a list
+    // replaced); the reply's value goes into the page's values.
+    void send(const std::string& path, const std::string& json, const std::string& what,
+              std::function<void()> done = nullptr);
+    void addElement(Bound& list, const std::string& key);
+    void removeElement();
+    JsonVariantConst elementOf(JsonVariantConst list) const;
+    void ask(const std::string& question, std::function<void()> yes);
+    void ensureEvents();
+    void eventNotified(const std::string& path, JsonVariantConst body);
+    std::string nodeRoot() const;
     void call(Bound& b, const std::string& arg);
     void confirmThen(Bound& b, const std::string& arg);
     void textDone(Bound& b, bool ok);
     std::string controlJson(Bound& b);
     void toast(const std::string& text, bool error);
+    void toast(const std::string& text, model::Toast kind);
     void error(const std::string& what, Status s, JsonVariantConst body);
     void connection(bool ok);
 
@@ -134,6 +195,8 @@ private:
     void hideKeyboard();
 
     static void onEvent(lv_event_t* e);
+    static void onRow(lv_event_t* e);
+    void rowEvent(RowRef& r, lv_event_t* e);
     static void onShow(void* user);
     static void onChrome(lv_event_t* e);
     void event(Bound& b, lv_event_t* e);
@@ -142,6 +205,7 @@ private:
     lv_display_t* display_;
     const lv_font_t* font_ = nullptr;
     lv_group_t* group_ = nullptr;
+    bool useGroup_ = false;
     std::shared_ptr<int> alive_;
 
     // Chrome
@@ -158,8 +222,6 @@ private:
     uint32_t toastUntil_ = 0;
     lv_obj_t* msgbox_ = nullptr;  // a confirmation (ui.confirm)
     lv_obj_t* confirmOk_ = nullptr;
-    size_t confirmIndex_ = 0;
-    std::string confirmArg_;
     uint32_t confirmGen_ = 0;
     bool showPending_ = false;
     Bound* typing_ = nullptr;  // the field the keyboard edits
@@ -187,6 +249,16 @@ private:
     bool refreshing_ = false;
     lv_timer_t* menuTimer_ = nullptr;
     std::vector<std::unique_ptr<Bound>> bound_;
+    std::vector<Draft> drafts_;
+    size_t drafting_ = 0;                  // while drawing a draft's controls: its index + 1
+    const model::Item* skip_ = nullptr;    // while drawing a form: its submit action, drawn last
+    JsonDocument listValue_;               // an element page's list
+    JsonDocument elementSchema_;           // and its element's schema
+    bool listEditable_ = false;
+    std::function<void()> confirmed_;      // the question's yes
+    // Events (section 7.8): one subscription per node, for toasts.
+    std::string eventsPath_;
+    std::vector<EventInfo> eventInfo_;
     bool online_ = true;
 };
 

@@ -28,6 +28,8 @@ public:
 
     // The first visible label showing `text`, in drawing order, or null.
     lv_obj_t* label(const char* text) const;
+    // The same, among `within`'s descendants.
+    static lv_obj_t* label(const char* text, lv_obj_t* within);
     // The control on the row of the label showing `text`: the row's last
     // child, or the line below for two-line rows.
     lv_obj_t* control(const char* text) const;

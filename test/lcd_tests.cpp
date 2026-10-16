@@ -4,10 +4,12 @@
 //
 //   ./tesserui_lcd_tests [filter]
 #include <math.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include <string>
+#include <vector>
 
 #include "TesserAPI.h"
 #include "check.h"
@@ -201,6 +203,285 @@ TEST(lcd_refused_write_restores) {
     r.screen.run(200, r.each);
     CHECK_EQ(std::string(r.node.name), "lamp");
     CHECK_EQ(std::string(lv_textarea_get_text(ta)), "lamp");
+}
+
+// ---- More widgets: forms, arguments, lists, flags, colours, toasts --------
+
+namespace {
+
+struct Spot {
+    std::string name = "here";
+    int x = 0;
+};
+void describe(tesser::Object& o, Spot& s) {
+    o.value("name", s.name);
+    o.value("x", s.x).range(0, 10);
+}
+
+struct Source {
+    std::string name;
+    double az = 0;
+    bool on = false;
+};
+void describe(tesser::Object& o, Source& s) {
+    o.value("name", s.name);
+    o.value("az", s.az).range(0, 360);
+    o.value("on", s.on);
+}
+
+struct Slot {
+    int hour = 0;
+    bool enabled = false;
+    int runs = 0;
+};
+void describe(tesser::Object& o, Slot& s) {
+    o.value("hour", s.hour).range(0, 23);
+    o.value("enabled", s.enabled);
+    o.value("runs", s.runs).readOnly();
+}
+
+struct Rich {
+    tesser::Api api;
+    double az = 10, el = 20;
+    int goes = 0;
+    std::vector<Spot> spots;
+    std::vector<Source> sources{{"Sun", 120, true}, {"Moon", 200, false}};
+    std::vector<Slot> slots{{7, true, 3}, {19, false, 0}, {22, true, 1}};
+    std::vector<int> gains{10, 40};
+    int days = 0x05;
+    std::string color = "#102030";
+    tesser::EventNode* alarm = nullptr;
+
+    Rich() {
+        auto& t = api.object("target").label("Target").ui("form");
+        t.value("az", az).range(0, 360);
+        t.value("el", el).range(0, 90);
+        t.action("go", [this] { goes++; }).label("Go");
+        auto& m = api.object("misc").label("Misc");
+        m.action("add", [this](const Spot& s) { spots.push_back(s); }).label("Add spot");
+        m.value("days", days).ui("widget", "flags").ui("labels", "Mon,Tue,Wed");
+        m.value("color", color).ui("widget", "color");
+        alarm = &m.event("alarm").label("Alarm").ui("toast", "warn");
+        auto& l = api.object("lists").label("Lists");
+        l.list("sources", sources).maxSize(4).key("name");
+        l.list("slots", slots).maxSize(4);
+        l.array("gains", gains).range(0, 100).maxSize(4);
+    }
+};
+
+struct RichRig {
+    Rich node;
+    tesser::LocalClient client{node.api};
+    lcd::Screen screen;
+    tesserui::LvglUi ui{client, screen.display()};
+    std::function<void()> each = [this] {
+        node.api.poll(lv_tick_get());
+        ui.loop();
+    };
+    RichRig() {
+        ui.begin("/");
+        screen.run(200, each);
+    }
+    void open(const char* path) {
+        ui.open(path);
+        screen.run(300, each);
+    }
+    void tap(const char* text) {
+        lv_obj_t* l = screen.label(text);
+        CHECK(l != nullptr);
+        if (!l) printf("  no label \"%s\"\n", text);
+        if (l) screen.tap(l, each);
+        screen.run(300, each);
+    }
+    // Types into a field as the keyboard would, then its check key.
+    void type(lv_obj_t* ta, const char* text) {
+        screen.tap(ta, each);
+        lv_textarea_set_text(ta, text);
+        lv_obj_send_event(ta, LV_EVENT_READY, nullptr);
+        screen.run(300, each);
+    }
+};
+
+lv_obj_t* textareaOf(lv_obj_t* c) {
+    if (!c) return nullptr;
+    if (lv_obj_check_type(c, &lv_textarea_class)) return c;
+    uint32_t n = lv_obj_get_child_count(c);
+    for (uint32_t i = 0; i < n; i++) {
+        if (lv_obj_t* t = textareaOf(lv_obj_get_child(c, static_cast<int32_t>(i)))) return t;
+    }
+    return nullptr;
+}
+
+}  // namespace
+
+TEST(lcd_form_sends_one_patch) {
+    RichRig r;
+    r.open("/target");
+    lv_obj_t* az = textareaOf(r.screen.control("Az"));
+    // Az has a range: a slider. Edit it through its slider instead.
+    lv_obj_t* l = r.screen.label("Az");
+    lv_obj_t* slider = l ? lv_obj_get_child(lv_obj_get_parent(lv_obj_get_parent(l)), 1) : nullptr;
+    CHECK(slider && lv_obj_check_type(slider, &lv_slider_class));
+    (void)az;
+    if (!slider) return;
+    r.screen.tap(slider, r.each, 0.5f, 0.5f);
+    r.screen.run(300, r.each);
+    CHECK_EQ(r.node.az, 10.0);  // a draft: nothing sent yet
+    CHECK_EQ(r.node.goes, 0);
+    r.tap("Go");
+    CHECK(r.node.az > 150 && r.node.az < 210);
+    CHECK_EQ(r.node.el, 20.0);  // untouched: left out
+    CHECK_EQ(r.node.goes, 1);
+}
+
+TEST(lcd_form_reset_discards) {
+    RichRig r;
+    r.open("/target");
+    lv_obj_t* l = r.screen.label("El");
+    lv_obj_t* slider = l ? lv_obj_get_child(lv_obj_get_parent(lv_obj_get_parent(l)), 1) : nullptr;
+    if (!slider) {
+        CHECK(slider != nullptr);
+        return;
+    }
+    r.screen.tap(slider, r.each, 0.9f, 0.5f);
+    r.screen.run(200, r.each);
+    r.tap("Reset");
+    CHECK_EQ(lv_slider_get_value(slider), 2000);  // el in hundredths: the device's value again
+    r.tap("Go");
+    CHECK_EQ(r.node.el, 20.0);
+    CHECK_EQ(r.node.goes, 1);
+}
+
+TEST(lcd_object_argument) {
+    RichRig r;
+    r.open("/misc");
+    lv_obj_t* name = r.screen.control("Name");
+    CHECK(name && lv_obj_check_type(name, &lv_textarea_class));
+    if (!name) return;
+    r.type(name, "there");
+    r.tap("Add spot");
+    CHECK_EQ(r.node.spots.size(), static_cast<size_t>(1));
+    if (r.node.spots.empty()) return;
+    CHECK_EQ(r.node.spots[0].name, "there");
+    CHECK_EQ(r.node.spots[0].x, 0);  // untouched: the device's default
+}
+
+TEST(lcd_flags_and_color) {
+    RichRig r;
+    r.open("/misc");
+    lv_obj_t* flags = r.screen.control("Days");
+    CHECK(flags && lv_obj_get_child_count(flags) == 3);
+    if (!flags) return;
+    CHECK(lv_obj_has_state(lv_obj_get_child(flags, 0), LV_STATE_CHECKED));
+    CHECK(!lv_obj_has_state(lv_obj_get_child(flags, 1), LV_STATE_CHECKED));
+    r.screen.tap(lv_obj_get_child(flags, 1), r.each);
+    CHECK_EQ(r.node.days, 0x07);
+    r.node.color = "#ff0000";
+    r.node.api.changed("/misc/color");
+    r.screen.run(300, r.each);
+    // The colour's three sliders, under its swatch.
+    lv_obj_t* rLabel = r.screen.label("R");
+    lv_obj_t* rgb = rLabel ? lv_obj_get_parent(lv_obj_get_parent(rLabel)) : nullptr;
+    CHECK(rgb != nullptr);
+    if (!rgb) return;
+    lv_obj_t* red = lv_obj_get_child(lv_obj_get_child(rgb, 0), 1);
+    CHECK_EQ(lv_slider_get_value(red), 255);
+    lv_obj_t* blue = lv_obj_get_child(lv_obj_get_child(rgb, 2), 1);
+    r.screen.tap(blue, r.each, 0.999f, 0.5f);
+    r.screen.run(300, r.each);
+    // Blue near its top (a tap's precision), red and green kept.
+    CHECK_EQ(r.node.color.substr(0, 5), "#ff00");
+    CHECK(strtol(r.node.color.c_str() + 5, nullptr, 16) > 0xf0);
+}
+
+TEST(lcd_event_toasts) {
+    RichRig r;
+    r.open("/lists");  // anywhere in the node
+    r.node.alarm->emit(std::string("door open"));
+    r.screen.run(300, r.each);
+    CHECK(r.screen.label("Alarm: door open") != nullptr);
+}
+
+TEST(lcd_keyed_list) {
+    RichRig r;
+    r.open("/lists");
+    CHECK(r.screen.label("Sun") != nullptr);
+    CHECK(r.screen.label("Moon") != nullptr);
+    // Its switch: the first writable boolean, written in place.
+    lv_obj_t* sun = r.screen.label("Sun");
+    lv_obj_t* sw = sun ? lv_obj_get_child(lv_obj_get_parent(sun), 2) : nullptr;
+    CHECK(sw && lv_obj_check_type(sw, &lv_switch_class));
+    if (sw) r.screen.tap(sw, r.each);
+    r.screen.run(300, r.each);
+    CHECK(!r.node.sources[0].on);
+    // Added by key.
+    lv_obj_t* field = nullptr;
+    for (lv_obj_t* o = r.screen.label("Moon"); o; o = nullptr) {
+        lv_obj_t* rows = lv_obj_get_parent(lv_obj_get_parent(o));
+        field = textareaOf(lv_obj_get_child(rows, -1));
+    }
+    CHECK(field != nullptr);
+    if (field) r.type(field, "Star");
+    CHECK_EQ(r.node.sources.size(), static_cast<size_t>(3));
+    if (r.node.sources.size() == 3) {
+        CHECK_EQ(r.node.sources[2].name, "Star");
+        CHECK_EQ(r.node.sources[0].az, 120.0);  // the others kept whole
+    }
+    // An element's page: its fields, written through it by key.
+    r.tap("Moon");
+    CHECK_EQ(r.ui.current(), "/lists/sources/Moon");
+    lv_obj_t* name = r.screen.control("Name");
+    CHECK(name && lv_obj_check_type(name, &lv_textarea_class));
+    if (name) CHECK_EQ(std::string(lv_textarea_get_text(name)), "Moon");
+    // Removed from its page.
+    r.tap(LV_SYMBOL_TRASH " Remove");
+    r.tap("OK");
+    CHECK_EQ(r.node.sources.size(), static_cast<size_t>(2));
+    if (r.node.sources.size() == 2) CHECK_EQ(r.node.sources[1].name, "Star");
+    CHECK_EQ(r.ui.current(), "/lists");
+}
+
+TEST(lcd_indexed_list) {
+    RichRig r;
+    r.open("/lists");
+    r.tap("19");  // no key: by index, named by its first field (hour)
+    CHECK_EQ(r.ui.current(), "/lists/slots/1");
+    lv_obj_t* runs = r.screen.label("Runs");
+    CHECK(runs != nullptr);  // a read-only field: a readout
+    r.tap(LV_SYMBOL_TRASH " Remove");
+    r.tap("OK");
+    CHECK_EQ(r.node.slots.size(), static_cast<size_t>(2));
+    if (r.node.slots.size() == 2) {
+        CHECK_EQ(r.node.slots[0].hour, 7);
+        CHECK_EQ(r.node.slots[1].hour, 22);  // moved down, its fields written
+    }
+}
+
+TEST(lcd_array) {
+    RichRig r;
+    r.open("/lists");
+    lv_obj_t* card = lv_obj_get_parent(r.screen.label("Gains"));
+    lv_obj_t* add = lcd::Screen::label(LV_SYMBOL_PLUS " Add", card);
+    CHECK(add != nullptr);
+    if (!add) return;
+    r.screen.tap(add, r.each);
+    r.screen.run(300, r.each);
+    CHECK_EQ(r.node.gains.size(), static_cast<size_t>(3));
+    if (r.node.gains.size() == 3) CHECK_EQ(r.node.gains[2], 0);  // the range's lowest
+    card = lv_obj_get_parent(r.screen.label("Gains"));
+    lv_obj_t* second = lcd::Screen::label("2", card);
+    CHECK(second != nullptr);
+    if (second) r.screen.tap(second, r.each);
+    r.screen.run(300, r.each);
+    CHECK_EQ(r.ui.current(), "/lists/gains/1");
+    lv_obj_t* l = r.screen.label("Value");
+    lv_obj_t* slider = l ? lv_obj_get_child(lv_obj_get_parent(lv_obj_get_parent(l)), 1) : nullptr;
+    CHECK(slider && lv_obj_check_type(slider, &lv_slider_class));
+    if (slider) {
+        r.screen.tap(slider, r.each, 0.999f, 0.5f);
+        r.screen.run(300, r.each);
+    }
+    if (r.node.gains.size() > 1) CHECK(r.node.gains[1] > 95);  // near the top: a tap's precision
 }
 
 // ---- Peers behind a gateway (the remote controller) -----------------------

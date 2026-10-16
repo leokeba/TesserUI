@@ -110,6 +110,14 @@ void write(JsonObject o, const Item& i) {
         o["deferred"] = i.deferred;
         o["submit"] = i.submit;
     }
+    if (i.type == NodeType::Object && i.isAction() && i.value.empty()) items(o, "params", i.params);
+    if (i.toast != Toast::None) o["toast"] = toString(i.toast);
+    if (i.history) o["history"] = i.history;
+    if (i.hasColumns) items(o, "columns", i.columns);
+    if (i.maxSize) o["maxSize"] = i.maxSize;
+    if (i.schemaType == NodeType::Array) o["fixed"] = i.fixed;
+    if (i.reorder) o["reorder"] = true;
+    if (!i.key.empty()) o["key"] = i.key;
 }
 
 void write(JsonObject o, const Page& p) {
@@ -140,14 +148,16 @@ void write(JsonArray a, const std::vector<MenuEntry>& entries) {
 
 // Fields of the web model this one doesn't keep: help text (hidden on small
 // screens, section 4), widgets it doesn't draw yet, access levels.
-const char* const kDropped[] = {"description", "script",   "history", "toast",    "maxSize",     "columns",
-                                "optionsFrom", "optionsValue", "fixed", "reorder", "access",      "readable",
-                                "contentType", "lines",    "params",  "schemaHash"};
+const char* const kDropped[] = {"description", "script", "optionsFrom", "optionsValue", "access",
+                                "readable",    "contentType", "lines", "schemaHash", "files"};
 
 void project(JsonVariant v) {
     if (v.is<JsonObject>()) {
         JsonObject o = v.as<JsonObject>();
         for (const char* k : kDropped) o.remove(k);
+        // A page's or a section's number of web columns (section 6.2); a
+        // list's columns are its fields, compared.
+        if (o["columns"].is<double>()) o.remove("columns");
         for (JsonPair kv : o) project(kv.value());
     } else if (v.is<JsonArray>()) {
         for (JsonVariant x : v.as<JsonArray>()) project(x);

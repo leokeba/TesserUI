@@ -138,6 +138,8 @@ lv_obj_t* Screen::label(const char* text) const {
     return findLabel(lv_display_get_layer_top(display_), text);
 }
 
+lv_obj_t* Screen::label(const char* text, lv_obj_t* within) { return within ? findLabel(within, text) : nullptr; }
+
 lv_obj_t* Screen::control(const char* text) const {
     lv_obj_t* l = label(text);
     if (!l) return nullptr;

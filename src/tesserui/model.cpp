@@ -329,7 +329,9 @@ struct Builder {
             return;
         }
         if (leaf.type == NodeType::Object) {
-            leaf.editable = true;  // its params are fields (not rendered on LCD yet)
+            leaf.editable = true;
+            JsonObjectConst params = s["params"];
+            if (!params.isNull()) fields(params, "", leaf.params);
             return;
         }
         if (hint && strcmp(hint, "hold") == 0 && leaf.type == NodeType::Boolean) {
@@ -354,6 +356,20 @@ struct Builder {
         leaf.field = inferWidget(in);
         number(leaf, s);
         choices(leaf, s, parent);
+    }
+
+    // The values of an object argument, nested objects flattened into paths
+    // relative to the argument.
+    void fields(JsonObjectConst params, std::string_view prefix, std::vector<Item>& out) {
+        for (JsonPairConst kv : params["children"].as<JsonObjectConst>()) {
+            JsonObjectConst c = kv.value();
+            std::string rel = prefix.empty() ? std::string(kv.key().c_str()) : std::string(prefix) + "/" + kv.key().c_str();
+            if (typeOf(c) == NodeType::Object) {
+                fields(c, rel, out);
+            } else if (valued(c) && !uiTrue(c, "hidden")) {
+                out.push_back(leaf(kv.key().c_str(), rel, c, ""));
+            }
+        }
     }
 
     // The leaves of a list element, flattened (paths relative to it).
@@ -413,6 +429,14 @@ struct Builder {
             case NodeType::Event: {
                 const char* w = uiStr(s, "widget");
                 leaf.widget = w && strcmp(w, "log") == 0 ? Widget::Log : Widget::Events;
+                JsonVariantConst toast = ui(s, "toast");
+                if (toast.is<bool>()) {
+                    if (toast.as<bool>()) leaf.toast = Toast::Info;
+                } else if (const char* kind = toast.as<const char*>()) {
+                    for (Toast t : {Toast::Info, Toast::Ok, Toast::Warn, Toast::Error}) {
+                        if (strcmp(kind, toString(t)) == 0) leaf.toast = t;
+                    }
+                }
                 return leaf;
             }
             case NodeType::List: {
@@ -438,12 +462,32 @@ struct Builder {
                 const char* w = uiStr(s, "widget");
                 bool asList = (w && strcmp(w, "list") == 0) || (!compact && !(w && strcmp(w, "table") == 0));
                 leaf.widget = asList ? Widget::List : Widget::Table;
+                leaf.maxSize = s["maxSize"].as<uint32_t>();
+                leaf.hasColumns = true;
+                leaf.columns = std::move(cols);
+                if (const char* key = str(s, "key")) leaf.key = key;
+                // An indexed list's moved rows would leave their unwritten fields
+                // behind at their index: only keyed lists move.
+                if (leaf.editable && !leaf.key.empty() && uiTrue(s, "reorder")) leaf.reorder = true;
                 return leaf;
             }
             case NodeType::Array: {
                 leaf.editable = writable;
                 JsonObjectConst items = s["items"];
                 NodeType itemType = items.isNull() || items["type"].isNull() ? NodeType::Number : typeOf(items);
+                leaf.maxSize = s["maxSize"].as<uint32_t>();
+                leaf.fixed = s["fixed"].as<bool>();
+                if (leaf.editable && uiTrue(s, "reorder")) leaf.reorder = true;
+                {
+                    // One column: the items' type (numbers by default), writable
+                    // as the array is.
+                    JsonDocument column;
+                    if (!items.isNull()) column.set(items);
+                    if (column["type"].isNull()) column["type"] = "number";
+                    column["writable"] = writable;
+                    leaf.hasColumns = true;
+                    leaf.columns.push_back(this->leaf("value", "", column.as<JsonObjectConst>(), ""));
+                }
                 const char* w = uiStr(s, "widget");
                 leaf.widget = w && strcmp(w, "chart") == 0 && isNumeric(itemType) ? Widget::Chart : Widget::Table;
                 if (leaf.widget == Widget::Chart) {
@@ -469,6 +513,7 @@ struct Builder {
             case NodeType::File:
                 leaf.widget = Widget::File;
                 leaf.editable = writable;
+                leaf.maxSize = s["maxSize"].as<uint32_t>();
                 return leaf;
             case NodeType::Remote:
                 return leaf;  // links are built by sections
@@ -493,6 +538,17 @@ struct Builder {
         if (keepalive.is<double>() && keepalive.as<double>() != 0 && leaf.editable &&
             (isNumeric(leaf.type) || leaf.type == NodeType::Boolean)) {
             leaf.keepalive = keepalive.as<uint32_t>();
+        }
+        if (leaf.widget == Widget::Chart) {
+            JsonVariantConst h = ui(s, "history");
+            leaf.history = h.is<double>() ? h.as<uint32_t>() : 60;
+        }
+        if (leaf.widget == Widget::Flags) {
+            if (const char* l = uiStr(s, "labels")) {
+                for (std::string_view x : split(l, ',')) {
+                    if (!trim(x).empty()) leaf.flagLabels.emplace_back(trim(x));
+                }
+            }
         }
         return leaf;
     }
@@ -646,6 +702,23 @@ std::string shortest(double v) {
 }
 
 }  // namespace
+
+const char* toString(Toast t) {
+    switch (t) {
+        case Toast::Info: return "info";
+        case Toast::Ok: return "ok";
+        case Toast::Warn: return "warn";
+        case Toast::Error: return "error";
+        default: return "";
+    }
+}
+
+Item buildLeaf(std::string_view name, std::string_view path, JsonObjectConst schema, std::string_view parent,
+               std::string_view root) {
+    Builder b;
+    b.root = std::string(root);
+    return b.leaf(name, path, schema, parent);
+}
 
 const char* toString(Widget w) {
     for (const Widgets& x : kWidgets) {

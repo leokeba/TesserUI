@@ -2,12 +2,14 @@
 // LocalClient as firmware would its own.
 //
 //   ./tesserui_lcd [demo|motors]              a 320x240 window (SDL2), live values
-//   ./tesserui_lcd [demo|motors] --shots DIR [path...]
+//   ./tesserui_lcd [demo|motors] --shots DIR [--height N] [path...]
 //                                             screenshots: the menu, then each
 //                                             path's page (default: every entry)
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
+#include <algorithm>
 #include <memory>
 #include <string>
 #include <vector>
@@ -32,10 +34,13 @@ std::string shotName(const std::string& path) {
 int main(int argc, char** argv) {
     const char* which = "demo";
     const char* shots = nullptr;
+    int32_t height = 240;  // taller screenshots show whole pages
     std::vector<std::string> paths;
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--shots") == 0 && i + 1 < argc) {
             shots = argv[++i];
+        } else if (strcmp(argv[i], "--height") == 0 && i + 1 < argc) {
+            height = atoi(argv[++i]);
         } else if (argv[i][0] == '/') {
             paths.push_back(argv[i]);
         } else {
@@ -56,7 +61,7 @@ int main(int argc, char** argv) {
     tesser::LocalClient client(*api);
 
     if (shots) {
-        lcd::Screen screen;
+        lcd::Screen screen(320, height);
         tesserui::LvglUi ui(client, screen.display());
         auto each = [&] {
             if (demo) demo->pump(trees::clockMs());

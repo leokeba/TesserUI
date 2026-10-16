@@ -155,19 +155,10 @@ Draw drawn(const Item& item, Widget& w) {
         case Widget::Timezone:
             w = Widget::Text;
             return Draw::Control;
-        case Widget::Chart:
-            // A value's history: its current value. An array: not here yet.
-            if (item.schemaType == NodeType::Array) return Draw::WebOnly;
-            w = Widget::Readout;
-            return Draw::Control;
         case Widget::Json:
         case Widget::Events:
         case Widget::Log:
             return Draw::Hidden;
-        case Widget::Color:
-        case Widget::Flags:
-        case Widget::Table:
-        case Widget::List:
         case Widget::File:
             return Draw::WebOnly;
         default:
@@ -177,7 +168,44 @@ Draw drawn(const Item& item, Widget& w) {
 
 bool twoLines(Widget w) {
     return w == Widget::Slider || w == Widget::Bar || w == Widget::Segmented || w == Widget::Text ||
-           w == Widget::Password || w == Widget::Textarea;
+           w == Widget::Password || w == Widget::Textarea || w == Widget::Chart || w == Widget::Flags ||
+           w == Widget::Color;
+}
+
+// "#rrggbb", or 0xRRGGBB as an integer.
+void colorOf(JsonVariantConst v, uint8_t rgb[3]) {
+    uint32_t c = 0;
+    if (v.is<const char*>()) {
+        const char* t = v.as<const char*>();
+        if (t[0] == '#' && strlen(t) == 7) c = static_cast<uint32_t>(strtoul(t + 1, nullptr, 16));
+    } else {
+        c = v.as<uint32_t>();
+    }
+    rgb[0] = static_cast<uint8_t>(c >> 16);
+    rgb[1] = static_cast<uint8_t>(c >> 8);
+    rgb[2] = static_cast<uint8_t>(c);
+}
+
+// An element's fields a client may write back: not read-only, not secret
+// (those it couldn't read). What keeps an indexed list's moved elements.
+void writableCopy(JsonVariantConst value, JsonObjectConst schema, JsonObject out) {
+    for (JsonPairConst kv : schema["children"].as<JsonObjectConst>()) {
+        JsonObjectConst c = kv.value();
+        JsonVariantConst v = value[kv.key()];
+        if (v.isUnbound()) continue;
+        const char* type = c["type"];
+        if (type && strcmp(type, "object") == 0) {
+            writableCopy(v, c, out[kv.key()].to<JsonObject>());
+        } else if (c["writable"].as<bool>() && !c["secret"].as<bool>()) {
+            out[kv.key()] = v;
+        }
+    }
+}
+
+// The value at `rel` (a column's path, "" for the element itself) in an element.
+JsonVariantConst at(JsonVariantConst v, std::string_view rel) {
+    for (std::string_view s : segmentsOf(rel)) v = v[std::string(s)];
+    return v;
 }
 
 bool anyShown(const std::vector<Item>& items) {
@@ -188,6 +216,18 @@ bool anyShown(const std::vector<Item>& items) {
 }
 
 }  // namespace
+
+// A list's row: what tapping it, or its switch, does.
+struct LvglUi::RowRef {
+    enum Kind : uint8_t { Open, Switch, Add };
+    LvglUi* ui = nullptr;
+    size_t list = 0;  // the list's Bound
+    Kind kind = Open;
+    std::string id;    // the element's key or index
+    std::string path;  // a switch's
+    std::string title;
+    lv_obj_t* field = nullptr;  // a keyed list's new key
+};
 
 // A control bound to a path: a value's, an action's, or a link to open.
 struct LvglUi::Bound {
@@ -215,6 +255,14 @@ struct LvglUi::Bound {
     lv_timer_t* hold = nullptr;
     Widget fieldWidget = Widget::Readout;  // an action's argument input
     Route target;  // links and menu entries: where they go
+    size_t draft = 0;        // a draft's field: the draft's index + 1
+    bool edited = false;     // changed in its draft, not sent yet
+    size_t draftApply = 0;   // a draft's apply or reset button
+    size_t draftReset = 0;
+    lv_chart_series_t* series = nullptr;
+    std::vector<double> samples;  // a chart's, for its range
+    lv_obj_t* swatch = nullptr;   // a colour's
+    std::vector<std::unique_ptr<RowRef>> rows;  // a list's
 };
 
 LvglUi::LvglUi(tesser::ApiClient& client, lv_display_t* display)
@@ -232,6 +280,7 @@ LvglUi::~LvglUi() {
     if (showPending_) lv_async_call_cancel(onShow, this);
     client_.onNotification(nullptr);
     if (!subscribed_.empty()) client_.unsubscribe(subscribed_);
+    if (!eventsPath_.empty() && eventsPath_ != subscribed_) client_.unsubscribe(eventsPath_);
     if (retryTimer_) lv_timer_delete(retryTimer_);
     if (pollTimer_) lv_timer_delete(pollTimer_);
     for (auto& b : bound_) {
@@ -320,6 +369,12 @@ void LvglUi::chrome() {
     lv_obj_set_hidden(toast_, true);
 }
 
+// Into the page's group, once an encoder or a keypad uses it (group()): on
+// a touchscreen alone, the group's focus would show a cursor in a field.
+void LvglUi::focusable(lv_obj_t* obj) {
+    if (useGroup_) lv_group_add_obj(group_, obj);
+}
+
 void LvglUi::onChrome(lv_event_t* e) {
     LvglUi* ui = static_cast<LvglUi*>(lv_event_get_user_data(e));
     lv_obj_t* target = lv_event_get_target_obj(e);
@@ -359,6 +414,15 @@ void LvglUi::toast(const std::string& t, bool isError) {
     lv_obj_set_style_bg_color(toast_, isError ? lv_palette_darken(LV_PALETTE_RED, 2) : lv_palette_darken(LV_PALETTE_GREY, 3), 0);
     lv_obj_set_hidden(toast_, false);
     toastUntil_ = lv_tick_get() + 3000;
+}
+
+void LvglUi::toast(const std::string& t, model::Toast kind) {
+    toast(t, kind == model::Toast::Error);
+    lv_color_t c = kind == model::Toast::Ok     ? lv_palette_darken(LV_PALETTE_GREEN, 2)
+                   : kind == model::Toast::Warn ? lv_palette_darken(LV_PALETTE_AMBER, 3)
+                   : kind == model::Toast::Error ? lv_palette_darken(LV_PALETTE_RED, 2)
+                                                 : lv_palette_darken(LV_PALETTE_GREY, 3);
+    lv_obj_set_style_bg_color(toast_, c, 0);
 }
 
 void LvglUi::error(const std::string& what, Status s, JsonVariantConst body) {
@@ -441,7 +505,7 @@ void LvglUi::loadRoot() {
         route_.clear();
         // A single entry is the start page itself.
         menuShown_ = entries(menu_) > 1;
-        if (!menuShown_) route_.push_back({only(menu_, root_), "", false, false});
+        if (!menuShown_) route_.push_back(Route::to(only(menu_, root_), ""));
         show();
     });
 }
@@ -460,7 +524,7 @@ std::string LvglUi::only(const std::vector<model::MenuEntry>& menu, const std::s
 }
 
 void LvglUi::open(std::string_view path, std::string_view root) {
-    Route r{std::string(path), std::string(root), false, false};
+    Route r = Route::to(std::string(path), std::string(root));
     // A remote node's root: its own menu.
     if (!r.root.empty() && r.path == r.root && r.root != root_) r.menu = true;
     route_.push_back(std::move(r));
@@ -516,6 +580,12 @@ void LvglUi::clearPage() {
     values_.clear();
     hasValues_ = false;
     loading_ = false;
+    drafts_.clear();
+    drafting_ = 0;
+    skip_ = nullptr;
+    listValue_.clear();
+    elementSchema_.clear();
+    listEditable_ = false;
 }
 
 void LvglUi::clearContent() {
@@ -551,14 +621,14 @@ void LvglUi::drawMenu(const std::vector<model::MenuEntry>& menu, const std::stri
         bound->widget = Widget::Link;
         bound->control = b;
         if (e.path == home) {
-            bound->target = {e.path, root, false, true};  // Status: the node's own values
+            bound->target = Route::to(e.path, root, false, true);  // Status: the node's own values
         } else if (e.remote) {
-            bound->target = {e.path, e.path, true, false};
+            bound->target = Route::to(e.path, e.path, true);
         } else {
-            bound->target = {e.path, root, false, false};
+            bound->target = Route::to(e.path, root);
         }
         lv_obj_add_event_cb(b, onEvent, LV_EVENT_CLICKED, bound.get());
-        lv_group_add_obj(group_, b);
+        focusable(b);
         bound_.push_back(std::move(bound));
     };
     for (const model::MenuEntry& top : menu) {
@@ -577,6 +647,7 @@ void LvglUi::drawMenu(const std::vector<model::MenuEntry>& menu, const std::stri
 
 void LvglUi::showMenu() {
     clearPage();
+    ensureEvents();
     setTitle(rootLabel_);
     drawMenu(menu_, root_, "");
     // Live: nodes come and go under a gateway. A stub's change is a null in
@@ -584,6 +655,7 @@ void LvglUi::showMenu() {
     tesser::Query q;
     q.depth = 2;
     q.interval = 1000;
+    q.events = false;  // the events subscription's
     std::weak_ptr<int> alive = alive_;
     uint32_t gen = gen_;
     subscribed_ = root_;
@@ -650,6 +722,7 @@ bool LvglUi::same(const std::vector<model::MenuEntry>& a, const std::vector<mode
 // A remote node's menu: its own entries, read through the gateway.
 void LvglUi::showNodeMenu() {
     clearPage();
+    ensureEvents();
     Route r = route_.back();
     std::string_view name = r.path;
     name = name.substr(name.rfind('/') + 1);
@@ -665,7 +738,7 @@ void LvglUi::showNodeMenu() {
         std::vector<model::MenuEntry> menu = model::buildMenu(body, r.path);
         if (entries(menu) <= 1) {
             // One entry: the node's page itself, in the menu's place.
-            route_.back() = {only(menu, r.path), r.path, false, false};
+            route_.back() = Route::to(only(menu, r.path), r.path);
             show();
             return;
         }
@@ -678,23 +751,59 @@ void LvglUi::showNodeMenu() {
 
 void LvglUi::showPage() {
     clearPage();
+    ensureEvents();
     Route r = route_.back();
     std::string_view last = r.path;
     size_t slash = last.rfind('/');
     if (slash != std::string_view::npos) last = last.substr(slash + 1);
-    setTitle(last.empty() ? rootLabel_ : model::humanize(last));
+    setTitle(!r.title.empty() ? r.title : last.empty() ? rootLabel_ : model::humanize(last));
     message("Loading...", false);
     loading_ = true;
-    schema(r.path, 3, [this, r](Status s, JsonVariantConst reply) {
+    // An element's page is built from its list's schema: the element's is
+    // its items.
+    schema(r.list.empty() ? r.path : r.list, 3, [this, r](Status s, JsonVariantConst reply) {
         if (s != Status::Ok) {
             failed("Couldn't read the page: ", s, reply);
             return;
         }
         lv_obj_clean(content_);
         std::string root = r.root.empty() ? root_ : r.root;
-        page_ = model::buildPage(reply, r.path, root, r.status);
+        if (!r.list.empty()) {
+            JsonObjectConst items = reply["items"];
+            if (items.isNull()) {
+                failed("Couldn't read the element: ", Status::NotFound, JsonVariantConst());
+                return;
+            }
+            elementSchema_.set(items);
+            listEditable_ = reply["writable"].as<bool>() && !reply["fixed"].as<bool>();
+            if (r.scalar) {
+                // An array's element: one value, of the items' type.
+                JsonDocument column;
+                column.set(items);
+                if (column["type"].isNull()) column["type"] = "number";
+                column["writable"] = reply["writable"].as<bool>();
+                page_ = model::Page();
+                page_.path = r.path;
+                Item card;
+                card.kind = ItemKind::Section;
+                card.schemaType = NodeType::Object;
+                card.path = r.path;
+                card.level = 1;
+                Item value = model::buildLeaf("value", r.path, column.as<JsonObjectConst>(), r.list, root);
+                value.label = "Value";
+                card.items.push_back(std::move(value));
+                page_.cards.push_back(std::move(card));
+            } else {
+                page_ = model::buildPage(items, r.path, root, false);
+            }
+            page_.label = r.title;
+        } else {
+            page_ = model::buildPage(reply, r.path, root, r.status);
+        }
         if (r.status) {
             setTitle("Status");
+        } else if (!r.title.empty()) {
+            setTitle(r.title);
         } else if (r.path == root_) {
             setTitle(rootLabel_);
         } else {
@@ -703,13 +812,13 @@ void LvglUi::showPage() {
         for (const Item& a : page_.actions) action(content_, a);
         for (const Item& c : page_.cards) {
             if (c.hidden) continue;
-            if (c.form) {
-                webOnly(card(c), c.label.empty() ? page_.label : c.label);
-                continue;
-            }
             lv_obj_t* body = card(c);
             Bound& b = bind(c, lv_obj_get_parent(body) == content_ ? body : lv_obj_get_parent(body));
             b.section = true;
+            if (c.form) {
+                form(body, c);
+                continue;
+            }
             bool hasItems = anyShown(c.items);
             items(body, c.items);
             if (hasItems) {
@@ -718,9 +827,63 @@ void LvglUi::showPage() {
                 items(body, c.advancedItems);
             }
         }
+        if (!r.list.empty() && listEditable_) removeFooter();
         if (page_.cards.empty() && page_.actions.empty()) message("Nothing to show here.", false);
         subscribe();
     });
+}
+
+// The node the open screen belongs to: this one, or a peer behind it.
+std::string LvglUi::nodeRoot() const {
+    if (route_.empty() || route_.back().root.empty()) return root_;
+    return route_.back().root;
+}
+
+// Events anywhere in the node, for the toasts of those with ui.toast
+// (section 7.8): events only, no snapshot, kept across its pages.
+void LvglUi::ensureEvents() {
+    std::string wanted = nodeRoot();
+    if (eventsPath_ == wanted) return;
+    if (!eventsPath_.empty()) client_.unsubscribe(eventsPath_);
+    eventsPath_ = wanted;
+    tesser::Query q;
+    q.changes = false;
+    q.snapshot = false;
+    q.interval = 60000;  // firmware that predates `changes`: one change a minute
+    std::weak_ptr<int> alive = alive_;
+    std::string path = wanted;
+    bool sent = client_.subscribe(path, [this, alive, path](Status s, JsonVariantConst) {
+        if (alive.expired() || s == Status::Ok) return;
+        if (eventsPath_ == path) eventsPath_.clear();  // no toasts from this node; asked again on the next screen
+    }, q);
+    if (!sent) eventsPath_.clear();
+}
+
+void LvglUi::eventNotified(const std::string& path, JsonVariantConst body) {
+    std::string payload = body.isNull() || body.isUnbound() ? std::string() : text(body);
+    auto show = [this, payload](const EventInfo& info) {
+        if (info.toast == model::Toast::None) return;
+        toast(payload.empty() ? info.label : info.label + ": " + payload, info.toast);
+    };
+    for (const EventInfo& info : eventInfo_) {
+        if (info.path == path) {
+            show(info);
+            return;
+        }
+    }
+    // Its schema first: whether it toasts, and its label.
+    tesser::Query q;
+    q.view = tesser::View::Schema;
+    q.depth = 0;
+    std::weak_ptr<int> alive = alive_;
+    client_.get(path, [this, alive, path, show](Status s, JsonVariantConst schema) {
+        if (alive.expired() || s != Status::Ok) return;
+        Item leaf = model::buildLeaf(path.substr(path.rfind('/') + 1), path, schema, model::parentPath(path));
+        EventInfo info{path, leaf.toast, leaf.label};
+        if (eventInfo_.size() >= 24) eventInfo_.erase(eventInfo_.begin());
+        eventInfo_.push_back(info);
+        show(info);
+    }, q);
 }
 
 // ---- Data --------------------------------------------------------------------
@@ -730,9 +893,16 @@ void LvglUi::subscribe() {
     q.depth = page_.depth < 0 ? tesser::Query::kUnlimited : page_.depth;
     if (page_.hasKeys) q.keys = page_.keys;
     q.interval = kThrottleMs;
+    q.events = false;  // the events subscription's
+    const std::string& list = route_.empty() ? empty_ : route_.back().list;
+    if (!list.empty()) {
+        // An element: its list, whole (subscriptions below a list are refused).
+        q.depth = tesser::Query::kUnlimited;
+        q.keys = std::string_view();
+    }
     std::weak_ptr<int> alive = alive_;
     uint32_t gen = gen_;
-    std::string path = page_.path;
+    std::string path = list.empty() ? page_.path : list;
     subscribed_ = path;
     bool sent = client_.subscribe(
         path,
@@ -741,8 +911,7 @@ void LvglUi::subscribe() {
             loading_ = false;
             if (s == Status::Ok) {
                 connection(true);
-                values_.set(body);
-                hasValues_ = true;
+                setValues(body);
                 syncAll();
                 return;
             }
@@ -773,10 +942,15 @@ void LvglUi::poll() {
     tesser::Query q;
     q.depth = page_.depth < 0 ? tesser::Query::kUnlimited : page_.depth;
     if (page_.hasKeys) q.keys = page_.keys;
+    const std::string& list = route_.empty() ? empty_ : route_.back().list;
+    if (!list.empty()) {
+        q.depth = tesser::Query::kUnlimited;
+        q.keys = std::string_view();
+    }
     std::weak_ptr<int> alive = alive_;
     uint32_t gen = gen_;
     polling_ = client_.get(
-        page_.path,
+        list.empty() ? page_.path : list,
         [this, alive, gen](Status s, JsonVariantConst body) {
             if (alive.expired()) return;
             if (gen != gen_) return;
@@ -787,15 +961,38 @@ void LvglUi::poll() {
                 return;
             }
             connection(true);
-            values_.set(body);
-            hasValues_ = true;
+            setValues(body);
             syncAll();
         },
         q);
 }
 
+// What a subscription's snapshot or a read brought: the page's values, or
+// for an element's page, its list's.
+void LvglUi::setValues(JsonVariantConst body) {
+    if (!route_.empty() && !route_.back().list.empty()) {
+        listValue_.set(body);
+        values_.set(elementOf(listValue_.as<JsonVariantConst>()));
+    } else {
+        values_.set(body);
+    }
+    hasValues_ = true;
+}
+
+JsonVariantConst LvglUi::elementOf(JsonVariantConst list) const {
+    const Route& r = route_.back();
+    if (r.keyField.empty()) return list[static_cast<size_t>(strtoul(r.id.c_str(), nullptr, 10))];
+    for (JsonVariantConst e : list.as<JsonArrayConst>()) {
+        const char* k = e[r.keyField];
+        if (k && r.id == k) return e;
+    }
+    return JsonVariantConst();
+}
+
 void LvglUi::unsubscribe() {
     if (!subscribed_.empty()) client_.unsubscribe(subscribed_);
+    // That unsubscribed every subscription at its path, the events' too.
+    if (!subscribed_.empty() && subscribed_ == eventsPath_) eventsPath_.clear();
     subscribed_.clear();
     if (pollTimer_) lv_timer_delete(pollTimer_);
     pollTimer_ = nullptr;
@@ -807,7 +1004,12 @@ void LvglUi::unsubscribe() {
 void LvglUi::onNotification(JsonObjectConst envelope) {
     const char* op = envelope["op"];
     const char* path = envelope["path"];
-    if (!op || !path || strcmp(op, "change") != 0) return;
+    if (!op || !path) return;
+    if (strcmp(op, "event") == 0) {
+        eventNotified(path, envelope["body"]);
+        return;
+    }
+    if (strcmp(op, "change") != 0) return;
     if (watching_) {
         // The menu: a stub changed (a null), or notifications were lost.
         if (envelope["overflow"].as<bool>() || hasNull(envelope["body"])) {
@@ -828,6 +1030,19 @@ void LvglUi::onNotification(JsonObjectConst envelope) {
     if (envelope["overflow"].as<bool>()) {
         // Notifications were lost: read the page again.
         poll();
+        return;
+    }
+    const std::string& list = route_.empty() ? empty_ : route_.back().list;
+    if (!list.empty()) {
+        // The list, whole, or a patch of an ancestor holding it.
+        if (!model::isUnder(list, path)) return;
+        JsonVariantConst v = envelope["body"];
+        for (std::string_view seg : segmentsOf(std::string_view(list).substr(std::string_view(path) == "/" ? 0 : strlen(path)))) {
+            v = v[std::string(seg)];
+        }
+        if (v.isUnbound()) return;
+        setValues(v);
+        syncAll();
         return;
     }
     apply(path, envelope["body"]);
@@ -940,8 +1155,10 @@ void LvglUi::syncAll() {
 }
 
 void LvglUi::sync(Bound& b) {
-    if (!b.item || b.section || b.forAction || b.pending > 0 || typing_ == &b || (!b.control && !b.value)) return;
+    if (!b.item || b.section || b.forAction || b.pending > 0 || b.edited || typing_ == &b || (!b.control && !b.value)) return;
     if (b.item->isAction() || b.widget == Widget::Link) return;
+    // An action argument's fields have no value to follow.
+    if (b.draft && drafts_[b.draft - 1].action) return;
     JsonVariantConst v = valueAt(b.item->path);
     if (v.isUnbound()) return;
     std::string json;
@@ -1010,6 +1227,69 @@ void LvglUi::sync(Bound& b) {
             if (item.secret) break;  // never read back (section 4)
             lv_textarea_set_text(b.control, text(v).c_str());
             break;
+        case Widget::List:
+        case Widget::Table:
+            rows(b, v);
+            break;
+        case Widget::Chart: {
+            if (item.schemaType == NodeType::Array) {
+                // The array, plotted by index.
+                JsonArrayConst a = v.as<JsonArrayConst>();
+                uint32_t n = static_cast<uint32_t>(a.size() < 2 ? 2 : a.size());
+                lv_chart_set_point_count(b.control, n);
+                b.samples.clear();
+                for (JsonVariantConst x : a) b.samples.push_back(x.as<double>());
+                for (uint32_t i = 0; i < b.samples.size(); i++) {
+                    lv_chart_set_series_value_by_id(b.control, b.series, i, static_cast<int32_t>(lround(b.samples[i] * b.scale)));
+                }
+            } else {
+                // A value's history, kept while it is watched (section 7.7).
+                b.samples.push_back(v.as<double>());
+                if (b.samples.size() > lv_chart_get_point_count(b.control)) b.samples.erase(b.samples.begin());
+                lv_chart_set_next_value(b.control, b.series, static_cast<int32_t>(lround(v.as<double>() * b.scale)));
+                lv_label_set_text(b.value, model::formatValue(v, item).c_str());
+            }
+            double lo = item.hasMin ? item.min : 0, hi = item.hasMax ? item.max : 0;
+            if (!(item.hasMin && item.hasMax) && !b.samples.empty()) {
+                lo = hi = b.samples[0];
+                for (double x : b.samples) {
+                    lo = fmin(lo, x);
+                    hi = fmax(hi, x);
+                }
+                double pad = hi > lo ? (hi - lo) * 0.1 : (fabs(hi) > 0 ? fabs(hi) * 0.1 : 1);
+                lo -= pad;
+                hi += pad;
+            }
+            lv_chart_set_axis_range(b.control, LV_CHART_AXIS_PRIMARY_Y, static_cast<int32_t>(floor(lo * b.scale)),
+                                    static_cast<int32_t>(ceil(hi * b.scale)));
+            lv_chart_refresh(b.control);
+            break;
+        }
+        case Widget::Flags: {
+            uint32_t bits = v.as<uint32_t>();
+            uint32_t n = lv_obj_get_child_count(b.control);
+            for (uint32_t i = 0; i < n; i++) {
+                lv_obj_t* box = lv_obj_get_child(b.control, static_cast<int32_t>(i));
+                if (bits & (1u << i)) {
+                    lv_obj_add_state(box, LV_STATE_CHECKED);
+                } else {
+                    lv_obj_remove_state(box, LV_STATE_CHECKED);
+                }
+            }
+            break;
+        }
+        case Widget::Color: {
+            for (uint32_t i = 0; i < 3; i++) {
+                if (lv_slider_is_dragged(lv_obj_get_child(lv_obj_get_child(b.control, static_cast<int32_t>(i)), 1))) return;
+            }
+            uint8_t rgb[3];
+            colorOf(v, rgb);
+            for (uint32_t i = 0; i < 3; i++) {
+                lv_slider_set_value(lv_obj_get_child(lv_obj_get_child(b.control, static_cast<int32_t>(i)), 1), rgb[i], LV_ANIM_OFF);
+            }
+            lv_obj_set_style_bg_color(b.swatch, lv_color_make(rgb[0], rgb[1], rgb[2]), 0);
+            break;
+        }
         default: {
             // A readout: enums by their labels.
             std::string t = model::formatValue(v, item);
@@ -1094,29 +1374,23 @@ lv_obj_t* LvglUi::card(const Item& section) {
 
 void LvglUi::items(lv_obj_t* parent, const std::vector<Item>& list) {
     for (const Item& item : list) {
-        if (item.hidden) continue;
+        if (item.hidden || &item == skip_) continue;
         switch (item.kind) {
             case ItemKind::Leaf:
                 leaf(parent, item);
                 break;
             case ItemKind::Link:
                 if (item.remote) {
-                    link(parent, item, {item.path, item.path, true, false});  // the peer's menu
+                    link(parent, item, Route::to(item.path, item.path, true));  // the peer's menu
                 } else {
-                    link(parent, item, {item.path, route_.back().root, false, false});
+                    link(parent, item, Route::to(item.path, route_.back().root));
                 }
                 break;
             case ItemKind::Section: {
                 // Collapsible groups, tabs and what the schema's depth cut
                 // become pages of their own (section 6.4).
-                // Forms send one patch on submit, from a draft (section 7.4):
-                // not here yet.
-                if (item.form) {
-                    webOnly(parent, item.label);
-                    break;
-                }
                 if (item.lazy || item.tabs || item.level >= 3) {
-                    link(parent, item, {item.path, route_.back().root, false, false});
+                    link(parent, item, Route::to(item.path, route_.back().root));
                     break;
                 }
                 lv_obj_t* sub = row(parent, true);
@@ -1126,7 +1400,9 @@ void LvglUi::items(lv_obj_t* parent, const std::vector<Item>& list) {
                 lv_obj_t* h = label(sub, item.label, false);
                 lv_obj_set_style_text_opa(h, LV_OPA_80, 0);
                 lv_obj_set_style_text_color(h, lv_palette_lighten(LV_PALETTE_BLUE, 2), 0);
-                if (anyShown(item.items)) {
+                if (item.form) {
+                    form(sub, item);
+                } else if (anyShown(item.items)) {
                     items(sub, item.items);
                     advanced(sub, item.advancedItems);
                 } else {
@@ -1163,7 +1439,7 @@ void LvglUi::link(lv_obj_t* parent, const Item& item, const Route& target) {
     b.control = r;
     b.target = target;
     lv_obj_add_event_cb(r, onEvent, LV_EVENT_CLICKED, &b);
-    lv_group_add_obj(group_, r);
+    focusable(r);
 }
 
 // What this renderer doesn't draw yet: its label, and a note.
@@ -1180,6 +1456,7 @@ LvglUi::Bound& LvglUi::bind(const Item& item, lv_obj_t* r) {
     b->index = bound_.size();
     b->item = &item;
     b->row = r;
+    b->draft = drafting_;
     bound_.push_back(std::move(b));
     return *bound_.back();
 }
@@ -1187,6 +1464,10 @@ LvglUi::Bound& LvglUi::bind(const Item& item, lv_obj_t* r) {
 void LvglUi::leaf(lv_obj_t* parent, const Item& item) {
     if (item.isAction()) {
         action(parent, item);
+        return;
+    }
+    if (item.widget == Widget::List || item.widget == Widget::Table) {
+        list(parent, item);
         return;
     }
     Widget w;
@@ -1201,7 +1482,14 @@ void LvglUi::leaf(lv_obj_t* parent, const Item& item) {
     lv_obj_t* top = column ? row(r, false) : r;
     label(top, item.label, true);
     Bound& b = bind(item, r);
-    if (w == Widget::Slider || w == Widget::Bar || w == Widget::Readout) {
+    if (w == Widget::Color) {
+        b.swatch = lv_obj_create(top);
+        lv_obj_set_size(b.swatch, 36, 20);
+        lv_obj_set_style_radius(b.swatch, 4, 0);
+        lv_obj_set_style_border_width(b.swatch, 1, 0);
+        lv_obj_set_style_bg_color(b.swatch, lv_color_black(), 0);
+    }
+    if (w == Widget::Slider || w == Widget::Bar || w == Widget::Readout || (w == Widget::Chart && item.schemaType != NodeType::Array)) {
         b.value = lv_label_create(top);
         lv_label_set_text(b.value, "\xE2\x80\x93");  // – until the value comes
         if (item.style == "warning") lv_obj_set_style_text_color(b.value, lv_palette_main(LV_PALETTE_AMBER), 0);
@@ -1322,19 +1610,62 @@ lv_obj_t* LvglUi::control(Bound& b, lv_obj_t* parent, Widget w) {
             }
             on(c, {LV_EVENT_CLICKED, LV_EVENT_READY, LV_EVENT_CANCEL});
             break;
+        case Widget::Chart: {
+            c = lv_chart_create(parent);
+            lv_obj_set_size(c, LV_PCT(100), 70);
+            lv_chart_set_type(c, LV_CHART_TYPE_LINE);
+            lv_chart_set_div_line_count(c, 3, 0);
+            lv_obj_set_style_size(c, 0, 0, LV_PART_INDICATOR);  // no point markers
+            uint32_t n = item.history ? item.history : 60;
+            lv_chart_set_point_count(c, n < 10 ? 10 : n > 120 ? 120 : n);
+            b.scale = scaleFor(item);
+            b.series = lv_chart_add_series(c, lv_palette_main(LV_PALETTE_BLUE), LV_CHART_AXIS_PRIMARY_Y);
+            lv_chart_set_all_values(c, b.series, LV_CHART_POINT_NONE);
+            break;
+        }
+        case Widget::Flags: {
+            c = row(parent, false);
+            lv_obj_set_flex_flow(c, LV_FLEX_FLOW_ROW_WRAP);
+            lv_obj_set_style_pad_column(c, 10, 0);
+            size_t n = item.flagLabels.size();
+            for (size_t i = 0; i < n; i++) {
+                lv_obj_t* box = lv_checkbox_create(c);
+                lv_checkbox_set_text(box, item.flagLabels[i].c_str());
+                if (!item.editable) lv_obj_add_state(box, LV_STATE_DISABLED);
+                on(box, {LV_EVENT_VALUE_CHANGED});
+                focusable(box);
+            }
+            break;
+        }
+        case Widget::Color: {
+            c = row(parent, true);
+            static const char* const names[3] = {"R", "G", "B"};
+            for (int i = 0; i < 3; i++) {
+                lv_obj_t* line = row(c, false);
+                lv_obj_set_style_min_height(line, 24, 0);
+                label(line, names[i], false);
+                lv_obj_t* sl = lv_slider_create(line);
+                lv_obj_set_flex_grow(sl, 1);
+                lv_obj_set_style_margin_right(sl, 10, 0);
+                lv_slider_set_range(sl, 0, 255);
+                on(sl, {LV_EVENT_VALUE_CHANGED, LV_EVENT_RELEASED});
+                focusable(sl);
+            }
+            break;
+        }
         default:
             break;
     }
     b.control = c;
-    if (c) lv_group_add_obj(group_, c);
+    if (c && w != Widget::Flags && w != Widget::Color) focusable(c);
     return c;
 }
 
 void LvglUi::action(lv_obj_t* parent, const Item& item) {
-    // Object arguments need their fields (not here yet); raw JSON ones are
-    // hidden on LCD (section 4).
+    // An object argument: its fields, then the button (section 4). Raw JSON
+    // ones are hidden on LCD.
     if (item.type == NodeType::Object && item.value.empty()) {
-        webOnly(parent, item.label);
+        params(parent, item);
         return;
     }
     if (item.hasField && item.field == Widget::Json) return;
@@ -1399,7 +1730,7 @@ void LvglUi::action(lv_obj_t* parent, const Item& item) {
     } else {
         lv_obj_add_event_cb(b.button, onEvent, LV_EVENT_CLICKED, &b);
     }
-    lv_group_add_obj(group_, b.button);
+    focusable(b.button);
     b.result = lv_label_create(r);
     lv_obj_set_width(b.result, LV_PCT(100));
     lv_label_set_long_mode(b.result, LV_LABEL_LONG_MODE_WRAP);
@@ -1446,6 +1777,24 @@ std::string LvglUi::controlJson(Bound& b) {
         case Widget::Password:
         case Widget::Textarea:
             return jsonString(lv_textarea_get_text(b.control));
+        case Widget::Flags: {
+            uint32_t bits = 0;
+            uint32_t n = lv_obj_get_child_count(b.control);
+            for (uint32_t i = 0; i < n; i++) {
+                if (lv_obj_has_state(lv_obj_get_child(b.control, static_cast<int32_t>(i)), LV_STATE_CHECKED)) bits |= 1u << i;
+            }
+            return std::to_string(bits);
+        }
+        case Widget::Color: {
+            uint32_t c = 0;
+            for (int i = 0; i < 3; i++) {
+                c = (c << 8) | static_cast<uint32_t>(lv_slider_get_value(lv_obj_get_child(lv_obj_get_child(b.control, i), 1)));
+            }
+            if (item.type == NodeType::Integer) return std::to_string(c);
+            char hex[8];
+            snprintf(hex, sizeof(hex), "#%06x", static_cast<unsigned>(c));
+            return jsonString(hex);
+        }
         default:
             return std::string();
     }
@@ -1457,6 +1806,14 @@ void LvglUi::event(Bound& b, lv_event_t* e) {
     if (b.widget == Widget::Link) {
         route_.push_back(b.target);
         requestShow();
+        return;
+    }
+    if (b.draftApply) {
+        submitDraft(b.draftApply - 1);
+        return;
+    }
+    if (b.draftReset) {
+        resetDraft(b.draftReset - 1);
         return;
     }
     const Item& item = *b.item;
@@ -1494,10 +1851,23 @@ void LvglUi::event(Bound& b, lv_event_t* e) {
     }
     Widget w = b.forAction ? b.fieldWidget : b.widget;
     switch (w) {
-        case Widget::Slider: {
-            double v = snap(item, lv_slider_get_value(b.control) / b.scale);
-            if (b.value) lv_label_set_text(b.value, model::formatNumber(v, item).c_str());
+        case Widget::Slider:
+        case Widget::Color: {
+            if (w == Widget::Slider) {
+                double v = snap(item, lv_slider_get_value(b.control) / b.scale);
+                if (b.value) lv_label_set_text(b.value, model::formatNumber(v, item).c_str());
+            } else {
+                uint8_t rgb[3];
+                for (int i = 0; i < 3; i++) {
+                    rgb[i] = static_cast<uint8_t>(lv_slider_get_value(lv_obj_get_child(lv_obj_get_child(b.control, i), 1)));
+                }
+                lv_obj_set_style_bg_color(b.swatch, lv_color_make(rgb[0], rgb[1], rgb[2]), 0);
+            }
             if (b.forAction) return;
+            if (b.draft) {
+                commit(b, controlJson(b));
+                return;
+            }
             uint32_t now = lv_tick_get();
             if (code == LV_EVENT_RELEASED) {
                 b.dirty = false;
@@ -1519,7 +1889,7 @@ void LvglUi::event(Bound& b, lv_event_t* e) {
                 Item plain = item;
                 plain.unit.clear();
                 lv_textarea_set_text(b.control, model::formatNumber(v, plain).c_str());
-                if (!b.forAction) write(b, numberJson(item, v));
+                if (!b.forAction) commit(b, numberJson(item, v));
                 return;
             }
             if (code == LV_EVENT_CLICKED) {
@@ -1541,16 +1911,36 @@ void LvglUi::event(Bound& b, lv_event_t* e) {
         default:
             if (code == LV_EVENT_VALUE_CHANGED && !b.forAction) {
                 std::string json = controlJson(b);
-                if (!json.empty()) write(b, json);
+                if (!json.empty()) commit(b, json);
             }
             return;
     }
+}
+
+void LvglUi::commit(Bound& b, const std::string& json) {
+    if (json.empty()) return;
+    if (b.draft) {
+        b.edited = true;
+        b.dirty = false;
+        draftChanged(b.draft - 1);
+        return;
+    }
+    write(b, json);
 }
 
 void LvglUi::textDone(Bound& b, bool ok) {
     hideKeyboard();
     lv_obj_remove_state(b.control, LV_STATE_FOCUSED);
     if (b.forAction) return;
+    if (b.draft) {
+        if (ok) {
+            commit(b, controlJson(b));
+        } else if (!b.edited) {
+            b.shown.clear();
+            sync(b);
+        }
+        return;
+    }
     if (!ok) {
         // Cancelled: the value again.
         b.shown.clear();
@@ -1608,6 +1998,15 @@ void LvglUi::write(Bound& b, const std::string& json) {
             connection(true);
             // The reply is the value read back (section 7.4).
             if (bb.pending == 0) setValueAt(path, body);
+            // A keyed element renamed: its page is at its new key now.
+            Route& r = route_.back();
+            if (!r.keyField.empty() && path == r.path + "/" + r.keyField && body.is<const char*>()) {
+                r.id = body.as<const char*>();
+                r.path = r.list + "/" + r.id;
+                r.title = r.id;
+                requestShow();
+                return;
+            }
         } else {
             error(bb.item->label, s, body);
         }
@@ -1631,21 +2030,27 @@ void LvglUi::confirmThen(Bound& b, const std::string& arg) {
         call(b, arg);
         return;
     }
-    confirmIndex_ = b.index;
-    confirmArg_ = arg;
+    size_t index = b.index;
+    ask(b.item->confirm, [this, index, arg] { call(*bound_[index], arg); });
+}
+
+// A question (ui.confirm) with Cancel and OK; `yes` runs on OK, on the same
+// page only.
+void LvglUi::ask(const std::string& question, std::function<void()> yes) {
+    confirmed_ = std::move(yes);
     confirmGen_ = gen_;
     msgbox_ = lv_msgbox_create(nullptr);
-    lv_msgbox_add_text(msgbox_, b.item->confirm.c_str());
+    lv_msgbox_add_text(msgbox_, question.c_str());
     lv_obj_t* cancel = lv_msgbox_add_footer_button(msgbox_, "Cancel");
     confirmOk_ = lv_msgbox_add_footer_button(msgbox_, "OK");
     auto onAnswer = [](lv_event_t* e) {
         LvglUi* ui = static_cast<LvglUi*>(lv_event_get_user_data(e));
-        bool yes = lv_event_get_target_obj(e) == ui->confirmOk_;
+        bool ok = lv_event_get_target_obj(e) == ui->confirmOk_;
         lv_msgbox_close(ui->msgbox_);
         ui->msgbox_ = nullptr;
-        if (yes && ui->confirmGen_ == ui->gen_ && ui->confirmIndex_ < ui->bound_.size()) {
-            ui->call(*ui->bound_[ui->confirmIndex_], ui->confirmArg_);
-        }
+        std::function<void()> then = std::move(ui->confirmed_);
+        ui->confirmed_ = nullptr;
+        if (ok && then && ui->confirmGen_ == ui->gen_) then();
     };
     lv_obj_add_event_cb(cancel, onAnswer, LV_EVENT_CLICKED, this);
     lv_obj_add_event_cb(confirmOk_, onAnswer, LV_EVENT_CLICKED, this);
@@ -1691,6 +2096,515 @@ void LvglUi::call(Bound& b, const std::string& arg) {
     }
 }
 
+// ---- Drafts: forms and object arguments -------------------------------------
+
+// A form (ui.form): its controls edit a draft; Apply sends one patch to the
+// object, the edited values and the submit action (section 7.4); Reset
+// discards the draft.
+void LvglUi::form(lv_obj_t* parent, const Item& sec) {
+    size_t d = drafts_.size();
+    Draft dr;
+    dr.path = sec.path;
+    dr.item = &sec;
+    const Item* submit = nullptr;
+    for (const Item& i : sec.items) {
+        if (i.kind == ItemKind::Leaf && i.isAction() && i.submit) {
+            submit = &i;
+            break;
+        }
+    }
+    if (submit) dr.submit = submit->name;
+    drafts_.push_back(dr);
+    size_t savedDraft = drafting_;
+    const Item* savedSkip = skip_;
+    drafting_ = d + 1;
+    skip_ = submit;  // its button is the form's
+    if (anyShown(sec.items)) {
+        items(parent, sec.items);
+        advanced(parent, sec.advancedItems);
+    } else {
+        items(parent, sec.advancedItems);
+    }
+    drafting_ = savedDraft;
+    skip_ = savedSkip;
+
+    lv_obj_t* line = row(parent, false);
+    Bound& reset = bind(sec, nullptr);
+    reset.section = true;
+    reset.draft = 0;
+    reset.draftReset = d + 1;
+    lv_obj_t* rb = lv_button_create(line);
+    lv_obj_t* rl = lv_label_create(rb);
+    lv_label_set_text(rl, "Reset");
+    lv_obj_add_state(rb, LV_STATE_DISABLED);  // until something is edited
+    lv_obj_add_event_cb(rb, onEvent, LV_EVENT_CLICKED, &reset);
+    Bound& apply = bind(submit ? *submit : sec, nullptr);
+    apply.section = true;
+    apply.draft = 0;
+    apply.draftApply = d + 1;
+    lv_obj_t* ab = lv_button_create(line);
+    lv_obj_set_flex_grow(ab, 1);
+    if (submit && submit->style == "danger") lv_obj_set_style_bg_color(ab, lv_palette_main(LV_PALETTE_RED), 0);
+    lv_obj_t* al = lv_label_create(ab);
+    lv_label_set_text(al, submit ? submit->label.c_str() : "Apply");
+    lv_obj_center(al);
+    lv_obj_add_event_cb(ab, onEvent, LV_EVENT_CLICKED, &apply);
+    focusable(rb);
+    focusable(ab);
+    drafts_[d].reset = rb;
+    drafts_[d].apply = ab;
+}
+
+// An action taking an object: one input per field, then the button.
+// Untouched fields are left out, so the device uses its defaults.
+void LvglUi::params(lv_obj_t* parent, const Item& act) {
+    lv_obj_t* r = row(parent, true);
+    size_t d = drafts_.size();
+    Draft dr;
+    dr.path = act.path;
+    dr.action = true;
+    dr.item = &act;
+    drafts_.push_back(dr);
+    size_t saved = drafting_;
+    drafting_ = d + 1;
+    size_t first = bound_.size();
+    for (const Item& p : act.params) {
+        if (!p.hidden) leaf(r, p);
+    }
+    drafting_ = saved;
+    // Inputs start at the field's lowest value, else 0.
+    for (size_t i = first; i < bound_.size(); i++) {
+        Bound& f = *bound_[i];
+        if (!f.item || !f.control) continue;
+        double start = clampTo(*f.item, f.item->hasMin ? f.item->min : 0);
+        if (f.widget == Widget::Number) {
+            Item plain = *f.item;
+            plain.unit.clear();
+            lv_textarea_set_text(f.control, model::formatNumber(start, plain).c_str());
+        } else if (f.widget == Widget::Slider) {
+            lv_slider_set_value(f.control, static_cast<int32_t>(lround(start * f.scale)), LV_ANIM_OFF);
+            if (f.value) lv_label_set_text(f.value, model::formatNumber(start, *f.item).c_str());
+        }
+    }
+    Bound& b = bind(act, nullptr);
+    b.section = true;
+    b.draft = 0;
+    b.draftApply = d + 1;
+    b.button = lv_button_create(r);
+    lv_obj_set_width(b.button, LV_PCT(100));
+    if (act.style == "danger") lv_obj_set_style_bg_color(b.button, lv_palette_main(LV_PALETTE_RED), 0);
+    lv_obj_t* t = lv_label_create(b.button);
+    lv_label_set_text(t, act.label.c_str());
+    lv_obj_center(t);
+    lv_obj_add_event_cb(b.button, onEvent, LV_EVENT_CLICKED, &b);
+    focusable(b.button);
+    b.result = lv_label_create(r);
+    lv_obj_set_width(b.result, LV_PCT(100));
+    lv_label_set_long_mode(b.result, LV_LABEL_LONG_MODE_WRAP);
+    lv_obj_set_style_text_opa(b.result, LV_OPA_80, 0);
+    lv_obj_set_hidden(b.result, true);
+    drafts_[d].apply = b.button;
+    drafts_[d].result = b.result;
+}
+
+void LvglUi::draftChanged(size_t d) {
+    Draft& dr = drafts_[d];
+    if (!dr.reset) return;
+    bool any = false;
+    for (auto& b : bound_) {
+        if (b->draft == d + 1 && b->edited) any = true;
+    }
+    if (any) {
+        lv_obj_remove_state(dr.reset, LV_STATE_DISABLED);
+    } else {
+        lv_obj_add_state(dr.reset, LV_STATE_DISABLED);
+    }
+}
+
+void LvglUi::resetDraft(size_t d) {
+    for (auto& b : bound_) {
+        if (b->draft != d + 1 || !b->edited) continue;
+        b->edited = false;
+        b->shown.clear();
+        sync(*b);
+    }
+    draftChanged(d);
+}
+
+void LvglUi::submitDraft(size_t d) {
+    Draft& dr = drafts_[d];
+    if (dr.busy) return;
+    JsonDocument patch;
+    JsonObject root = patch.to<JsonObject>();
+    for (auto& bp : bound_) {
+        Bound& b = *bp;
+        if (b.draft != d + 1 || !b.edited || !b.item) continue;
+        std::string json = controlJson(b);
+        JsonDocument v;
+        if (json.empty() || deserializeJson(v, json)) continue;
+        // Paths relative to the form's object, or to the argument.
+        std::string rel = dr.action ? b.item->path : b.item->path.substr(dr.path == "/" ? 1 : dr.path.size() + 1);
+        std::vector<std::string_view> segs = segmentsOf(rel);
+        if (segs.empty()) continue;
+        JsonObject node = root;
+        for (size_t i = 0; i + 1 < segs.size(); i++) {
+            std::string k(segs[i]);
+            node = node[k].is<JsonObject>() ? node[k].as<JsonObject>() : node[k].to<JsonObject>();
+        }
+        node[std::string(segs.back())] = v.as<JsonVariantConst>();
+    }
+    // The submit action runs after the values (TesserAPI section 6.3).
+    if (!dr.submit.empty()) root[dr.submit] = nullptr;
+    std::string body;
+    serializeJson(patch, body);
+    std::string question;
+    if (dr.action) {
+        question = dr.item->confirm;
+    } else {
+        for (const Item& i : dr.item->items) {
+            if (i.name == dr.submit && i.isAction()) question = i.confirm;
+        }
+    }
+    auto go = [this, d, body] {
+        Draft& g = drafts_[d];
+        g.busy = true;
+        lv_obj_add_state(g.apply, LV_STATE_DISABLED);
+        if (g.result) lv_obj_set_hidden(g.result, true);
+        std::weak_ptr<int> alive = alive_;
+        uint32_t gen = gen_;
+        bool sent = client_.set(g.path, body, [this, alive, gen, d](Status s, JsonVariantConst reply) {
+            if (alive.expired() || gen != gen_) return;
+            Draft& r = drafts_[d];
+            r.busy = false;
+            lv_obj_remove_state(r.apply, LV_STATE_DISABLED);
+            if (s != Status::Ok) {
+                error(r.item->label, s, reply);  // the draft stays
+                return;
+            }
+            connection(true);
+            if (r.action) {
+                if (!reply.isNull() && !reply.isUnbound() && r.result) {
+                    std::string t = std::string(LV_SYMBOL_OK " ") + text(reply);
+                    lv_label_set_text(r.result, t.c_str());
+                    lv_obj_set_hidden(r.result, false);
+                }
+                return;
+            }
+            // Applied: the draft goes, the device's values show.
+            if (reply.is<JsonObjectConst>() && hasValues_) apply(r.path, reply);
+            for (auto& b : bound_) {
+                if (b->draft == d + 1) {
+                    b->edited = false;
+                    b->shown.clear();
+                }
+            }
+            syncAll();
+            draftChanged(d);
+        });
+        if (!sent) {
+            g.busy = false;
+            lv_obj_remove_state(g.apply, LV_STATE_DISABLED);
+            toast(g.item->label + ": not sent", true);
+        }
+    };
+    if (question.empty()) {
+        go();
+    } else {
+        ask(question, go);
+    }
+}
+
+// ---- Lists, tables and arrays ------------------------------------------------
+
+// One line per element (section 10.3): its name, a value, its first
+// writable switch; tapping it opens the element as a page. Keyed lists add
+// by key, others at the end.
+void LvglUi::list(lv_obj_t* parent, const Item& item) {
+    lv_obj_t* box = row(parent, true);
+    if (!item.label.empty()) {
+        lv_obj_t* h = label(box, item.label, false);
+        lv_obj_set_style_text_opa(h, LV_OPA_80, 0);
+    }
+    Bound& b = bind(item, box);
+    b.widget = item.widget;
+    b.control = row(box, true);
+    lv_obj_set_style_pad_row(b.control, 0, 0);
+}
+
+void LvglUi::rows(Bound& b, JsonVariantConst v) {
+    const Item& item = *b.item;
+    lv_obj_clean(b.control);
+    b.rows.clear();
+    JsonArrayConst a = v.as<JsonArrayConst>();
+    bool array = item.schemaType == NodeType::Array;
+    const Item* nameCol = nullptr;
+    const Item* sumCol = nullptr;
+    const Item* switchCol = nullptr;
+    if (!array) {
+        for (const Item& c : item.columns) {
+            if (!switchCol && c.type == NodeType::Boolean && c.editable && item.editable) switchCol = &c;
+            if (!item.key.empty() && c.path == item.key) nameCol = &c;
+        }
+        for (const Item& c : item.columns) {
+            if (!nameCol && &c != switchCol && c.type != NodeType::Boolean && !c.secret) nameCol = &c;
+        }
+        for (const Item& c : item.columns) {
+            if (!sumCol && &c != nameCol && &c != switchCol && !c.secret) sumCol = &c;
+        }
+    }
+    auto shown = [](JsonVariantConst x, const Item& col) {
+        std::string t = model::formatValue(x, col);
+        const char* s = x.as<const char*>();
+        for (const model::Option& o : col.options) {
+            if (s && o.value == s) t = o.label;
+        }
+        return t;
+    };
+    size_t i = 0;
+    for (JsonVariantConst e : a) {
+        std::string id = std::to_string(i);
+        if (!item.key.empty() && e[item.key].is<const char*>()) id = e[item.key].as<const char*>();
+        std::string name, summary;
+        if (array) {
+            name = std::to_string(i + 1);
+            if (!item.columns.empty()) summary = shown(e, item.columns[0]);
+        } else {
+            name = nameCol ? shown(at(e, nameCol->path), *nameCol) : "#" + std::to_string(i + 1);
+            if (sumCol) summary = shown(at(e, sumCol->path), *sumCol);
+        }
+        lv_obj_t* r = row(b.control, false);
+        lv_obj_set_style_min_height(r, 36, 0);
+        lv_obj_set_style_border_side(r, LV_BORDER_SIDE_BOTTOM, 0);
+        lv_obj_set_style_border_width(r, 1, 0);
+        lv_obj_set_style_border_color(r, lv_palette_main(LV_PALETTE_GREY), 0);
+        lv_obj_set_style_border_opa(r, LV_OPA_30, 0);
+        lv_obj_set_clickable(r, true);
+        label(r, name, true);
+        if (!summary.empty()) {
+            lv_obj_t* sl = label(r, summary, false);
+            lv_obj_set_style_text_opa(sl, LV_OPA_70, 0);
+        }
+        auto ref = [&](RowRef::Kind kind) {
+            auto rr = std::make_unique<RowRef>();
+            rr->ui = this;
+            rr->list = b.index;
+            rr->kind = kind;
+            rr->id = id;
+            rr->title = name;
+            b.rows.push_back(std::move(rr));
+            return b.rows.back().get();
+        };
+        if (switchCol) {
+            lv_obj_t* sw = lv_switch_create(r);
+            if (at(e, switchCol->path).as<bool>()) lv_obj_add_state(sw, LV_STATE_CHECKED);
+            RowRef* rr = ref(RowRef::Switch);
+            rr->path = item.path + "/" + id + "/" + switchCol->path;
+            lv_obj_add_event_cb(sw, onRow, LV_EVENT_VALUE_CHANGED, rr);
+        }
+        lv_obj_t* chevron = lv_label_create(r);
+        lv_label_set_text(chevron, LV_SYMBOL_RIGHT);
+        lv_obj_add_event_cb(r, onRow, LV_EVENT_CLICKED, ref(RowRef::Open));
+        focusable(r);
+        i++;
+    }
+    if (a.size() == 0) {
+        lv_obj_t* none = label(b.control, "None", false);
+        lv_obj_set_style_text_opa(none, LV_OPA_50, 0);
+    }
+    bool canAdd = item.editable && !item.fixed && (!item.maxSize || a.size() < item.maxSize);
+    if (!canAdd) return;
+    lv_obj_t* r = row(b.control, false);
+    lv_obj_set_style_pad_top(r, 4, 0);
+    auto rr = std::make_unique<RowRef>();
+    rr->ui = this;
+    rr->list = b.index;
+    rr->kind = RowRef::Add;
+    RowRef* add = rr.get();
+    b.rows.push_back(std::move(rr));
+    if (!item.key.empty()) {
+        // A keyed list's new element: its key first (section 4).
+        add->field = lv_textarea_create(r);
+        lv_textarea_set_one_line(add->field, true);
+        lv_obj_set_flex_grow(add->field, 1);
+        lv_obj_set_style_pad_ver(add->field, 6, 0);
+        std::string placeholder = "New " + model::humanize(item.key);
+        lv_textarea_set_placeholder_text(add->field, placeholder.c_str());
+        for (lv_event_code_t code : {LV_EVENT_CLICKED, LV_EVENT_READY, LV_EVENT_CANCEL}) {
+            lv_obj_add_event_cb(add->field, onRow, code, add);
+        }
+    }
+    lv_obj_t* plus = lv_button_create(r);
+    if (item.key.empty()) lv_obj_set_width(plus, LV_PCT(100));
+    lv_obj_t* pl = lv_label_create(plus);
+    lv_label_set_text(pl, item.key.empty() ? LV_SYMBOL_PLUS " Add" : LV_SYMBOL_PLUS);
+    lv_obj_center(pl);
+    lv_obj_add_event_cb(plus, onRow, LV_EVENT_CLICKED, add);
+    focusable(plus);
+}
+
+void LvglUi::onRow(lv_event_t* e) {
+    RowRef* r = static_cast<RowRef*>(lv_event_get_user_data(e));
+    r->ui->rowEvent(*r, e);
+}
+
+void LvglUi::rowEvent(RowRef& r, lv_event_t* e) {
+    Bound& b = *bound_[r.list];
+    const Item& item = *b.item;
+    lv_event_code_t code = lv_event_get_code(e);
+    lv_obj_t* target = lv_event_get_target_obj(e);
+    switch (r.kind) {
+        case RowRef::Switch:
+            send(r.path, lv_obj_has_state(target, LV_STATE_CHECKED) ? "true" : "false", item.label);
+            return;
+        case RowRef::Open: {
+            Route next = Route::to(item.path + "/" + r.id, route_.back().root);
+            next.list = item.path;
+            next.keyField = item.key;
+            next.id = r.id;
+            next.scalar = item.schemaType == NodeType::Array;
+            next.title = item.schemaType == NodeType::Array ? (item.label.empty() ? page_.label : item.label) + " " + r.title : r.title;
+            route_.push_back(std::move(next));
+            requestShow();
+            return;
+        }
+        case RowRef::Add:
+            if (target == r.field) {
+                if (code == LV_EVENT_CLICKED) {
+                    keyboard(b, r.field, false);  // the rows aren't redrawn while it is open
+                    return;
+                }
+                std::string key = lv_textarea_get_text(r.field);
+                hideKeyboard();
+                if (code == LV_EVENT_READY && !key.empty()) addElement(b, key);
+                return;
+            }
+            if (r.field) {
+                std::string key = lv_textarea_get_text(r.field);
+                if (key.empty()) {
+                    toast("Name the new element first", true);
+                    return;
+                }
+                hideKeyboard();
+                addElement(b, key);
+            } else {
+                addElement(b, "");
+            }
+            return;
+    }
+}
+
+// Lists are written whole (TesserAPI section 4.4): a keyed list's items are
+// matched by key, so its keys alone keep the elements; an indexed list's
+// items are patches, so {} keeps one as it is.
+void LvglUi::addElement(Bound& b, const std::string& key) {
+    const Item& item = *b.item;
+    JsonArrayConst a = valueAt(item.path).as<JsonArrayConst>();
+    JsonDocument out;
+    JsonArray arr = out.to<JsonArray>();
+    if (item.schemaType == NodeType::Array) {
+        for (JsonVariantConst e : a) arr.add(e);
+        const Item* col = item.columns.empty() ? nullptr : &item.columns[0];
+        if (col && col->type == NodeType::String) {
+            arr.add("");
+        } else if (col && col->type == NodeType::Boolean) {
+            arr.add(false);
+        } else {
+            double v = col && col->hasMin ? col->min : 0;
+            if (col && col->hasMax && v > col->max) v = col->max;
+            JsonDocument n;
+            deserializeJson(n, numberJson(col ? *col : item, v));
+            arr.add(n.as<JsonVariantConst>());
+        }
+    } else if (!item.key.empty()) {
+        for (JsonVariantConst e : a) {
+            const char* k = e[item.key];
+            if (k && key == k) {
+                toast(key + " already exists", true);
+                return;
+            }
+            arr.add<JsonObject>()[item.key] = e[item.key];
+        }
+        arr.add<JsonObject>()[item.key] = key;
+    } else {
+        for (size_t i = 0; i <= a.size(); i++) arr.add<JsonObject>();
+    }
+    std::string json;
+    serializeJson(out, json);
+    send(item.path, json, item.label);
+}
+
+void LvglUi::removeFooter() {
+    lv_obj_t* r = row(content_, false);
+    lv_obj_t* btn = lv_button_create(r);
+    lv_obj_set_width(btn, LV_PCT(100));
+    lv_obj_set_style_bg_color(btn, lv_palette_main(LV_PALETTE_RED), 0);
+    lv_obj_t* t = lv_label_create(btn);
+    lv_label_set_text(t, LV_SYMBOL_TRASH " Remove");
+    lv_obj_center(t);
+    lv_obj_add_event_cb(
+        btn,
+        [](lv_event_t* e) {
+            LvglUi* ui = static_cast<LvglUi*>(lv_event_get_user_data(e));
+            ui->ask("Remove " + ui->route_.back().title + "?", [ui] { ui->removeElement(); });
+        },
+        LV_EVENT_CLICKED, this);
+    focusable(btn);
+}
+
+void LvglUi::removeElement() {
+    const Route& r = route_.back();
+    JsonArrayConst a = listValue_.as<JsonArrayConst>();
+    JsonDocument out;
+    JsonArray arr = out.to<JsonArray>();
+    size_t index = static_cast<size_t>(strtoul(r.id.c_str(), nullptr, 10));
+    size_t i = 0;
+    for (JsonVariantConst e : a) {
+        if (r.scalar) {
+            if (i != index) arr.add(e);
+        } else if (!r.keyField.empty()) {
+            const char* k = e[r.keyField];
+            if (!(k && r.id == k)) arr.add<JsonObject>()[r.keyField] = e[r.keyField];
+        } else if (i < index) {
+            arr.add<JsonObject>();  // kept as it is
+        } else if (i > index) {
+            // Moved down one: its fields, those a client can write.
+            writableCopy(e, elementSchema_.as<JsonObjectConst>(), arr.add<JsonObject>());
+        }
+        i++;
+    }
+    std::string json;
+    serializeJson(out, json);
+    send(r.list, json, r.title, [this] { back(); });
+}
+
+void LvglUi::send(const std::string& path, const std::string& json, const std::string& what, std::function<void()> done) {
+    std::weak_ptr<int> alive = alive_;
+    uint32_t gen = gen_;
+    bool sent = client_.set(path, json, [this, alive, gen, path, what, done](Status s, JsonVariantConst body) {
+        if (alive.expired() || gen != gen_) return;
+        if (s != Status::Ok) {
+            error(what, s, body);
+            // Lists drawn again from the values the device has.
+            for (auto& b : bound_) {
+                if (b->widget == Widget::List || b->widget == Widget::Table) b->shown.clear();
+            }
+            syncAll();
+            return;
+        }
+        connection(true);
+        // A whole list replaced: the reply is the list read back.
+        for (auto& b : bound_) {
+            if ((b->widget == Widget::List || b->widget == Widget::Table) && b->item && b->item->path == path) {
+                setValueAt(path, body);
+                b->shown.clear();
+                sync(*b);
+            }
+        }
+        if (done) done();
+    });
+    if (!sent) toast(what + ": not sent", true);
+}
+
 void LvglUi::loop() {
     client_.process();
     uint32_t now = lv_tick_get();
@@ -1698,7 +2612,7 @@ void LvglUi::loop() {
         if (b->dirty && now - b->lastSent >= kThrottleMs) {
             b->dirty = false;
             std::string json = controlJson(*b);
-            if (!json.empty() && json != b->sent) write(*b, json);
+            if (!json.empty() && json != b->sent) commit(*b, json);
         }
     }
     if (toast_ && toastUntil_ && static_cast<int32_t>(now - toastUntil_) >= 0) {

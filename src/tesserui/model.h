@@ -98,6 +98,10 @@ bool holds(const Condition& c, JsonVariantConst value);
 
 enum class ItemKind : uint8_t { Leaf, Section, Link };
 
+// ui.toast on an event (section 7.8): true, or the notification's kind.
+enum class Toast : uint8_t { None, Info, Ok, Warn, Error };
+const char* toString(Toast t);
+
 // One leaf, section or link: what section 10.2 calls a widget descriptor.
 // Fields that don't apply to its kind stay at their defaults.
 struct Item {
@@ -137,6 +141,18 @@ struct Item {
     bool hasField = false;  // typed actions: the argument's input
     Widget field = Widget::Readout;
     uint32_t keepalive = 0;
+    std::vector<Item> params;  // an object argument's fields, paths relative to it
+    Toast toast = Toast::None;  // events
+    uint32_t history = 0;       // charts of a value: samples kept
+    std::vector<std::string> flagLabels;  // flags: one per bit (ui.labels)
+
+    // Lists and arrays
+    bool hasColumns = false;
+    std::vector<Item> columns;  // the element's leaves, paths relative to it
+    std::string key;            // keyed lists: the field naming each element
+    uint32_t maxSize = 0;       // 0: none given
+    bool fixed = false;         // arrays of a fixed length
+    bool reorder = false;
 
     // Sections
     uint8_t level = 0;  // 1: card, 2: sub-section, 3 and more: collapsible group
@@ -185,6 +201,11 @@ std::vector<MenuEntry> buildMenu(JsonObjectConst schema, std::string_view home =
 bool isEntry(JsonObjectConst schema);
 // Whether the start page has values, lists or actions of its own.
 bool hasOwnItems(JsonObjectConst schema);
+
+// One leaf on its own (a list element's field, an array's element), with
+// its node's root for conditions.
+Item buildLeaf(std::string_view name, std::string_view path, JsonObjectConst schema, std::string_view parent,
+               std::string_view root = "/");
 
 // The schema below `root` at `path` (relative to it), crossing nothing.
 JsonObjectConst schemaAt(JsonObjectConst root, std::string_view path);
