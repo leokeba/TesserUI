@@ -218,7 +218,7 @@ struct Demo {
     // Moves messages between the links and polls the peers' APIs.
     void pump(uint32_t nowMs);
     // A node heard on the link (mounted under /peers, online) or lost
-    // (offline): the kitchen lamp, or a new one by name, for tests of UIs
+    // (offline): the kitchen lamp, the porch lamp, or a new one by name, for tests of UIs
     // that follow the peers. Nothing answers for them.
     void hear(const char* name, bool heard);
 

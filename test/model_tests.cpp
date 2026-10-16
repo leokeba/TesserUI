@@ -53,6 +53,7 @@ void write(JsonObject o, const Item& i) {
     o["advanced"] = i.advanced;
     o["hidden"] = i.hidden;
     if (!i.icon.empty()) o["icon"] = i.icon;
+    if (i.access != Access::None) o["access"] = toString(i.access);
     conditions(o, "visibleWhen", i.visibleWhen);
     conditions(o, "enabledWhen", i.enabledWhen);
     switch (i.kind) {
@@ -118,6 +119,8 @@ void write(JsonObject o, const Item& i) {
     if (i.schemaType == NodeType::Array) o["fixed"] = i.fixed;
     if (i.reorder) o["reorder"] = true;
     if (!i.key.empty()) o["key"] = i.key;
+    if (!i.optionsFrom.empty()) o["optionsFrom"] = i.optionsFrom;
+    if (!i.optionsValue.empty()) o["optionsValue"] = i.optionsValue;
 }
 
 void write(JsonObject o, const Page& p) {
@@ -148,8 +151,7 @@ void write(JsonArray a, const std::vector<MenuEntry>& entries) {
 
 // Fields of the web model this one doesn't keep: help text (hidden on small
 // screens, section 4), widgets it doesn't draw yet, access levels.
-const char* const kDropped[] = {"description", "script", "optionsFrom", "optionsValue", "access",
-                                "readable",    "contentType", "lines", "schemaHash", "files"};
+const char* const kDropped[] = {"description", "script", "readable", "contentType", "lines", "schemaHash", "files"};
 
 void project(JsonVariant v) {
     if (v.is<JsonObject>()) {

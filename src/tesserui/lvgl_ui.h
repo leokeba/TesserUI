@@ -60,6 +60,14 @@ public:
     // What a back button does: leaves editing, closes a question or the
     // keyboard, else goes back a page.
     void escape();
+
+    // A node's login action (ui.auth "login") answered with a token: what
+    // the application does with it. For a remote node behind this one
+    // (`node` is its path, `device` its stub's id, a MAC), the gateway
+    // presents it: RemoteNode::byDevice(peers, address)->setToken(token).
+    // The UI asks the node's whoami again afterwards.
+    using SignInHandler = std::function<void(const std::string& node, const std::string& device, const std::string& token)>;
+    void onSignIn(SignInHandler handler) { onSignIn_ = std::move(handler); }
     // The font of every text, for units beyond ASCII and degrees (µ, Ω).
     // Call it before begin().
     void font(const lv_font_t* font) { font_ = font; }
@@ -86,6 +94,8 @@ private:
         std::string id;        // the element's key, or its index
         bool scalar = false;   // an array's element: one value
         std::string title;
+        model::Access above = model::Access::None;  // what the page's ancestors require
+        bool signIn = false;  // the node's login action, drawn even when hidden
 
         static Route to(std::string path, std::string root, bool menu = false, bool status = false) {
             Route r;
@@ -107,6 +117,22 @@ private:
         lv_obj_t* apply = nullptr;
         lv_obj_t* result = nullptr;
         bool busy = false;
+    };
+    // What a node says of this client (section 7.4): found in its schema.
+    struct NodeAuth {
+        std::string root;
+        bool asked = false;
+        std::string login;   // the login action's path
+        std::string whoami;  // the whoami action's path
+        model::Access level = model::Access::None;  // unknown: nothing disabled
+        std::string device;  // a remote node's id, for the token
+    };
+    // Values outside the page that conditions test: one subscription at
+    // their common ancestor (section 7.3).
+    struct Watch {
+        std::string path;
+        JsonDocument values;
+        bool has = false;
     };
     struct EventInfo {
         std::string path;
@@ -144,6 +170,7 @@ private:
     void onNotification(JsonObjectConst envelope);
     void apply(std::string_view path, JsonVariantConst body);
     void setValues(JsonVariantConst body);
+    static void applyTo(JsonDocument& doc, const std::string& at, std::string_view path, JsonVariantConst body);
 
     // Rendering
     lv_obj_t* card(const model::Item& section);
@@ -164,6 +191,10 @@ private:
     lv_obj_t* row(lv_obj_t* parent, bool column);
     lv_obj_t* label(lv_obj_t* parent, const std::string& text, bool grow);
     void focusable(lv_obj_t* obj);
+    std::string fit(std::string_view text) const;
+    static std::string lookalike(uint32_t codepoint, std::string_view original);
+    void setLabel(lv_obj_t* label, const char* text);
+    void setLabel(lv_obj_t* label, const std::string& text) { setLabel(label, text.c_str()); }
     void outline(lv_obj_t* obj);
     void focusFirst();
     void modal(lv_obj_t* const* objs, size_t n, bool editing);
@@ -195,6 +226,20 @@ private:
     JsonVariantConst elementOf(JsonVariantConst list) const;
     void ask(const std::string& question, std::function<void()> yes);
     void ensureEvents();
+    void ensureAuth();
+    void discoverAuth(const std::string& root, int depth);
+    void updateSignIn();
+    NodeAuth* authOf(const std::string& root);
+    void askLevel(const std::string& root);
+    void signedIn(const model::Item& action, JsonVariantConst reply);
+    bool allowed(const model::Item& item) const;
+    void watchConditions();
+    void watchNode();
+    void readStub();
+    void setOffline(bool offline);
+    void loadChoices(Bound& b);
+    void keepAlive(uint32_t now);
+    bool offlineRefused(const std::string& what);
     void eventNotified(const std::string& path, JsonVariantConst body);
     std::string nodeRoot() const;
     void call(Bound& b, const std::string& arg);
@@ -282,6 +327,12 @@ private:
     JsonDocument elementSchema_;           // and its element's schema
     bool listEditable_ = false;
     std::function<void()> confirmed_;      // the question's yes
+    std::vector<NodeAuth> auth_;
+    SignInHandler onSignIn_;
+    lv_obj_t* signIn_ = nullptr;      // the header's sign-in button
+    Watch watch_;                     // conditions' values outside the page
+    std::string stubPath_;            // a remote node's stub, watched for its online state
+    bool offline_ = false;
     // Events (section 7.8): one subscription per node, for toasts.
     std::string eventsPath_;
     std::vector<EventInfo> eventInfo_;

@@ -603,6 +603,210 @@ TEST(lcd_encoder_types_with_the_keyboard) {
     CHECK(b.ui.current().empty());
 }
 
+// ---- Access, sign-in, choices, conditions, keep-alives, glyphs ------------
+
+namespace {
+
+struct Creds {
+    std::string name;
+    std::string password;
+};
+void describe(tesser::Object& o, Creds& c) {
+    o.value("name", c.name);
+    o.value("password", c.password).secret();
+}
+
+struct Secure {
+    tesser::Api api;
+    int open = 1;
+    int locked = 2;
+    std::string pick = "Sun";
+    std::vector<Source> sources{{"Sun", 120, true}, {"Moon", 200, false}};
+    bool flag = false;
+    int gated = 5;
+    double output = 0;
+    int outputs = 0;  // writes of the kept-alive output
+    int jogs = 0;
+    std::string token;  // what the login handed out
+
+    Secure() {
+        auto& s = api.object("settings").label("Settings");
+        s.value("open", open);
+        s.value("locked", locked).writeAccess(tesser::Access::Admin);
+        s.value("pick", pick).ui("options", "/lists/sources");
+        s.value("gated", gated).ui("visibleWhen", "/other/flag=true");
+        s.value("output", [this] { return output; },
+                [this](double v) {
+                    output = v;
+                    outputs++;
+                })
+            .range(-1, 1)
+            .step(0.01)
+            .ui("keepalive", 200);
+        s.action("jog", [this] { jogs++; }).label("Jog \xE2\x88\x92");  // a minus sign, U+2212
+        api.object("other").value("flag", flag);
+        api.object("lists").list("sources", sources).key("name");
+        auto& a = api.object("auth").label("Auth");
+        a.action("login", [this](const Creds& c, tesser::Call& call) {
+             if (c.password != "pw") {
+                 call.fail(tesser::Status::Unauthorized, "wrong password");
+                 return;
+             }
+             token = "t-" + c.name;
+             std::string t = token;
+             call.replyWith([t](tesser::JsonWriter& w) {
+                 w.beginObject();
+                 w.key("token");
+                 w.string(t);
+                 w.endObject();
+             });
+         })
+            .label("Sign in")
+            .ui("auth", "login")
+            .ui("hidden");
+        a.action("whoami", [](tesser::Call& call) {
+             const char* level = tesser::toString(call.client().level());
+             call.replyWith([level](tesser::JsonWriter& w) {
+                 w.beginObject();
+                 w.key("access");
+                 w.string(level);
+                 w.endObject();
+             });
+         })
+            .ui("auth", "whoami")
+            .ui("hidden");
+    }
+};
+
+struct SecureRig {
+    Secure node;
+    tesser::LocalClient client{node.api};
+    lcd::Screen screen;
+    tesserui::LvglUi ui{client, screen.display()};
+    std::string signedNode, signedToken;
+    std::function<void()> each = [this] {
+        node.api.poll(lv_tick_get());
+        ui.loop();
+    };
+    SecureRig() {
+        client.setAccess(tesser::Access::User);  // not admin until signed in
+        ui.onSignIn([this](const std::string& n, const std::string&, const std::string& t) {
+            signedNode = n;
+            signedToken = t;
+            client.setAccess(tesser::Access::Admin);  // what presenting the token gives
+        });
+        ui.begin("/");
+        screen.run(300, each);
+    }
+    void open(const char* path) {
+        ui.open(path);
+        screen.run(400, each);
+    }
+};
+
+}  // namespace
+
+TEST(lcd_glyphs_without_a_font_fall_back) {
+    SecureRig r;
+    r.open("/settings");
+    CHECK(r.screen.label("Jog -") != nullptr);  // the minus sign, as the font has none
+}
+
+TEST(lcd_access_levels_disable) {
+    SecureRig r;
+    r.open("/settings");
+    lv_obj_t* open = r.screen.control("Open");
+    lv_obj_t* locked = r.screen.control("Locked");
+    CHECK(open && locked);
+    if (!open || !locked) return;
+    // The client is a user (whoami): the admin's value can't be changed.
+    CHECK(!lv_obj_has_state(textareaOf(open), LV_STATE_DISABLED));
+    CHECK(lv_obj_has_state(textareaOf(locked), LV_STATE_DISABLED));
+    // Signing in: the header's button, showing the level, then the
+    // login's fields.
+    lv_obj_t* signIn = r.screen.label("user");
+    CHECK(signIn != nullptr);
+    if (!signIn) return;
+    r.screen.tap(signIn, r.each);
+    r.screen.run(400, r.each);
+    lv_obj_t* name = r.screen.control("Name");
+    lv_obj_t* password = r.screen.control("Password");
+    CHECK(name && password);
+    if (!name || !password) return;
+    auto type = [&](lv_obj_t* ta, const char* text) {
+        r.screen.tap(ta, r.each);
+        lv_textarea_set_text(ta, text);
+        lv_obj_send_event(ta, LV_EVENT_READY, nullptr);
+        r.screen.run(100, r.each);
+    };
+    type(name, "leo");
+    type(password, "pw");
+    // The login's button is the action's label; the header's says the same.
+    lv_obj_t* card = lv_obj_get_parent(lv_obj_get_parent(lv_obj_get_parent(name)));
+    lv_obj_t* button = lcd::Screen::label("Sign in", card);
+    CHECK(button != nullptr);
+    if (button) r.screen.tap(button, r.each);
+    r.screen.run(500, r.each);
+    CHECK_EQ(r.signedToken, "t-leo");
+    CHECK_EQ(r.signedNode, "/");
+    CHECK_EQ(r.ui.current(), "/settings");  // back where it was
+    CHECK(r.screen.label("admin") != nullptr);  // the header's level
+    lv_obj_t* lockedNow = r.screen.control("Locked");
+    CHECK(lockedNow && !lv_obj_has_state(textareaOf(lockedNow), LV_STATE_DISABLED));
+}
+
+TEST(lcd_choices_from_a_keyed_list) {
+    SecureRig r;
+    r.open("/settings");
+    lv_obj_t* dd = r.screen.control("Pick");
+    CHECK(dd && lv_obj_check_type(dd, &lv_dropdown_class));
+    if (!dd) return;
+    CHECK_EQ(std::string(lv_dropdown_get_options(dd)), "Sun\nMoon");
+    CHECK_EQ(lv_dropdown_get_selected(dd), 0u);
+    lv_dropdown_set_selected(dd, 1);
+    lv_obj_send_event(dd, LV_EVENT_VALUE_CHANGED, nullptr);
+    r.screen.run(300, r.each);
+    CHECK_EQ(r.node.pick, "Moon");
+}
+
+TEST(lcd_conditions_outside_the_page) {
+    SecureRig r;
+    r.open("/settings");
+    // Shown when /other/flag is true: read by a subscription of its own.
+    CHECK(r.screen.label("Gated") == nullptr);  // hidden
+    CHECK(r.screen.label("Open") != nullptr);
+    tesser::LocalClient other(r.node.api);
+    other.set("/other/flag", "true");
+    other.process();
+    r.screen.run(400, r.each);
+    CHECK(r.screen.label("Gated") != nullptr);
+}
+
+TEST(lcd_keepalive_resends) {
+    SecureRig r;
+    r.open("/settings");
+    lv_obj_t* l = r.screen.label("Output");
+    lv_obj_t* slider = l ? lv_obj_get_child(lv_obj_get_parent(lv_obj_get_parent(l)), 1) : nullptr;
+    CHECK(slider && lv_obj_check_type(slider, &lv_slider_class));
+    if (!slider) return;
+    r.screen.tap(slider, r.each, 0.75f, 0.5f);
+    r.screen.run(100, r.each);
+    int after = r.node.outputs;
+    CHECK(r.node.output > 0.3);
+    r.screen.run(1000, r.each);
+    CHECK(r.node.outputs - after >= 4);  // every 200 ms while not 0
+    // Its button back to 0, and no more re-sends.
+    lv_obj_t* zero = lcd::Screen::label("0", lv_obj_get_parent(l));
+    CHECK(zero != nullptr);
+    if (!zero) return;
+    r.screen.tap(zero, r.each);
+    r.screen.run(200, r.each);
+    CHECK_EQ(r.node.output, 0.0);
+    int stopped = r.node.outputs;
+    r.screen.run(1000, r.each);
+    CHECK_EQ(r.node.outputs, stopped);
+}
+
 // ---- Peers behind a gateway (the remote controller) -----------------------
 
 namespace {
@@ -692,6 +896,24 @@ TEST(lcd_menu_follows_peers) {
     g.demo.hear("garden", false);
     g.screen.run(1500, g.each);
     CHECK(!g.online("garden"));
+}
+
+TEST(lcd_offline_peer) {
+    Gateway g;
+    g.tap("porch-lamp");
+    g.tap("Lamp");
+    CHECK_EQ(g.ui.current(), "/peers/porch-lamp/lamp");
+    lv_obj_t* sw = g.screen.control("On");
+    CHECK(sw && !lv_obj_has_state(sw, LV_STATE_DISABLED));
+    g.demo.hear("porch-lamp", false);
+    g.screen.run(1500, g.each);
+    CHECK(sw && lv_obj_has_state(sw, LV_STATE_DISABLED));  // offline: nothing to change
+    g.demo.hear("porch-lamp", true);
+    g.screen.run(1500, g.each);
+    CHECK(sw && !lv_obj_has_state(sw, LV_STATE_DISABLED));
+    if (sw) g.screen.tap(sw, g.each);
+    g.screen.run(400, g.each);
+    CHECK(!g.demo.porch.on);  // written again once back
 }
 
 int main(int argc, char** argv) { return check::run(argc > 1 ? argv[1] : nullptr) ? 1 : 0; }

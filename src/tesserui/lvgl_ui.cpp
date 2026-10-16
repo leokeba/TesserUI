@@ -250,6 +250,7 @@ struct LvglUi::Bound {
     std::string shown;  // the value's JSON as last shown
     double scale = 1;
     std::vector<const char*> map;  // a button matrix's labels
+    std::vector<std::string> mapText;
     std::string dropdownText;      // a value that isn't among the options
     lv_timer_t* hold = nullptr;
     Widget fieldWidget = Widget::Readout;  // an action's argument input
@@ -262,6 +263,11 @@ struct LvglUi::Bound {
     std::vector<double> samples;  // a chart's, for its range
     lv_obj_t* swatch = nullptr;   // a colour's
     std::vector<std::unique_ptr<RowRef>> rows;  // a list's
+    std::vector<model::Option> choices;  // a select's, with a keyed list's keys (ui.options)
+    bool hasChoices = false;
+    bool stalled = false;     // a keep-alive refused: not again until an edit
+    uint32_t lastKeep = 0;
+    lv_obj_t* zero = nullptr;  // a kept-alive number's way back to 0
 };
 
 LvglUi::LvglUi(tesser::ApiClient& client, lv_display_t* display)
@@ -337,7 +343,7 @@ void LvglUi::chrome() {
     backButton_ = lv_button_create(header_);
     lv_obj_set_size(backButton_, m_.compact ? 30 : 40, m_.header - 8);
     lv_obj_t* arrow = lv_label_create(backButton_);
-    lv_label_set_text(arrow, LV_SYMBOL_LEFT);
+    setLabel(arrow, LV_SYMBOL_LEFT);
     lv_obj_center(arrow);
     lv_obj_add_event_cb(backButton_, onChrome, LV_EVENT_CLICKED, this);
     lv_obj_set_hidden(backButton_, true);
@@ -348,7 +354,16 @@ void LvglUi::chrome() {
 #if LV_FONT_MONTSERRAT_16
     if (!m_.compact) lv_obj_set_style_text_font(title_, &lv_font_montserrat_16, 0);
 #endif
-    lv_label_set_text(title_, "");
+    setLabel(title_, "");
+
+    signIn_ = lv_button_create(header_);
+    lv_obj_set_height(signIn_, m_.header - 8);
+    lv_obj_set_style_pad_hor(signIn_, m_.compact ? 4 : 8, 0);
+    lv_obj_set_style_pad_ver(signIn_, 0, 0);
+    lv_obj_t* si = lv_label_create(signIn_);
+    lv_obj_center(si);
+    lv_obj_add_event_cb(signIn_, onChrome, LV_EVENT_CLICKED, this);
+    lv_obj_set_hidden(signIn_, true);
 
     dot_ = lv_obj_create(header_);
     lv_obj_set_size(dot_, 10, 10);
@@ -383,6 +398,71 @@ void LvglUi::chrome() {
     lv_obj_set_width(toastLabel_, LV_PCT(100));
     lv_label_set_long_mode(toastLabel_, LV_LABEL_LONG_MODE_WRAP);
     lv_obj_set_hidden(toast_, true);
+}
+
+// Text in the UI's font: characters it has no glyph for become their ASCII
+// look-alikes (a minus sign, dashes, curly quotes, accented letters), so a
+// device's "Jog −" doesn't show a box. A font that has them keeps them.
+std::string LvglUi::fit(std::string_view t) const {
+    bool ascii = true;
+    for (char c : t) {
+        if (static_cast<uint8_t>(c) >= 0x80) ascii = false;
+    }
+    if (ascii || !font_) return std::string(t);
+    std::string out;
+    for (size_t i = 0; i < t.size();) {
+        uint8_t c = static_cast<uint8_t>(t[i]);
+        size_t n = c < 0x80 ? 1 : c >> 5 == 6 ? 2 : c >> 4 == 14 ? 3 : c >> 3 == 30 ? 4 : 1;
+        if (i + n > t.size()) n = 1;
+        uint32_t cp = n == 1 ? c : n == 2 ? c & 0x1F : n == 3 ? c & 0x0F : c & 0x07;
+        for (size_t k = 1; k < n; k++) cp = (cp << 6) | (static_cast<uint8_t>(t[i + k]) & 0x3F);
+        lv_font_glyph_dsc_t dsc;
+        if (n == 1 || lv_font_get_glyph_dsc(font_, &dsc, cp, 0)) {
+            out.append(t.substr(i, n));
+        } else {
+            out += lookalike(cp, t.substr(i, n));
+        }
+        i += n;
+    }
+    return out;
+}
+
+std::string LvglUi::lookalike(uint32_t cp, std::string_view original) {
+    switch (cp) {
+        case 0x2212: case 0x2010: case 0x2011: case 0x2012: case 0x2013: case 0x2014: case 0x2015: return "-";
+        case 0x2018: case 0x2019: case 0x201A: case 0x2032: return "'";
+        case 0x201C: case 0x201D: case 0x201E: case 0x2033: return "\"";
+        case 0x2026: return "...";
+        case 0x00A0: case 0x202F: case 0x2009: return " ";
+        case 0x00D7: return "x";
+        case 0x00F7: return "/";
+        case 0x2264: return "<=";
+        case 0x2265: return ">=";
+        case 0x2260: return "!=";
+        case 0x00B1: return "+/-";
+        case 0x2192: return "->";
+        case 0x2190: return "<-";
+        case 0x00B5: case 0x03BC: return "u";
+        case 0x03A9: case 0x2126: return "Ohm";
+        case 0x00B2: return "2";
+        case 0x00B3: return "3";
+        case 0x00B7: case 0x2022: return "*";
+        case 0x00AB: return "<<";
+        case 0x00BB: return ">>";
+        case 0x00E6: return "ae";
+        case 0x0153: return "oe";
+        case 0x00DF: return "ss";
+        default: break;
+    }
+    // Latin letters with accents: the letter.
+    static const char* const latin1 = "AAAAAAACEEEEIIIIDNOOOOOxOUUUUYTsaaaaaaaceeeeiiiidnooooo/ouuuuyty";
+    if (cp >= 0xC0 && cp <= 0xFF) return std::string(1, latin1[cp - 0xC0]);
+    return std::string(original);  // nothing better: the font's placeholder
+}
+
+void LvglUi::setLabel(lv_obj_t* label, const char* text) {
+    std::string t = fit(text ? text : "");
+    lv_label_set_text(label, t.c_str());
 }
 
 // Into the page's group, once an encoder or a keypad uses it (group()): on
@@ -479,11 +559,21 @@ void LvglUi::onChrome(lv_event_t* e) {
         ui->back();
     } else if (target == ui->retry_) {
         ui->requestShow();
+    } else if (target == ui->signIn_) {
+        // The login action's fields and its button (TesserKIT hides it).
+        NodeAuth* a = ui->authOf(ui->nodeRoot());
+        if (!a || a->login.empty()) return;
+        std::string root = ui->nodeRoot() == ui->root_ ? std::string() : ui->nodeRoot();
+        Route r = Route::to(a->login, root);
+        r.signIn = true;
+        r.title = "Sign in";
+        ui->route_.push_back(std::move(r));
+        ui->requestShow();
     }
 }
 
 void LvglUi::setTitle(const std::string& title) {
-    lv_label_set_text(title_, title.c_str());
+    setLabel(title_, title.c_str());
     bool canGoBack = !route_.empty() && (menuShown_ || route_.size() > 1);
     if (useGroup_) {
         outline(backButton_);
@@ -502,13 +592,13 @@ void LvglUi::message(const char* textToShow, bool retry) {
     lv_label_set_long_mode(l, LV_LABEL_LONG_MODE_WRAP);
     lv_obj_set_style_text_align(l, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_set_style_pad_top(l, 40, 0);
-    lv_label_set_text(l, textToShow);
+    setLabel(l, textToShow);
     retry_ = nullptr;
     if (retry) {
         retry_ = lv_button_create(content_);
         lv_obj_align(retry_, LV_ALIGN_CENTER, 0, 0);
         lv_obj_t* t = lv_label_create(retry_);
-        lv_label_set_text(t, "Retry");
+        setLabel(t, "Retry");
         lv_obj_add_event_cb(retry_, onChrome, LV_EVENT_CLICKED, this);
         focusable(retry_);
         focusFirst();
@@ -517,7 +607,7 @@ void LvglUi::message(const char* textToShow, bool retry) {
 
 void LvglUi::toast(const std::string& t, bool isError) {
     if (!toast_) return;
-    lv_label_set_text(toastLabel_, t.c_str());
+    setLabel(toastLabel_, t.c_str());
     lv_obj_set_style_bg_color(toast_, isError ? lv_palette_darken(LV_PALETTE_RED, 2) : lv_palette_darken(LV_PALETTE_GREY, 3), 0);
     lv_obj_set_hidden(toast_, false);
     toastUntil_ = lv_tick_get() + 3000;
@@ -537,6 +627,8 @@ void LvglUi::error(const std::string& what, Status s, JsonVariantConst body) {
     const char* msg = body["message"];
     std::string t = what.empty() ? std::string() : what + ": ";
     t += msg ? msg : tesser::toString(s);
+    NodeAuth* a = authOf(nodeRoot());
+    if (s == Status::Unauthorized && a && !a->login.empty()) t += " (sign in)";
     toast(t, true);
 }
 
@@ -690,6 +782,11 @@ void LvglUi::clearPage() {
     loading_ = false;
     drafts_.clear();
     drafting_ = 0;
+    watch_.path.clear();
+    watch_.values.clear();
+    watch_.has = false;
+    stubPath_.clear();
+    if (offline_) setOffline(false);
     skip_ = nullptr;
     listValue_.clear();
     elementSchema_.clear();
@@ -722,7 +819,7 @@ void LvglUi::drawMenu(const std::vector<model::MenuEntry>& menu, const std::stri
         label(b, e.label, true);
         if (e.remote) dot(b, e.online);
         lv_obj_t* chevron = lv_label_create(b);
-        lv_label_set_text(chevron, LV_SYMBOL_RIGHT);
+        setLabel(chevron, LV_SYMBOL_RIGHT);
         lv_obj_set_style_text_color(chevron, lv_palette_main(LV_PALETTE_BLUE), 0);
         auto bound = std::make_unique<Bound>();
         bound->ui = this;
@@ -736,6 +833,7 @@ void LvglUi::drawMenu(const std::vector<model::MenuEntry>& menu, const std::stri
         } else {
             bound->target = Route::to(e.path, root);
         }
+        if (!e.remote) bound->target.above = e.access;
         lv_obj_add_event_cb(b, onEvent, LV_EVENT_CLICKED, bound.get());
         focusable(b);
         bound_.push_back(std::move(bound));
@@ -758,6 +856,7 @@ void LvglUi::drawMenu(const std::vector<model::MenuEntry>& menu, const std::stri
 void LvglUi::showMenu() {
     clearPage();
     ensureEvents();
+    ensureAuth();
     setTitle(rootLabel_);
     drawMenu(menu_, root_, "");
     // Live: nodes come and go under a gateway. A stub's change is a null in
@@ -833,6 +932,7 @@ bool LvglUi::same(const std::vector<model::MenuEntry>& a, const std::vector<mode
 void LvglUi::showNodeMenu() {
     clearPage();
     ensureEvents();
+    ensureAuth();
     Route r = route_.back();
     std::string_view name = r.path;
     name = name.substr(name.rfind('/') + 1);
@@ -862,6 +962,7 @@ void LvglUi::showNodeMenu() {
 void LvglUi::showPage() {
     clearPage();
     ensureEvents();
+    ensureAuth();
     Route r = route_.back();
     std::string_view last = r.path;
     size_t slash = last.rfind('/');
@@ -878,6 +979,28 @@ void LvglUi::showPage() {
         }
         lv_obj_clean(content_);
         std::string root = r.root.empty() ? root_ : r.root;
+        if (r.signIn) {
+            // One card: the login action, its argument's fields.
+            page_ = model::Page();
+            page_.path = model::parentPath(r.path);
+            page_.label = r.title;
+            Item card;
+            card.kind = ItemKind::Section;
+            card.schemaType = NodeType::Object;
+            card.path = page_.path;
+            card.level = 1;
+            Item login = model::buildLeaf(r.path.substr(r.path.rfind('/') + 1), r.path, reply, page_.path, root, r.above);
+            login.hidden = false;
+            login.advanced = false;
+            card.items.push_back(std::move(login));
+            page_.cards.push_back(std::move(card));
+            setTitle(r.title);
+            lv_obj_t* body = this->card(page_.cards[0]);
+            items(body, page_.cards[0].items);
+            focusFirst();
+            loading_ = false;
+            return;
+        }
         if (!r.list.empty()) {
             JsonObjectConst items = reply["items"];
             if (items.isNull()) {
@@ -899,16 +1022,16 @@ void LvglUi::showPage() {
                 card.schemaType = NodeType::Object;
                 card.path = r.path;
                 card.level = 1;
-                Item value = model::buildLeaf("value", r.path, column.as<JsonObjectConst>(), r.list, root);
+                Item value = model::buildLeaf("value", r.path, column.as<JsonObjectConst>(), r.list, root, r.above);
                 value.label = "Value";
                 card.items.push_back(std::move(value));
                 page_.cards.push_back(std::move(card));
             } else {
-                page_ = model::buildPage(items, r.path, root, false);
+                page_ = model::buildPage(items, r.path, root, false, r.above);
             }
             page_.label = r.title;
         } else {
-            page_ = model::buildPage(reply, r.path, root, r.status);
+            page_ = model::buildPage(reply, r.path, root, r.status, r.above);
         }
         if (r.status) {
             setTitle("Status");
@@ -941,6 +1064,11 @@ void LvglUi::showPage() {
         if (page_.cards.empty() && page_.actions.empty()) message("Nothing to show here.", false);
         focusFirst();
         subscribe();
+        for (auto& b : bound_) {
+            if (b->widget == Widget::Select && b->item && !b->item->optionsFrom.empty()) loadChoices(*b);
+        }
+        watchConditions();
+        watchNode();
     });
 }
 
@@ -1101,9 +1229,14 @@ JsonVariantConst LvglUi::elementOf(JsonVariantConst list) const {
 }
 
 void LvglUi::unsubscribe() {
-    if (!subscribed_.empty()) client_.unsubscribe(subscribed_);
-    // That unsubscribed every subscription at its path, the events' too.
-    if (!subscribed_.empty() && subscribed_ == eventsPath_) eventsPath_.clear();
+    // Each unsubscribes every subscription at its path, the events' too.
+    for (const std::string* p : {&subscribed_, &watch_.path, &stubPath_}) {
+        if (p->empty()) continue;
+        client_.unsubscribe(*p);
+        if (*p == eventsPath_) eventsPath_.clear();
+    }
+    watch_.path.clear();
+    stubPath_.clear();
     subscribed_.clear();
     if (pollTimer_) lv_timer_delete(pollTimer_);
     pollTimer_ = nullptr;
@@ -1137,6 +1270,11 @@ void LvglUi::onNotification(JsonObjectConst envelope) {
         }
         return;
     }
+    if (!stubPath_.empty() && model::isUnder(stubPath_, path) && hasNull(envelope["body"])) readStub();
+    if (!watch_.path.empty() && watch_.has && (model::isUnder(path, watch_.path) || model::isUnder(watch_.path, path))) {
+        applyTo(watch_.values, watch_.path, path, envelope["body"]);
+        for (auto& b : bound_) conditions(*b);
+    }
     if (!hasValues_) return;
     if (envelope["overflow"].as<bool>()) {
         // Notifications were lost: read the page again.
@@ -1161,20 +1299,22 @@ void LvglUi::onNotification(JsonObjectConst envelope) {
 }
 
 // A merge patch at `path` (section 7.3), into the page's values.
-void LvglUi::apply(std::string_view path, JsonVariantConst body) {
-    const std::string& at = page_.path;
+void LvglUi::apply(std::string_view path, JsonVariantConst body) { applyTo(values_, page_.path, path, body); }
+
+// The same into `doc`, the values below `at`.
+void LvglUi::applyTo(JsonDocument& doc, const std::string& at, std::string_view path, JsonVariantConst body) {
     if (model::isUnder(path, at)) {
         std::vector<std::string_view> rel = segmentsOf(path.substr(at == "/" ? 0 : at.size()));
         if (rel.empty()) {
             if (body.is<JsonObjectConst>()) {
-                JsonObject root = values_.is<JsonObject>() ? values_.as<JsonObject>() : values_.to<JsonObject>();
+                JsonObject root = doc.is<JsonObject>() ? doc.as<JsonObject>() : doc.to<JsonObject>();
                 merge(root, body.as<JsonObjectConst>());
             } else {
-                values_.set(body);
+                doc.set(body);
             }
             return;
         }
-        JsonObject node = values_.is<JsonObject>() ? values_.as<JsonObject>() : values_.to<JsonObject>();
+        JsonObject node = doc.is<JsonObject>() ? doc.as<JsonObject>() : doc.to<JsonObject>();
         for (size_t i = 0; i + 1 < rel.size(); i++) {
             std::string key(rel[i]);
             node = node[key].is<JsonObject>() ? node[key].as<JsonObject>() : node[key].to<JsonObject>();
@@ -1194,10 +1334,10 @@ void LvglUi::apply(std::string_view path, JsonVariantConst body) {
         }
         if (sub.isUnbound()) return;
         if (sub.is<JsonObjectConst>()) {
-            JsonObject root = values_.is<JsonObject>() ? values_.as<JsonObject>() : values_.to<JsonObject>();
+            JsonObject root = doc.is<JsonObject>() ? doc.as<JsonObject>() : doc.to<JsonObject>();
             merge(root, sub.as<JsonObjectConst>());
         } else {
-            values_.set(sub);
+            doc.set(sub);
         }
     }
 }
@@ -1233,9 +1373,18 @@ void LvglUi::setValueAt(std::string_view path, JsonVariantConst value) {
 
 bool LvglUi::holds(const std::vector<model::Condition>& conds) const {
     for (const model::Condition& c : conds) {
-        // A path outside the page isn't read (yet): the test passes.
-        if (!model::isUnder(c.path, page_.path)) continue;
-        if (!model::holds(c, valueAt(c.path))) return false;
+        JsonVariantConst v;
+        if (model::isUnder(c.path, page_.path)) {
+            v = valueAt(c.path);
+        } else if (watch_.has && model::isUnder(c.path, watch_.path)) {
+            v = watch_.values.as<JsonVariantConst>();
+            for (std::string_view seg : segmentsOf(std::string_view(c.path).substr(watch_.path == "/" ? 0 : watch_.path.size()))) {
+                v = v[std::string(seg)];
+            }
+        } else {
+            continue;  // not read (yet, or a list's): the test passes
+        }
+        if (!model::holds(c, v)) return false;
     }
     return true;
 }
@@ -1245,16 +1394,30 @@ void LvglUi::conditions(Bound& b) {
     if (!b.item->visibleWhen.empty()) {
         lv_obj_set_hidden(b.row, !(holds(b.item->visibleWhen)));
     }
-    if (!b.item->enabledWhen.empty()) {
-        bool on = holds(b.item->enabledWhen);
-        for (lv_obj_t* o : {b.control, b.button, b.minus, b.plus}) {
-            if (!o) continue;
-            if (on) {
-                lv_obj_remove_state(o, LV_STATE_DISABLED);
-            } else {
-                lv_obj_add_state(o, LV_STATE_DISABLED);
-            }
+    // Enabled: by its conditions, the client's level, the node online, and
+    // for a call, not while it is in flight.
+    bool on = (b.item->enabledWhen.empty() || holds(b.item->enabledWhen)) && allowed(*b.item) && !offline_;
+    if (b.item->isAction() && b.pending > 0 && b.item->widget != Widget::Hold) on = false;
+    auto set = [on](lv_obj_t* o) {
+        if (on) {
+            lv_obj_remove_state(o, LV_STATE_DISABLED);
+        } else {
+            lv_obj_add_state(o, LV_STATE_DISABLED);
         }
+    };
+    for (lv_obj_t* o : {b.control, b.button, b.minus, b.plus, b.zero}) {
+        if (!o || b.widget == Widget::Link || b.section) continue;
+        if (b.widget == Widget::Flags || b.widget == Widget::Color || b.widget == Widget::List || b.widget == Widget::Table) {
+            // Their controls are inside.
+            uint32_t n = lv_obj_get_child_count(o);
+            for (uint32_t i = 0; i < n; i++) {
+                lv_obj_t* c = lv_obj_get_child(o, static_cast<int32_t>(i));
+                set(c);
+                if (b.widget == Widget::Color) set(lv_obj_get_child(c, 1));
+            }
+            continue;
+        }
+        set(o);
     }
 }
 
@@ -1295,11 +1458,11 @@ void LvglUi::sync(Bound& b) {
         case Widget::Slider:
             if (lv_slider_is_dragged(b.control)) return;  // the finger wins until it lifts
             lv_slider_set_value(b.control, static_cast<int32_t>(lround(v.as<double>() * b.scale)), LV_ANIM_OFF);
-            lv_label_set_text(b.value, model::formatValue(v, item).c_str());
+            setLabel(b.value, model::formatValue(v, item).c_str());
             break;
         case Widget::Bar:
             lv_bar_set_value(b.control, static_cast<int32_t>(lround(v.as<double>() * b.scale)), LV_ANIM_OFF);
-            lv_label_set_text(b.value, model::formatValue(v, item).c_str());
+            setLabel(b.value, model::formatValue(v, item).c_str());
             break;
         case Widget::Number: {
             Item plain = item;
@@ -1320,8 +1483,9 @@ void LvglUi::sync(Bound& b) {
         case Widget::Select: {
             const char* s = v.as<const char*>();
             bool found = false;
-            for (size_t i = 0; s && i < item.options.size(); i++) {
-                if (item.options[i].value == s) {
+            const std::vector<model::Option>& options = b.hasChoices ? b.choices : item.options;
+            for (size_t i = 0; s && i < options.size(); i++) {
+                if (options[i].value == s) {
                     lv_dropdown_set_selected(b.control, static_cast<uint32_t>(i));
                     found = true;
                 }
@@ -1329,6 +1493,7 @@ void LvglUi::sync(Bound& b) {
             // A value that isn't among the options (a keyed list's key) is
             // shown as it is.
             b.dropdownText = found ? std::string() : text(v);
+            if (!found) b.dropdownText = fit(b.dropdownText);
             lv_dropdown_set_text(b.control, found ? nullptr : b.dropdownText.c_str());
             break;
         }
@@ -1358,7 +1523,7 @@ void LvglUi::sync(Bound& b) {
                 b.samples.push_back(v.as<double>());
                 if (b.samples.size() > lv_chart_get_point_count(b.control)) b.samples.erase(b.samples.begin());
                 lv_chart_set_next_value(b.control, b.series, static_cast<int32_t>(lround(v.as<double>() * b.scale)));
-                lv_label_set_text(b.value, model::formatValue(v, item).c_str());
+                setLabel(b.value, model::formatValue(v, item).c_str());
             }
             double lo = item.hasMin ? item.min : 0, hi = item.hasMax ? item.max : 0;
             if (!(item.hasMin && item.hasMax) && !b.samples.empty()) {
@@ -1408,7 +1573,7 @@ void LvglUi::sync(Bound& b) {
             for (size_t i = 0; s && i < item.options.size(); i++) {
                 if (item.options[i].value == s) t = item.options[i].label;
             }
-            lv_label_set_text(b.value, t.c_str());
+            setLabel(b.value, t.c_str());
             break;
         }
     }
@@ -1432,7 +1597,7 @@ lv_obj_t* LvglUi::row(lv_obj_t* parent, bool column) {
 
 lv_obj_t* LvglUi::label(lv_obj_t* parent, const std::string& t, bool grow) {
     lv_obj_t* l = lv_label_create(parent);
-    lv_label_set_text(l, t.c_str());
+    setLabel(l, t.c_str());
     if (grow) {
         lv_obj_set_flex_grow(l, 1);
         lv_label_set_long_mode(l, LV_LABEL_LONG_MODE_WRAP);
@@ -1446,7 +1611,7 @@ lv_obj_t* LvglUi::collapsible(lv_obj_t* parent, const std::string& t, bool open)
     lv_obj_set_clickable(head, true);
     lv_obj_t* l = lv_label_create(head);
     std::string caption = std::string(open ? LV_SYMBOL_DOWN " " : LV_SYMBOL_RIGHT " ") + t;
-    lv_label_set_text(l, caption.c_str());
+    setLabel(l, caption.c_str());
     lv_obj_set_style_text_opa(l, LV_OPA_80, 0);
     lv_obj_t* body = row(parent, true);
     if (!open) lv_obj_set_hidden(body, true);
@@ -1461,7 +1626,7 @@ lv_obj_t* LvglUi::collapsible(lv_obj_t* parent, const std::string& t, bool open)
             std::string now = lv_label_get_text(hl);
             // The symbol is the first 3 bytes (one private-use code point).
             now = std::string(opening ? LV_SYMBOL_DOWN : LV_SYMBOL_RIGHT) + now.substr(3);
-            lv_label_set_text(hl, now.c_str());
+            lv_label_set_text(hl, now.c_str());  // fitted when it was made
         },
         LV_EVENT_CLICKED, body);
     return body;
@@ -1494,14 +1659,18 @@ void LvglUi::items(lv_obj_t* parent, const std::vector<Item>& list) {
                 if (item.remote) {
                     link(parent, item, Route::to(item.path, item.path, true));  // the peer's menu
                 } else {
-                    link(parent, item, Route::to(item.path, route_.back().root));
+                    Route to = Route::to(item.path, route_.back().root);
+                    to.above = item.access;
+                    link(parent, item, to);
                 }
                 break;
             case ItemKind::Section: {
                 // Collapsible groups, tabs and what the schema's depth cut
                 // become pages of their own (section 6.4).
                 if (item.lazy || item.tabs || item.level >= 3) {
-                    link(parent, item, Route::to(item.path, route_.back().root));
+                    Route to = Route::to(item.path, route_.back().root);
+                    to.above = item.access;
+                    link(parent, item, to);
                     break;
                 }
                 lv_obj_t* sub = row(parent, true);
@@ -1544,7 +1713,7 @@ void LvglUi::link(lv_obj_t* parent, const Item& item, const Route& target) {
     label(r, item.label, true);
     if (item.remote) dot(r, item.online);
     lv_obj_t* chevron = lv_label_create(r);
-    lv_label_set_text(chevron, LV_SYMBOL_RIGHT);
+    setLabel(chevron, LV_SYMBOL_RIGHT);
     Bound& b = bind(item, r);
     b.widget = Widget::Link;
     b.control = r;
@@ -1602,7 +1771,7 @@ void LvglUi::leaf(lv_obj_t* parent, const Item& item) {
     }
     if (w == Widget::Slider || w == Widget::Bar || w == Widget::Readout || (w == Widget::Chart && item.schemaType != NodeType::Array)) {
         b.value = lv_label_create(top);
-        lv_label_set_text(b.value, "\xE2\x80\x93");  // – until the value comes
+        setLabel(b.value, "\xE2\x80\x93");  // – until the value comes
         if (item.style == "warning") lv_obj_set_style_text_color(b.value, lv_palette_main(LV_PALETTE_AMBER), 0);
     }
     if (w == Widget::Readout) {
@@ -1610,6 +1779,16 @@ void LvglUi::leaf(lv_obj_t* parent, const Item& item) {
         return;
     }
     control(b, column ? r : top, w);
+    // A kept-alive number gets a way back to 0: dragging to exactly 0 is hard.
+    if (item.keepalive && item.editable && item.type != NodeType::Boolean && !b.draft) {
+        b.zero = lv_button_create(top);
+        lv_obj_set_size(b.zero, m_.button, m_.button);
+        lv_obj_t* z = lv_label_create(b.zero);
+        lv_label_set_text(z, "0");
+        lv_obj_center(z);
+        lv_obj_add_event_cb(b.zero, onEvent, LV_EVENT_CLICKED, &b);
+        focusable(b.zero);
+    }
 }
 
 lv_obj_t* LvglUi::control(Bound& b, lv_obj_t* parent, Widget w) {
@@ -1659,7 +1838,7 @@ lv_obj_t* LvglUi::control(Bound& b, lv_obj_t* parent, Widget w) {
             b.minus = lv_button_create(box);
             lv_obj_set_size(b.minus, m_.button, m_.button);
             lv_obj_t* m = lv_label_create(b.minus);
-            lv_label_set_text(m, LV_SYMBOL_MINUS);
+            setLabel(m, LV_SYMBOL_MINUS);
             lv_obj_center(m);
             c = lv_textarea_create(box);
             lv_textarea_set_one_line(c, true);
@@ -1671,7 +1850,7 @@ lv_obj_t* LvglUi::control(Bound& b, lv_obj_t* parent, Widget w) {
             b.plus = lv_button_create(box);
             lv_obj_set_size(b.plus, m_.button, m_.button);
             lv_obj_t* p = lv_label_create(b.plus);
-            lv_label_set_text(p, LV_SYMBOL_PLUS);
+            setLabel(p, LV_SYMBOL_PLUS);
             lv_obj_center(p);
             for (lv_obj_t* o : {b.minus, b.plus}) on(o, {LV_EVENT_CLICKED, LV_EVENT_LONG_PRESSED_REPEAT});
             on(c, {LV_EVENT_CLICKED, LV_EVENT_FOCUSED, LV_EVENT_READY, LV_EVENT_CANCEL});
@@ -1680,7 +1859,9 @@ lv_obj_t* LvglUi::control(Bound& b, lv_obj_t* parent, Widget w) {
         case Widget::Segmented: {
             c = lv_buttonmatrix_create(parent);
             b.map.clear();
-            for (const model::Option& o : item.options) b.map.push_back(o.label.c_str());
+            b.mapText.clear();
+            for (const model::Option& o : item.options) b.mapText.push_back(fit(o.label));
+            for (const std::string& t : b.mapText) b.map.push_back(t.c_str());
             b.map.push_back("");
             lv_buttonmatrix_set_map(c, b.map.data());
             lv_buttonmatrix_set_button_ctrl_all(c, LV_BUTTONMATRIX_CTRL_CHECKABLE);
@@ -1697,7 +1878,7 @@ lv_obj_t* LvglUi::control(Bound& b, lv_obj_t* parent, Widget w) {
                 if (!options.empty()) options += '\n';
                 options += o.label;
             }
-            lv_dropdown_set_options(c, options.c_str());
+            lv_dropdown_set_options(c, fit(options).c_str());
             lv_obj_set_width(c, b.forAction ? LV_PCT(55) : m_.compact ? 110 : 140);
             on(c, {LV_EVENT_VALUE_CHANGED});
             break;
@@ -1718,7 +1899,7 @@ lv_obj_t* LvglUi::control(Bound& b, lv_obj_t* parent, Widget w) {
                 lv_textarea_set_password_mode(c, true);
                 lv_textarea_set_placeholder_text(c, "\xE2\x80\xA2\xE2\x80\xA2\xE2\x80\xA2\xE2\x80\xA2\xE2\x80\xA2\xE2\x80\xA2");
             } else if (!item.placeholder.empty()) {
-                lv_textarea_set_placeholder_text(c, item.placeholder.c_str());
+                lv_textarea_set_placeholder_text(c, fit(item.placeholder).c_str());
             }
             on(c, {LV_EVENT_CLICKED, LV_EVENT_FOCUSED, LV_EVENT_READY, LV_EVENT_CANCEL});
             break;
@@ -1742,7 +1923,7 @@ lv_obj_t* LvglUi::control(Bound& b, lv_obj_t* parent, Widget w) {
             size_t n = item.flagLabels.size();
             for (size_t i = 0; i < n; i++) {
                 lv_obj_t* box = lv_checkbox_create(c);
-                lv_checkbox_set_text(box, item.flagLabels[i].c_str());
+                lv_checkbox_set_text(box, fit(item.flagLabels[i]).c_str());
                 if (!item.editable) lv_obj_add_state(box, LV_STATE_DISABLED);
                 on(box, {LV_EVENT_VALUE_CHANGED});
                 focusable(box);
@@ -1807,7 +1988,7 @@ void LvglUi::action(lv_obj_t* parent, const Item& item) {
             label(top, item.label, true);
             if (field == Widget::Slider) {
                 b.value = lv_label_create(top);
-                lv_label_set_text(b.value, "");
+                setLabel(b.value, "");
             }
             control(b, r, field);
             line = row(r, false);
@@ -1817,7 +1998,7 @@ void LvglUi::action(lv_obj_t* parent, const Item& item) {
         }
         if (field == Widget::Slider && item.hasMin) {
             lv_slider_set_value(b.control, static_cast<int32_t>(lround(item.min * b.scale)), LV_ANIM_OFF);
-            lv_label_set_text(b.value, model::formatNumber(item.min, item).c_str());
+            setLabel(b.value, model::formatNumber(item.min, item).c_str());
         } else if (field == Widget::Number) {
             lv_textarea_set_text(b.control, model::formatNumber(clampTo(item, 0), Item()).c_str());
         }
@@ -1834,7 +2015,7 @@ void LvglUi::action(lv_obj_t* parent, const Item& item) {
     }
     if (item.style == "danger") lv_obj_set_style_bg_color(b.button, lv_palette_main(LV_PALETTE_RED), 0);
     lv_obj_t* t = lv_label_create(b.button);
-    lv_label_set_text(t, item.label.c_str());
+    setLabel(t, item.label.c_str());
     lv_obj_center(t);
     if (item.widget == Widget::Hold) {
         for (lv_event_code_t code : {LV_EVENT_PRESSED, LV_EVENT_RELEASED, LV_EVENT_PRESS_LOST}) {
@@ -1883,8 +2064,9 @@ std::string LvglUi::controlJson(Bound& b) {
         }
         case Widget::Select: {
             uint32_t i = lv_dropdown_get_selected(b.control);
-            if (i >= item.options.size()) return std::string();
-            return jsonString(item.options[i].value);
+            const std::vector<model::Option>& options = b.hasChoices ? b.choices : item.options;
+            if (i >= options.size()) return std::string();
+            return jsonString(options[i].value);
         }
         case Widget::Text:
         case Widget::Password:
@@ -1968,13 +2150,22 @@ void LvglUi::event(Bound& b, lv_event_t* e) {
         confirmThen(b, arg);
         return;
     }
+    if (target == b.zero && b.zero) {
+        if (b.widget == Widget::Slider) {
+            lv_slider_set_value(b.control, static_cast<int32_t>(lround(clampTo(item, 0) * b.scale)), LV_ANIM_OFF);
+        } else if (b.widget == Widget::Number) {
+            lv_textarea_set_text(b.control, "0");
+        }
+        commit(b, numberJson(item, clampTo(item, 0)));
+        return;
+    }
     Widget w = b.forAction ? b.fieldWidget : b.widget;
     switch (w) {
         case Widget::Slider:
         case Widget::Color: {
             if (w == Widget::Slider) {
                 double v = snap(item, lv_slider_get_value(b.control) / b.scale);
-                if (b.value) lv_label_set_text(b.value, model::formatNumber(v, item).c_str());
+                if (b.value) setLabel(b.value, model::formatNumber(v, item).c_str());
             } else {
                 uint8_t rgb[3];
                 for (int i = 0; i < 3; i++) {
@@ -2109,7 +2300,19 @@ void LvglUi::hideKeyboard() {
 
 // ---- Writes and calls ----------------------------------------------------------
 
+bool LvglUi::offlineRefused(const std::string& what) {
+    if (!offline_) return false;
+    toast(what + ": the node is offline", true);
+    return true;
+}
+
 void LvglUi::write(Bound& b, const std::string& json) {
+    if (offlineRefused(b.item->label)) {
+        b.shown.clear();
+        sync(b);
+        return;
+    }
+    b.stalled = false;  // an edit: keep-alives again
     b.pending++;
     b.sent = json;
     b.lastSent = lv_tick_get();
@@ -2168,7 +2371,7 @@ void LvglUi::ask(const std::string& question, std::function<void()> yes) {
     confirmed_ = std::move(yes);
     confirmGen_ = gen_;
     msgbox_ = lv_msgbox_create(nullptr);
-    lv_msgbox_add_text(msgbox_, question.c_str());
+    lv_msgbox_add_text(msgbox_, fit(question).c_str());
     lv_obj_t* cancel = lv_msgbox_add_footer_button(msgbox_, "Cancel");
     confirmOk_ = lv_msgbox_add_footer_button(msgbox_, "OK");
     lv_obj_t* answers[2] = {cancel, confirmOk_};
@@ -2188,6 +2391,7 @@ void LvglUi::ask(const std::string& question, std::function<void()> yes) {
 }
 
 void LvglUi::call(Bound& b, const std::string& arg) {
+    if (offlineRefused(b.item->label)) return;
     bool hold = b.item->widget == Widget::Hold;
     if (!hold) {
         if (b.pending > 0) return;
@@ -2211,10 +2415,14 @@ void LvglUi::call(Bound& b, const std::string& arg) {
             return;
         }
         connection(true);
+        if (bb.item->auth == "login") {
+            signedIn(*bb.item, body);
+            return;
+        }
         if (!hold && !body.isNull() && !body.isUnbound()) {
             // A reply other than null is shown by the button.
             std::string t = std::string(LV_SYMBOL_OK " ") + text(body);
-            lv_label_set_text(bb.result, t.c_str());
+            setLabel(bb.result, t.c_str());
             lv_obj_set_hidden(bb.result, false);
         }
     });
@@ -2266,7 +2474,7 @@ void LvglUi::form(lv_obj_t* parent, const Item& sec) {
     reset.draftReset = d + 1;
     lv_obj_t* rb = lv_button_create(line);
     lv_obj_t* rl = lv_label_create(rb);
-    lv_label_set_text(rl, "Reset");
+    setLabel(rl, "Reset");
     lv_obj_add_state(rb, LV_STATE_DISABLED);  // until something is edited
     lv_obj_add_event_cb(rb, onEvent, LV_EVENT_CLICKED, &reset);
     Bound& apply = bind(submit ? *submit : sec, nullptr);
@@ -2277,7 +2485,7 @@ void LvglUi::form(lv_obj_t* parent, const Item& sec) {
     lv_obj_set_flex_grow(ab, 1);
     if (submit && submit->style == "danger") lv_obj_set_style_bg_color(ab, lv_palette_main(LV_PALETTE_RED), 0);
     lv_obj_t* al = lv_label_create(ab);
-    lv_label_set_text(al, submit ? submit->label.c_str() : "Apply");
+    setLabel(al, submit ? submit->label.c_str() : "Apply");
     lv_obj_center(al);
     lv_obj_add_event_cb(ab, onEvent, LV_EVENT_CLICKED, &apply);
     focusable(rb);
@@ -2314,7 +2522,7 @@ void LvglUi::params(lv_obj_t* parent, const Item& act) {
             lv_textarea_set_text(f.control, model::formatNumber(start, plain).c_str());
         } else if (f.widget == Widget::Slider) {
             lv_slider_set_value(f.control, static_cast<int32_t>(lround(start * f.scale)), LV_ANIM_OFF);
-            if (f.value) lv_label_set_text(f.value, model::formatNumber(start, *f.item).c_str());
+            if (f.value) setLabel(f.value, model::formatNumber(start, *f.item).c_str());
         }
     }
     Bound& b = bind(act, nullptr);
@@ -2325,7 +2533,7 @@ void LvglUi::params(lv_obj_t* parent, const Item& act) {
     lv_obj_set_width(b.button, LV_PCT(100));
     if (act.style == "danger") lv_obj_set_style_bg_color(b.button, lv_palette_main(LV_PALETTE_RED), 0);
     lv_obj_t* t = lv_label_create(b.button);
-    lv_label_set_text(t, act.label.c_str());
+    setLabel(t, act.label.c_str());
     lv_obj_center(t);
     lv_obj_add_event_cb(b.button, onEvent, LV_EVENT_CLICKED, &b);
     focusable(b.button);
@@ -2364,7 +2572,7 @@ void LvglUi::resetDraft(size_t d) {
 
 void LvglUi::submitDraft(size_t d) {
     Draft& dr = drafts_[d];
-    if (dr.busy) return;
+    if (dr.busy || offlineRefused(dr.item->label)) return;
     JsonDocument patch;
     JsonObject root = patch.to<JsonObject>();
     for (auto& bp : bound_) {
@@ -2413,10 +2621,14 @@ void LvglUi::submitDraft(size_t d) {
                 return;
             }
             connection(true);
+            if (r.action && r.item->auth == "login") {
+                signedIn(*r.item, reply);
+                return;
+            }
             if (r.action) {
                 if (!reply.isNull() && !reply.isUnbound() && r.result) {
                     std::string t = std::string(LV_SYMBOL_OK " ") + text(reply);
-                    lv_label_set_text(r.result, t.c_str());
+                    setLabel(r.result, t.c_str());
                     lv_obj_set_hidden(r.result, false);
                 }
                 return;
@@ -2533,7 +2745,7 @@ void LvglUi::rows(Bound& b, JsonVariantConst v) {
             lv_obj_add_event_cb(sw, onRow, LV_EVENT_VALUE_CHANGED, rr);
         }
         lv_obj_t* chevron = lv_label_create(r);
-        lv_label_set_text(chevron, LV_SYMBOL_RIGHT);
+        setLabel(chevron, LV_SYMBOL_RIGHT);
         lv_obj_add_event_cb(r, onRow, LV_EVENT_CLICKED, ref(RowRef::Open));
         focusable(r);
         i++;
@@ -2559,7 +2771,7 @@ void LvglUi::rows(Bound& b, JsonVariantConst v) {
         lv_obj_set_flex_grow(add->field, 1);
         lv_obj_set_style_pad_ver(add->field, m_.fieldPad, 0);
         std::string placeholder = "New " + model::humanize(item.key);
-        lv_textarea_set_placeholder_text(add->field, placeholder.c_str());
+        lv_textarea_set_placeholder_text(add->field, fit(placeholder).c_str());
         for (lv_event_code_t code : {LV_EVENT_CLICKED, LV_EVENT_FOCUSED, LV_EVENT_READY, LV_EVENT_CANCEL}) {
             lv_obj_add_event_cb(add->field, onRow, code, add);
         }
@@ -2567,7 +2779,7 @@ void LvglUi::rows(Bound& b, JsonVariantConst v) {
     lv_obj_t* plus = lv_button_create(r);
     if (item.key.empty()) lv_obj_set_width(plus, LV_PCT(100));
     lv_obj_t* pl = lv_label_create(plus);
-    lv_label_set_text(pl, item.key.empty() ? LV_SYMBOL_PLUS " Add" : LV_SYMBOL_PLUS);
+    setLabel(pl, item.key.empty() ? LV_SYMBOL_PLUS " Add" : LV_SYMBOL_PLUS);
     lv_obj_center(pl);
     lv_obj_add_event_cb(plus, onRow, LV_EVENT_CLICKED, add);
     focusable(plus);
@@ -2593,6 +2805,7 @@ void LvglUi::rowEvent(RowRef& r, lv_event_t* e) {
             next.keyField = item.key;
             next.id = r.id;
             next.scalar = item.schemaType == NodeType::Array;
+            next.above = item.access;
             next.title = item.schemaType == NodeType::Array ? (item.label.empty() ? page_.label : item.label) + " " + r.title : r.title;
             route_.push_back(std::move(next));
             requestShow();
@@ -2674,7 +2887,7 @@ void LvglUi::removeFooter() {
     lv_obj_set_width(btn, LV_PCT(100));
     lv_obj_set_style_bg_color(btn, lv_palette_main(LV_PALETTE_RED), 0);
     lv_obj_t* t = lv_label_create(btn);
-    lv_label_set_text(t, LV_SYMBOL_TRASH " Remove");
+    setLabel(t, LV_SYMBOL_TRASH " Remove");
     lv_obj_center(t);
     lv_obj_add_event_cb(
         btn,
@@ -2713,6 +2926,7 @@ void LvglUi::removeElement() {
 }
 
 void LvglUi::send(const std::string& path, const std::string& json, const std::string& what, std::function<void()> done) {
+    if (offlineRefused(what)) return;
     std::weak_ptr<int> alive = alive_;
     uint32_t gen = gen_;
     bool sent = client_.set(path, json, [this, alive, gen, path, what, done](Status s, JsonVariantConst body) {
@@ -2740,6 +2954,342 @@ void LvglUi::send(const std::string& path, const std::string& json, const std::s
     if (!sent) toast(what + ": not sent", true);
 }
 
+// ---- Access levels and signing in (section 7.4) ------------------------------
+
+LvglUi::NodeAuth* LvglUi::authOf(const std::string& root) {
+    for (NodeAuth& a : auth_) {
+        if (a.root == root) return &a;
+    }
+    return nullptr;
+}
+
+bool LvglUi::allowed(const Item& item) const {
+    std::string root = nodeRoot();
+    for (const NodeAuth& a : auth_) {
+        if (a.root != root) continue;
+        // Unknown level: nothing disabled; the node's refusals still apply.
+        if (a.level == model::Access::None || item.access == model::Access::None) return true;
+        return item.access <= a.level;
+    }
+    return true;
+}
+
+// The node's login and whoami actions, from its schema (the root's,
+// a level deeper than the menu's), then its level for this client.
+void LvglUi::ensureAuth() {
+    std::string root = nodeRoot();
+    NodeAuth* a = authOf(root);
+    if (!a) {
+        auth_.push_back(NodeAuth());
+        a = &auth_.back();
+        a->root = root;
+    }
+    updateSignIn();
+    if (a->asked) return;
+    a->asked = true;
+    discoverAuth(root, 3);
+}
+
+void LvglUi::discoverAuth(const std::string& root, int depth) {
+    tesser::Query q;
+    q.view = tesser::View::Schema;
+    q.depth = depth;
+    std::weak_ptr<int> alive = alive_;
+    client_.get(root, [this, alive, root, depth](Status s, JsonVariantConst body) {
+        if (alive.expired()) return;
+        const char* reason = body["reason"];
+        if ((s == Status::TooLarge || (s == Status::Busy && reason && strcmp(reason, "low_memory") == 0)) && depth > 1) {
+            discoverAuth(root, depth - 1);
+            return;
+        }
+        NodeAuth* a = authOf(root);
+        if (!a) return;
+        if (s != Status::Ok) {
+            a->asked = false;  // tried again on the next screen
+            return;
+        }
+        std::function<void(JsonObjectConst, const std::string&)> walk = [&](JsonObjectConst o, const std::string& at) {
+            for (JsonPairConst kv : o["children"].as<JsonObjectConst>()) {
+                JsonObjectConst c = kv.value();
+                std::string p = model::joinPath(at, kv.key().c_str());
+                const char* type = c["type"];
+                const char* auth = c["ui"]["auth"];
+                if (type && strcmp(type, "object") == 0) {
+                    walk(c, p);
+                } else if (type && strcmp(type, "action") == 0 && auth) {
+                    if (strcmp(auth, "login") == 0) a->login = p;
+                    if (strcmp(auth, "whoami") == 0) a->whoami = p;
+                }
+            }
+        };
+        walk(body.as<JsonObjectConst>(), root);
+        updateSignIn();
+        askLevel(root);
+    }, q);
+}
+
+void LvglUi::askLevel(const std::string& root) {
+    NodeAuth* a = authOf(root);
+    if (!a || a->whoami.empty()) return;
+    std::weak_ptr<int> alive = alive_;
+    client_.set(a->whoami, "null", [this, alive, root](Status s, JsonVariantConst body) {
+        if (alive.expired() || s != Status::Ok) return;
+        NodeAuth* n = authOf(root);
+        if (!n) return;
+        // A level, or {"access": level}.
+        const char* level = body.is<const char*>() ? body.as<const char*>() : body["access"].as<const char*>();
+        n->level = level ? model::parseAccess(level) : model::Access::None;
+        updateSignIn();
+        for (auto& b : bound_) conditions(*b);
+    });
+}
+
+// The header's button: "Sign in", or the level once known above public.
+void LvglUi::updateSignIn() {
+    if (!signIn_) return;
+    NodeAuth* a = authOf(nodeRoot());
+    bool show = a && !a->login.empty();
+    lv_obj_set_hidden(signIn_, !show);
+    if (useGroup_) {
+        if (show) {
+            lv_group_add_obj(group_, signIn_);
+            outline(signIn_);
+        } else {
+            lv_group_remove_obj(signIn_);
+        }
+    }
+    if (!show) return;
+    bool in = a->level == model::Access::User || a->level == model::Access::Admin;
+    setLabel(lv_obj_get_child(signIn_, 0), in ? model::toString(a->level) : "Sign in");
+}
+
+// A login action's reply: the token, as a string or {"token", "access"}.
+void LvglUi::signedIn(const Item& action, JsonVariantConst reply) {
+    std::string root = nodeRoot();
+    NodeAuth* a = authOf(root);
+    const char* token = reply.is<const char*>() ? reply.as<const char*>() : reply["token"].as<const char*>();
+    if (!token || !*token) {
+        toast(action.label + ": no token in the reply", true);
+        return;
+    }
+    if (onSignIn_) onSignIn_(root, a ? a->device : std::string(), token);
+    const char* level = reply["access"];
+    if (a && level) a->level = model::parseAccess(level);
+    toast("Signed in", model::Toast::Ok);
+    // What the node shows depends on the level: read it again, from where
+    // the user was.
+    if (a) askLevel(root);
+    if (!route_.empty() && route_.back().signIn) route_.pop_back();
+    if (root == root_) refreshMenu();
+    requestShow();
+}
+
+// ---- What else the page depends on ----------------------------------------------
+
+// A select whose choices are a keyed list's keys, or an object's children
+// (the nodes under /peers), after its fixed ones (ui.optionsExtra).
+void LvglUi::loadChoices(Bound& b) {
+    std::string from = b.item->optionsFrom;
+    size_t index = b.index;
+    uint32_t gen = gen_;
+    std::weak_ptr<int> alive = alive_;
+    tesser::Query q;
+    q.view = tesser::View::Schema;
+    q.depth = 1;
+    client_.get(from, [this, alive, gen, index, from](Status s, JsonVariantConst schema) {
+        if (alive.expired() || gen != gen_ || s != Status::Ok) return;
+        auto done = [this, index](std::vector<model::Option> found) {
+            Bound& bb = *bound_[index];
+            bb.choices = bb.item->options;
+            for (model::Option& o : found) bb.choices.push_back(std::move(o));
+            bb.hasChoices = true;
+            std::string options;
+            for (const model::Option& o : bb.choices) {
+                if (!options.empty()) options += '\n';
+                options += o.label;
+            }
+            lv_dropdown_set_options(bb.control, fit(options).c_str());
+            bb.shown.clear();
+            sync(bb);
+        };
+        const char* type = schema["type"];
+        const char* key = schema["key"];
+        if (type && strcmp(type, "list") == 0 && key) {
+            std::string k = key;
+            client_.get(from, [this, gen, done, k](Status st, JsonVariantConst list) {
+                if (gen != gen_ || st != Status::Ok) return;
+                std::vector<model::Option> found;
+                for (JsonVariantConst e : list.as<JsonArrayConst>()) {
+                    const char* v = e[k];
+                    if (v) found.push_back({v, v});
+                }
+                done(std::move(found));
+            });
+            return;
+        }
+        const Item& item = *bound_[index]->item;
+        std::vector<model::Option> found;
+        for (JsonPairConst kv : schema["children"].as<JsonObjectConst>()) {
+            JsonObjectConst c = kv.value();
+            std::string value = kv.key().c_str();
+            if (!item.optionsValue.empty()) {
+                // A field of the child's schema: a remote node's "id".
+                const char* v = c[item.optionsValue];
+                if (!v) continue;
+                value = v;
+            }
+            std::string label = kv.key().c_str();
+            if (c["online"].is<bool>() && !c["online"].as<bool>()) label += " (offline)";
+            found.push_back({value, label});
+        }
+        done(std::move(found));
+    }, q);
+}
+
+// Conditions on values outside the page: one subscription at their common
+// ancestor, with its children on the way as keys.
+void LvglUi::watchConditions() {
+    std::vector<std::string> paths;
+    for (auto& b : bound_) {
+        if (!b->item) continue;
+        for (const auto* conds : {&b->item->visibleWhen, &b->item->enabledWhen}) {
+            for (const model::Condition& c : *conds) {
+                if (!model::isUnder(c.path, page_.path)) paths.push_back(c.path);
+            }
+        }
+    }
+    if (paths.empty()) return;
+    std::vector<std::string_view> common = segmentsOf(paths[0]);
+    common.pop_back();  // the parent of a value, at least
+    for (const std::string& p : paths) {
+        std::vector<std::string_view> segs = segmentsOf(p);
+        size_t n = 0;
+        while (n < common.size() && n + 1 < segs.size() && common[n] == segs[n]) n++;
+        common.resize(n);
+    }
+    std::string at = "/";
+    for (std::string_view seg : common) at = model::joinPath(at, seg);
+    std::string keys;
+    int depth = 0;
+    for (const std::string& p : paths) {
+        std::vector<std::string_view> segs = segmentsOf(p);
+        std::string first(segs[common.size()]);
+        if (("," + keys + ",").find("," + first + ",") == std::string::npos) keys += (keys.empty() ? "" : ",") + first;
+        int d = static_cast<int>(segs.size() - common.size());  // a value directly below: 1
+        if (d > depth) depth = d;
+    }
+    tesser::Query q;
+    q.keys = keys;
+    q.depth = depth;
+    q.events = false;
+    q.interval = kThrottleMs;
+    watch_.path = at;
+    std::weak_ptr<int> alive = alive_;
+    uint32_t gen = gen_;
+    bool sent = client_.subscribe(at, [this, alive, gen](Status s, JsonVariantConst body) {
+        if (alive.expired() || gen != gen_) return;
+        if (s != Status::Ok) {
+            watch_.path.clear();  // such conditions pass, as before
+            return;
+        }
+        watch_.values.set(body);
+        watch_.has = true;
+        for (auto& b : bound_) conditions(*b);
+    }, q);
+    if (!sent) watch_.path.clear();
+}
+
+// A remote node's online state (section 7.6): its stub, below its parent
+// (/peers). A null for it in a notification: read the stub again.
+void LvglUi::watchNode() {
+    std::string root = nodeRoot();
+    if (root == root_) return;
+    std::string parent = model::parentPath(root);
+    std::string name = root.substr(root.rfind('/') + 1);
+    tesser::Query q;
+    q.keys = name;
+    q.depth = 1;
+    q.events = false;
+    q.interval = 1000;
+    stubPath_ = parent;
+    std::weak_ptr<int> alive = alive_;
+    uint32_t gen = gen_;
+    bool sent = client_.subscribe(parent, [this, alive, gen](Status s, JsonVariantConst) {
+        if (alive.expired() || gen != gen_ || s == Status::Ok) return;
+        stubPath_.clear();
+    }, q);
+    if (!sent) stubPath_.clear();
+    readStub();
+}
+
+void LvglUi::readStub() {
+    std::string root = nodeRoot();
+    if (root == root_) return;
+    std::string parent = model::parentPath(root);
+    std::string name = root.substr(root.rfind('/') + 1);
+    tesser::Query q;
+    q.view = tesser::View::Schema;
+    q.depth = 1;
+    q.keys = name;
+    std::weak_ptr<int> alive = alive_;
+    uint32_t gen = gen_;
+    client_.get(parent, [this, alive, gen, root, name](Status s, JsonVariantConst body) {
+        if (alive.expired() || gen != gen_ || s != Status::Ok) return;
+        JsonObjectConst stub = body["children"][name];
+        if (stub.isNull()) return;
+        if (NodeAuth* a = authOf(root)) {
+            if (const char* id = stub["id"]) a->device = id;
+        }
+        bool online = !(stub["online"].is<bool>() && !stub["online"].as<bool>());
+        setOffline(!online);
+    }, q);
+}
+
+void LvglUi::setOffline(bool offline) {
+    if (offline == offline_) return;
+    offline_ = offline;
+    // Dimmed, its controls disabled and its writes refused, until back.
+    if (content_) lv_obj_set_style_opa(content_, offline ? LV_OPA_50 : LV_OPA_COVER, 0);
+    if (dot_) {
+        lv_obj_set_style_bg_color(dot_, offline ? lv_palette_main(LV_PALETTE_GREY)
+                                                : online_ ? lv_palette_main(LV_PALETTE_GREEN) : lv_palette_main(LV_PALETTE_RED), 0);
+    }
+    if (offline) {
+        toast("The node is offline", model::Toast::Warn);
+    } else if (hasValues_) {
+        poll();  // what it is now
+    }
+    for (auto& b : bound_) conditions(*b);
+}
+
+// Keep-alives (section 7.4): a value other than 0 or false with ui.keepalive
+// is re-sent every `keepalive` ms while shown, connected and enabled, so a
+// device's dead-man timer keeps it; a refusal stops it until the next edit.
+void LvglUi::keepAlive(uint32_t now) {
+    if (offline_ || !online_) return;
+    for (auto& bp : bound_) {
+        Bound& b = *bp;
+        if (!b.item || !b.item->keepalive || b.stalled || b.pending > 0 || b.draft || b.forAction || !b.control) continue;
+        if (b.item->isAction() || now - b.lastKeep < b.item->keepalive) continue;
+        if (lv_obj_has_state(b.control, LV_STATE_DISABLED) || typing_ == &b) continue;
+        bool shown = true;
+        for (lv_obj_t* o = b.control; o; o = lv_obj_get_parent(o)) {
+            if (lv_obj_is_hidden(o)) shown = false;  // a closed group, a hidden row
+        }
+        if (!shown) continue;
+        std::string json = controlJson(b);  // the value on screen
+        if (json.empty() || json == "false" || strtod(json.c_str(), nullptr) == 0) continue;
+        b.lastKeep = now;
+        std::weak_ptr<int> alive = alive_;
+        uint32_t gen = gen_;
+        size_t index = b.index;
+        client_.set(b.item->path, json, [this, alive, gen, index](Status s, JsonVariantConst) {
+            if (alive.expired() || gen != gen_ || s == Status::Ok) return;
+            bound_[index]->stalled = true;
+        });
+    }
+}
+
 void LvglUi::loop() {
     client_.process();
     uint32_t now = lv_tick_get();
@@ -2750,6 +3300,7 @@ void LvglUi::loop() {
             if (!json.empty() && json != b->sent) commit(*b, json);
         }
     }
+    keepAlive(now);
     if (toast_ && toastUntil_ && static_cast<int32_t>(now - toastUntil_) >= 0) {
         lv_obj_set_hidden(toast_, true);
         toastUntil_ = 0;

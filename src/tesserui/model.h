@@ -98,6 +98,12 @@ bool holds(const Condition& c, JsonVariantConst value);
 
 enum class ItemKind : uint8_t { Leaf, Section, Link };
 
+// Access levels (TesserAPI section 13.1), ordered; None: not given.
+enum class Access : uint8_t { None, Public, User, Admin };
+const char* toString(Access a);
+Access parseAccess(std::string_view s);
+inline Access higher(Access a, Access b) { return b > a ? b : a; }
+
 // ui.toast on an event (section 7.8): true, or the notification's kind.
 enum class Toast : uint8_t { None, Info, Ok, Warn, Error };
 const char* toString(Toast t);
@@ -112,6 +118,9 @@ struct Item {
     std::string icon;
     bool advanced = false;
     bool hidden = false;
+    // The level changing it takes when above public: its own and its
+    // ancestors' (TesserAPI section 13.1).
+    Access access = Access::None;
     std::vector<Condition> visibleWhen;
     std::vector<Condition> enabledWhen;
 
@@ -130,11 +139,13 @@ struct Item {
     std::string confirm;
     std::string style;
     std::string returns;
+    std::string auth;  // actions: ui.auth, "login" or "whoami" (section 7.4)
     std::string element;  // Widget::Element: its tag name
     std::string value;    // the fixed argument a button sends (JSON text), if any
     std::vector<Option> options;
     bool hasOptions = false;  // `options` applies, even empty
     std::string optionsFrom;  // ui.options: the keyed list whose keys are choices too
+    std::string optionsValue; // ...or the field of an object's children the choice writes
     bool secret = false;
     bool deferred = false;
     bool submit = false;
@@ -183,6 +194,7 @@ struct Page {
 };
 
 struct MenuEntry {
+    Access access = Access::None;  // the level its page's ancestors require
     std::string label;
     std::string icon;
     std::string path;  // empty: a ui.group heading
@@ -194,7 +206,9 @@ struct MenuEntry {
 // The page at `path` (section 6.1), from its object's schema. `root` is the
 // path of the node it belongs to ("/", or a remote node's path). `menu`: the
 // page's objects and remote nodes are menu entries, not cards (section 6.3).
-Page buildPage(JsonObjectConst schema, std::string_view path, std::string_view root = "/", bool menu = false);
+// `above`: the level the page's ancestors require.
+Page buildPage(JsonObjectConst schema, std::string_view path, std::string_view root = "/", bool menu = false,
+               Access above = Access::None);
 // The menu of the node at `home` (section 6.3), without view pages.
 std::vector<MenuEntry> buildMenu(JsonObjectConst schema, std::string_view home = "/");
 // What becomes a menu entry rather than a card: objects and remote nodes.
@@ -205,7 +219,7 @@ bool hasOwnItems(JsonObjectConst schema);
 // One leaf on its own (a list element's field, an array's element), with
 // its node's root for conditions.
 Item buildLeaf(std::string_view name, std::string_view path, JsonObjectConst schema, std::string_view parent,
-               std::string_view root = "/");
+               std::string_view root = "/", Access above = Access::None);
 
 // The schema below `root` at `path` (relative to it), crossing nothing.
 JsonObjectConst schemaAt(JsonObjectConst root, std::string_view path);

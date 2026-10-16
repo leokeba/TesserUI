@@ -18,11 +18,17 @@
 // join" on one of them (TesserKIT: NowTP > Pairing), then "Join" here
 // (This remote > Pairing). The key is kept in NVS.
 //
+// Accounts: a node with accounts (TesserKIT's) shows what this remote's
+// level allows; "Sign in" in the header signs in to it, and the remote
+// presents the token to it from then on (RemoteNode::setToken()).
+//
 // Boards (../components): the "cheap yellow display" with two USB ports,
 // by touch (cyd, the default), or the LilyGO T-Display, by its two buttons
 // (idf.py -DBOARD=tdisplay): GPIO 35 moves between controls, GPIO 0
 // presses or edits one, held it goes back. The console's UART carries API
 // envelopes too.
+#include <stdlib.h>
+
 #include <string>
 
 #include "esp_system.h"
@@ -63,11 +69,28 @@ void pairTask(void*) {
     vTaskDelete(nullptr);
 }
 
+tesser::Object* peersObject = nullptr;
+
+// "c8c9a3c7f850" -> its six bytes.
+bool parseDevice(const std::string& id, tesser::PeerAddress& out) {
+    if (id.size() != 12) return false;
+    uint8_t b[6];
+    for (int i = 0; i < 6; i++) {
+        char hex[3] = {id[2 * i], id[2 * i + 1], 0};
+        char* end = nullptr;
+        b[i] = static_cast<uint8_t>(strtoul(hex, &end, 16));
+        if (end != hex + 2) return false;
+    }
+    out = tesser::PeerAddress::fromBytes(b, 6);
+    return true;
+}
+
 void buildTree() {
     api.label("Remote");
     // Discovered nodes are mounted here as they are heard, and shown offline
     // when lost.
     auto& peers = api.object("peers").label("Nodes").ui("icon", "radio");
+    peersObject = &peers;
 
     auto& self = api.object("remote").label("This remote").ui("icon", "settings");
     self.value("backlight", backlight).range(10, 100).step(5).unit("%").persist();
@@ -134,6 +157,13 @@ extern "C" void app_main() {
     tesser::LocalClient client(api);
     tesserui::LvglUi ui(client, display);
     if (lv_indev_t* buttons = board::buttons()) ui.input(buttons);  // no touchscreen
+    // Signed in to a node: the gateway presents the token to it.
+    ui.onSignIn([](const std::string&, const std::string& device, const std::string& token) {
+        tesser::PeerAddress address;
+        if (!parseDevice(device, address)) return;
+        tesser::Lock lock(api);
+        if (tesser::RemoteNode* node = tesser::RemoteNode::byDevice(*peersObject, address)) node->setToken(token);
+    });
     ui.begin("/");
     ESP_ERROR_CHECK(serialApi.begin());  // requests over the console, in its own task
 

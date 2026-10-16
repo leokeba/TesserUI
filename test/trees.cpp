@@ -494,11 +494,13 @@ void Demo::hear(const char* name, bool heard) {
     uint8_t bytes[6] = {0x24, 0x6f, 0x28, 0x0a, 0x00, 0x00};
     if (strcmp(name, "kitchen-lamp") == 0) {
         memcpy(bytes, kKitchenMac, 6);
+    } else if (strcmp(name, "porch-lamp") == 0) {
+        memcpy(bytes, kPorchMac, 6);
     } else {
         for (const char* c = name; *c; c++) bytes[5] = static_cast<uint8_t>(bytes[5] * 31 + *c);
     }
     if (heard) {
-        link.peerSeen(mac(bytes), name, 0x99f0e1aa);
+        link.peerSeen(mac(bytes), name, strcmp(name, "porch-lamp") == 0 ? porch.api.schemaHash() : 0x99f0e1aa);
     } else {
         link.forgetPeer(mac(bytes));
     }

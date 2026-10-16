@@ -248,6 +248,7 @@ bool tableCell(Widget w) {
 // The state of one build: the node's root, for absolute condition paths.
 struct Builder {
     std::string root = "/";
+    Access inherited = Access::None;  // what the ancestors of what is built require
 
     void base(Item& item, std::string_view name, std::string_view path, JsonObjectConst s, std::string_view parent) {
         item.name = std::string(name);
@@ -256,6 +257,8 @@ struct Builder {
         item.label = label ? std::string(label) : humanize(name);
         item.advanced = uiTrue(s, "advanced");
         item.hidden = uiTrue(s, "hidden");
+        Access need = higher(inherited, s["access"].is<const char*>() ? parseAccess(s["access"].as<const char*>()) : Access::None);
+        if (need > Access::Public) item.access = need;
         if (const char* icon = uiStr(s, "icon")) item.icon = icon;
         if (const char* vis = uiStr(s, "visibleWhen")) {
             if (*vis) item.visibleWhen = parseConditions(vis, parent, root);
@@ -294,6 +297,9 @@ struct Builder {
         const char* from = uiStr(s, "options");
         if (nonEmpty(from) && s["enum"].isNull() && leaf.type == NodeType::String) {
             leaf.optionsFrom = resolvePath(from, parent, root);
+            if (const char* by = uiStr(s, "optionsValue")) {
+                if (*by) leaf.optionsValue = by;
+            }
         }
     }
 
@@ -316,6 +322,7 @@ struct Builder {
             if (*style) leaf.style = style;
         }
         leaf.submit = uiTrue(s, "submit");
+        if (const char* auth = uiStr(s, "auth")) leaf.auth = auth;
         const char* arg = str(s, "arg");
         const char* hint = uiStr(s, "widget");
         leaf.widget = Widget::Button;
@@ -578,6 +585,8 @@ struct Builder {
         sec.inlined = uiTrue(s, "inline");
         sec.collapsed = uiTrue(s, "collapsed");
         sec.form = uiTrue(s, "form");
+        Access above = inherited;
+        if (s["access"].is<const char*>()) inherited = higher(inherited, parseAccess(s["access"].as<const char*>()));
         for (JsonPairConst kv : s["children"].as<JsonObjectConst>()) {
             JsonObjectConst c = kv.value();
             if (skipEntries && isEntry(c)) continue;
@@ -601,6 +610,7 @@ struct Builder {
             }
             (item.advanced ? sec.advancedItems : sec.items).push_back(std::move(item));
         }
+        inherited = above;
         if (sec.form) {
             Item* submit = nullptr;
             for (Item& i : sec.items) {
@@ -644,8 +654,13 @@ bool isEntryNode(JsonObjectConst s) {
     return (t == NodeType::Object || t == NodeType::Remote) && shown(s);
 }
 
-MenuEntry entry(std::string_view name, std::string_view path, JsonObjectConst s, bool sub) {
+Access accessOf(JsonObjectConst s) {
+    return s["access"].is<const char*>() ? parseAccess(s["access"].as<const char*>()) : Access::None;
+}
+
+MenuEntry entry(std::string_view name, std::string_view path, JsonObjectConst s, bool sub, Access above) {
     MenuEntry e;
+    e.access = above;
     NodeType t = typeOf(s);
     const char* label = str(s, "label");
     e.label = label ? std::string(label) : t == NodeType::Remote ? std::string(name) : humanize(name);
@@ -670,7 +685,7 @@ MenuEntry entry(std::string_view name, std::string_view path, JsonObjectConst s,
         for (JsonPairConst kv : s["children"].as<JsonObjectConst>()) {
             JsonObjectConst c = kv.value();
             if (isEntry(c) || (typeOf(c) == NodeType::List && shown(c))) {
-                e.children.push_back(entry(kv.key().c_str(), joinPath(path, kv.key().c_str()), c, true));
+                e.children.push_back(entry(kv.key().c_str(), joinPath(path, kv.key().c_str()), c, true, higher(above, accessOf(s))));
             }
         }
     }
@@ -703,6 +718,22 @@ std::string shortest(double v) {
 
 }  // namespace
 
+const char* toString(Access a) {
+    switch (a) {
+        case Access::Public: return "public";
+        case Access::User: return "user";
+        case Access::Admin: return "admin";
+        default: return "";
+    }
+}
+
+Access parseAccess(std::string_view s) {
+    if (s == "public") return Access::Public;
+    if (s == "user") return Access::User;
+    if (s == "admin") return Access::Admin;
+    return Access::None;
+}
+
 const char* toString(Toast t) {
     switch (t) {
         case Toast::Info: return "info";
@@ -714,9 +745,10 @@ const char* toString(Toast t) {
 }
 
 Item buildLeaf(std::string_view name, std::string_view path, JsonObjectConst schema, std::string_view parent,
-               std::string_view root) {
+               std::string_view root, Access above) {
     Builder b;
     b.root = std::string(root);
+    b.inherited = above;
     return b.leaf(name, path, schema, parent);
 }
 
@@ -837,9 +869,10 @@ JsonObjectConst schemaAt(JsonObjectConst root, std::string_view path) {
     return s;
 }
 
-Page buildPage(JsonObjectConst s, std::string_view path, std::string_view root, bool menu) {
+Page buildPage(JsonObjectConst s, std::string_view path, std::string_view root, bool menu, Access above) {
     Builder b;
     b.root = std::string(root);
+    b.inherited = above;
     Page page;
     page.path = std::string(path);
     std::string_view last = lastSegment(path);
@@ -889,6 +922,7 @@ Page buildPage(JsonObjectConst s, std::string_view path, std::string_view root, 
     first.level = 1;
     first.advanced = top.advanced;
     first.hidden = top.hidden;
+    first.access = top.access;
     first.visibleWhen = top.visibleWhen;
     first.enabledWhen = top.enabledWhen;
     first.lazy = top.lazy;
@@ -979,6 +1013,7 @@ std::vector<MenuEntry> buildMenu(JsonObjectConst s, std::string_view home) {
         status.label = "Status";
         status.icon = "home";
         status.path = std::string(home);
+        status.access = accessOf(s);
         out.push_back(std::move(status));
     }
     // ui.group gathers entries under a heading, where its first one would be.
@@ -986,7 +1021,7 @@ std::vector<MenuEntry> buildMenu(JsonObjectConst s, std::string_view home) {
     for (JsonPairConst kv : s["children"].as<JsonObjectConst>()) {
         JsonObjectConst c = kv.value();
         if (!isEntry(c)) continue;
-        MenuEntry e = entry(kv.key().c_str(), joinPath(home, kv.key().c_str()), c, false);
+        MenuEntry e = entry(kv.key().c_str(), joinPath(home, kv.key().c_str()), c, false, accessOf(s));
         const char* group = uiStr(c, "group");
         if (!nonEmpty(group)) {
             out.push_back(std::move(e));
