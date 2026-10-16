@@ -22,13 +22,26 @@ if(ESP_PLATFORM)
         message(FATAL_ERROR "TesserUI needs TesserAPI (https://github.com/leokeba/TesserAPI): add it to "
                             "EXTRA_COMPONENT_DIRS or as a component manager dependency.")
     endif()
+    # LvglUi is built when LVGL is part of the build ("lvgl", or
+    # "lvgl__lvgl" from the component manager), found like TesserAPI.
+    set(TESSERUI_LVGL_COMPONENT "")
+    foreach(c ${TESSERUI_BUILD_COMPONENTS})
+        string(TOLOWER "${c}" c_lower)
+        if(c_lower MATCHES "(^|__)lvgl$")
+            set(TESSERUI_LVGL_COMPONENT ${c})
+        endif()
+    endforeach()
     idf_component_register(
-        SRCS ${TESSERUI_CORE_SRCS} src/tesserui/web_ui.cpp
+        SRCS ${TESSERUI_CORE_SRCS} src/tesserui/web_ui.cpp src/tesserui/lvgl_ui.cpp
         INCLUDE_DIRS "src"
         REQUIRES esp_http_server)
-    # Public: TesserUI's headers include TesserAPI's.
+    # Public: TesserUI's headers include TesserAPI's (and LVGL's).
     idf_component_get_property(TESSERUI_TESSERAPI_LIB ${TESSERUI_TESSERAPI} COMPONENT_LIB)
     target_link_libraries(${COMPONENT_LIB} PUBLIC ${TESSERUI_TESSERAPI_LIB})
+    if(TESSERUI_LVGL_COMPONENT)
+        idf_component_get_property(TESSERUI_LVGL_LIB ${TESSERUI_LVGL_COMPONENT} COMPONENT_LIB)
+        target_link_libraries(${COMPONENT_LIB} PUBLIC ${TESSERUI_LVGL_LIB})
+    endif()
     return()
 endif()
 
@@ -37,6 +50,7 @@ project(tesserui CXX)
 
 option(TESSERUI_BUILD_TESTS "Build host-side tests and the fixture generator" ON)
 option(TESSERUI_SANITIZE "Build tests with ASan/UBSan" ON)
+option(TESSERUI_LVGL "Build the LVGL renderer's tests and simulator (fetches LVGL)" ON)
 set(TESSERAPI_DIR "" CACHE PATH "TesserAPI source tree (default: ../TesserAPI if present, else fetched from GitHub)")
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -92,6 +106,53 @@ if(TESSERUI_BUILD_TESTS)
         endforeach()
     endif()
     add_test(NAME tesserui_tests COMMAND tesserui_tests)
+
+    # The LVGL renderer: its tests on a screen in memory, and tesserui_lcd, the
+    # demo tree in a window (SDL2, when found) or as screenshots.
+    if(TESSERUI_LVGL)
+        include(FetchContent)
+        set(LV_BUILD_CONF_PATH "${CMAKE_CURRENT_SOURCE_DIR}/test/lvgl/lv_conf.h" CACHE PATH "" FORCE)
+        set(CONFIG_LV_BUILD_DEMOS OFF CACHE BOOL "" FORCE)
+        set(CONFIG_LV_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+        set(CONFIG_LV_USE_THORVG OFF CACHE BOOL "" FORCE)
+        set(CONFIG_LV_USE_THORVG_INTERNAL OFF CACHE BOOL "" FORCE)
+        set(LV_BUILD_INSTALL OFF CACHE BOOL "" FORCE)
+        FetchContent_Declare(lvgl
+            GIT_REPOSITORY https://github.com/lvgl/lvgl.git
+            GIT_TAG v9.6.0
+            GIT_SHALLOW ON)
+        FetchContent_MakeAvailable(lvgl)
+        # LVGL's headers are a dependency's: no warnings from them.
+        get_target_property(TESSERUI_LVGL_INCLUDES lvgl INTERFACE_INCLUDE_DIRECTORIES)
+        set_target_properties(lvgl PROPERTIES INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${TESSERUI_LVGL_INCLUDES}")
+        find_package(SDL2 CONFIG QUIET)
+        if(SDL2_FOUND)
+            message(STATUS "SDL2 found: tesserui_lcd opens a window")
+            target_compile_definitions(lvgl PUBLIC TESSERUI_SDL=1)
+            target_link_libraries(lvgl PUBLIC SDL2::SDL2)
+        endif()
+
+        add_library(tesserui_lvgl src/tesserui/lvgl_ui.cpp)
+        target_link_libraries(tesserui_lvgl PUBLIC tesserui_core lvgl)
+        set_target_properties(tesserui_lvgl PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS OFF)
+        target_compile_options(tesserui_lvgl PRIVATE ${TESSERUI_WARNINGS})
+
+        add_executable(tesserui_lcd_tests test/lcd_tests.cpp test/lcd_host.cpp)
+        add_executable(tesserui_lcd test/lcd_main.cpp test/lcd_host.cpp test/trees.cpp)
+        foreach(t tesserui_lcd_tests tesserui_lcd)
+            target_link_libraries(${t} PRIVATE tesserui_lvgl)
+            target_include_directories(${t} PRIVATE test)
+            set_target_properties(${t} PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON)
+            target_compile_options(${t} PRIVATE -Wall -Wextra -Werror -fno-exceptions -fno-rtti)
+        endforeach()
+        if(TESSERUI_SANITIZE)
+            foreach(t lvgl tesserui_lvgl tesserui_lcd_tests tesserui_lcd)
+                target_compile_options(${t} PRIVATE -fsanitize=address,undefined -fno-omit-frame-pointer -g)
+                target_link_options(${t} PRIVATE -fsanitize=address,undefined)
+            endforeach()
+        endif()
+        add_test(NAME tesserui_lcd_tests COMMAND tesserui_lcd_tests)
+    endif()
     # Checks that the generator runs cleanly; the committed fixtures are
     # regenerated with `./build/tesserui_fixtures fixtures`.
     add_test(NAME tesserui_fixtures COMMAND tesserui_fixtures ${CMAKE_CURRENT_BINARY_DIR}/fixtures)

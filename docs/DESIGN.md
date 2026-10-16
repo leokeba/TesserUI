@@ -1,6 +1,6 @@
 # TesserUI design
 
-Status: draft, being implemented. Phases 1, 2 and 4 are implemented (§14); the LVGL renderer (§10) is not started. Everything here is the specification the code follows; when the two disagree, fix one of them. Sections marked *(later)* are committed to but not part of the first release. TesserAPI references (§n of TesserAPI) point to [TesserAPI's DESIGN.md](https://github.com/leokeba/TesserAPI/blob/main/docs/DESIGN.md).
+Status: draft, being implemented. Phases 1, 2 and 4 are implemented (§14); the LVGL renderer (§10) has a first version, the basic widgets (§10.4). Everything here is the specification the code follows; when the two disagree, fix one of them. Sections marked *(later)* are committed to but not part of the first release. TesserAPI references (§n of TesserAPI) point to [TesserAPI's DESIGN.md](https://github.com/leokeba/TesserAPI/blob/main/docs/DESIGN.md).
 
 ## 1. Goals
 
@@ -638,7 +638,7 @@ void lvglTask() {
 }
 ```
 
-- **Threading:** all LVGL calls and all `ApiClient` callbacks run in the task that calls `ui.loop()`. That is what `ApiClient::process()` guarantees (TesserAPI §14.2), so no locks are needed.
+- **Threading:** all LVGL calls and all `ApiClient` callbacks run in the task that calls `ui.loop()`. That is what `ApiClient::process()` guarantees (TesserAPI §14.2), so no locks are needed. The UI takes the client's notification handler (`onNotification`). The application calls `api.poll()` in that loop too, for change notifications, unless `api.startTask()` does. `pdMS_TO_TICKS(5)` is 0 at FreeRTOS's default 100 Hz tick, and a loop that never blocks starves the idle task: `CONFIG_FREERTOS_HZ=1000`, or a delay of at least one tick.
 - **Input:** pointer (touch) devices work directly. For encoders and keypads, each page's focusable widgets go into one `lv_group_t`, which the application attaches to its input device with `ui.group()`.
 
 ### 10.2 Memory
@@ -658,7 +658,7 @@ void lvglTask() {
 | `led` | `lv_led` |
 | `slider` | `lv_slider` + value label |
 | `knob` | `lv_arc` + value label |
-| `number`, `stepper` | `lv_spinbox` with − / + buttons |
+| `number`, `stepper` | − and + buttons (one `step` each) around a one-line `lv_textarea`, typed into with the numeric keyboard |
 | `select`, `radio` | `lv_dropdown` |
 | `segmented` | `lv_buttonmatrix` (one checked) |
 | `text`, `password`, `textarea` | `lv_textarea` + one shared `lv_keyboard` |
@@ -672,10 +672,23 @@ void lvglTask() {
 | `link` | a menu entry with an online dot |
 | `confirm` | `lv_msgbox` |
 | `json`, `color` | not rendered *(color later)* |
+| `form` sections | "web only" *(later: a draft, sent on submit as on the web, §7.4)* |
 | custom elements (§9.8) | the tier 0 widget |
 
+- **Not drawn yet** *(later)*: `table`, `list`, `chart` of an array, `file`, `flags` and actions with an object argument show their label and "web only"; `events` and `log` aren't shown (toasts, §7.8, *later*). A `chart` of a value is its readout.
 - **Units:** LVGL's built-in Montserrat fonts cover ASCII and `°`. Other units (`µ`, `Ω`) need the application to provide a font, set with `ui.font()`.
 - **Monochrome displays** (SSD1306 128×64 with buttons or an encoder) *(later)*: a compact profile with one row per line, no cards, and value editing on a focus-and-edit screen.
+
+### 10.4 First version
+
+`src/tesserui/model.*` builds the UI model of §4–§6 (checked against the golden models, §11), and `src/tesserui/lvgl_ui.*` draws it:
+
+- **Screens:** the menu (§6.3) is the start screen, unless it would have one entry, which is then the start page. A page is fetched (`view=schema`, `depth` 3), built, and its JSON freed; each card is an LVGL container, values and actions are rows. Sub-sections are headings; collapsible groups, tabs and objects the depth cut are rows that open their own page. `advanced` items are a collapsed "Advanced" heading at the end of their section, collapsed cards a heading that opens. Remote nodes are rows with their online dot, opening the peer's root page through the gateway.
+- **Data:** one subscription per page, with the page's `keys` and `depth`, `interval` 100 ms; polled once a second when the node refuses it (`busy`, `not_allowed`), tried again every 5 s after a timeout. Notifications are merge patches into the page's values; `overflow` reads the page again. Navigating unsubscribes first.
+- **Writes** follow §7.4: shown at once, pending until the reply, whose value replaces it; an error restores the confirmed value and shows its message as a toast. Sliders send at most one write per 100 ms while dragged, and the final value; a dragged slider isn't moved by notifications. Text and numbers are sent when the keyboard's check key is pressed, restored by its cancel key. `secret` fields start empty and are emptied after sending. Actions are disabled while in flight, show a reply other than `null` under their button, and ask first with `confirm` (`lv_msgbox`); `hold` sends `true` on press and every `keepalive` ms, `false` on release.
+- **Conditions** (§5.3) on paths inside the page hide rows and disable controls; paths outside it aren't read yet, and pass *(later: their own subscription, §7.3)*.
+- **Connection:** the header's dot turns red after a request times out, green with the next answer.
+- *(later)*: `ui.keepalive` re-sends of values (the device's own timeout stops it meanwhile, which is safe), access levels (`whoami`), views (§8), toasts for events, the string arena of §10.2 (descriptors hold their strings for now), and memory checked per page on target.
 
 ## 11. Testing
 
@@ -685,7 +698,7 @@ void lvglTask() {
 4. **Golden models:** `fixtures/<name>.model.json`, the UI model the web renderer's model gives for each fixture (the page, and the views). They are the expected output of every renderer's model, LVGL's included: renderers share the fixtures' inputs and these outputs. Rewritten deliberately (`vitest -u`), checked in CI. The LVGL renderer's model (`src/tesserui/model.*`, C++) is compared with them by the host tests, on the fields it keeps: without help text, access levels and the details of widgets it doesn't draw yet (lists' columns, charts' history, files), and without views.
 5. **Web end-to-end** (Playwright): the bundle against the TesserAPI test firmware on hardware, self-hosted and through a UI host. Each widget type gets a scripted interaction, checked against the device's read-back value. The suite also measures the bundle size, a first render under 1 s on a mid-range phone, and the write round trip.
 6. **Host node:** `test/` builds `tesserui_demo`, the demo tree on real TesserAPI over `LineTransport`s on stdin/stdout, with live values, events, a deferred action, file nodes (`/system/backup`, and the heliostat peer's `/diagnostics/log`, relayed), and peers behind an in-memory link through TesserAPI's real forwarding. `web/scripts/device.mjs` serves it as a self-hosted node does (page, bundle, HTTP with streamed subscriptions and raw file transfers, which it moves in envelopes, WebSocket), shared by every client, or with one fresh node per connection for the end-to-end tests (Playwright, `web/e2e`).
-7. **LVGL:** the renderer is built for the host with LVGL's SDL driver and screenshot-tested against the fixtures. On-target tests then check memory per page and that no heap is lost across page changes.
+7. **LVGL:** the renderer is built for the host (LVGL 9.6, fetched by CMake) and tested on a screen in memory: `tesserui_lcd_tests` taps controls of a real TesserAPI tree through a `LocalClient` and checks the device's values, and changes the values from another client and checks the screen. `tesserui_lcd` shows the demo tree in an SDL window, or writes each page as a PNG (`--shots DIR`), which CI keeps as an artifact. *(later)*: screenshots compared with committed ones, and on-target tests of memory per page and of heap lost across page changes.
 8. **CI:** web tests, bundle-size budget, LVGL host build and screenshots, plus ESP-IDF and Arduino builds of the examples, as in TesserAPI.
 
 ## 12. Packaging
@@ -698,7 +711,7 @@ TesserUI/
   bridge/              tesserui-bridge (npm): mDNS discovery, proxies and serial ports on localhost, for the launcher (§9.7)
   src/tesserui/        C++: WebUi (bundle and stub serving), Views, LvglUi
   src/tesserui/bundle/ tesserui_bundle.h, generated by the web build and committed per release
-  examples/            self-hosted, UI host + NowTP node, stub, LCD local, LCD remote
+  examples/            self-hosted, UI host + NowTP node, stub, LCD local (examples/idf/lcd_local), LCD remote
   CMakeLists.txt, idf_component.yml, library.json, library.properties
 ```
 
@@ -720,7 +733,7 @@ None blocks the first release; each has a workaround above.
 |---|---|---|---|
 | 1 | UI model (§4, §5), web client and store, widgets for every tier 0 type, self-hosted serving | The TesserAPI test firmware is fully usable from a phone; bundle within the budget of §2. | implemented; checked on hardware: the test firmware driven from a browser (WebSocket and HTTP), and `WebUi` serving the bundle from a chip's flash (ETag, 304). Token authentication works over WebSocket and HTTP. |
 | 2 | UI host: `/peers` links, peer pages through the gateway, offline handling, stub serving, Web Serial | A NowTP-only node is controlled from a browser through a UI host, with live values. | implemented; peer pages and forwarded subscriptions checked through the test firmware's gateway over ESP-NOW. The USB gateway (`UsbGateway`) checked on hardware from a serial script: a peer mounted over ESP-NOW, read, written, and its change notifications forwarded down the serial line. Built but not yet run on hardware: the UI host and NowTP-only node examples, stub serving (host-tested), Web Serial from a browser (tested end to end with a fake port). |
-| 3 | LVGL renderer: pages, widget mapping, `LocalClient` and `PeerClient` | The same node on a 320×240 touchscreen, locally and from a remote handheld. | not started |
+| 3 | LVGL renderer: pages, widget mapping, `LocalClient` and `PeerClient` | The same node on a 320×240 touchscreen, locally and from a remote handheld. | first version (§10.4): the basic widgets, through `LocalClient`, host-tested. On hardware (2026-10-16): `examples/idf/lcd_local` on an ESP32-2432S028 with two USB ports (ST7789, XPT2046, no PSRAM): menu, pages, touch, every control writing the board's LED and backlight, live sensor values, changes made over the serial API shown on screen; 230 KB of heap free on the menu. `PeerClient` (a remote handheld) not tried yet. |
 | 4 | Views (§8), charts, forms, conditions | helionext's motors and calibration pages, ported with no hand-written UI: `describe()` plus hints. | implemented; the motors fixture renders without UI code, and views, charts, forms and conditions pass end-to-end tests against the host demo device |
 | 5 | Monochrome profile, color widget, custom pages *(later)* | | web: color widget, custom elements and pages (§9.8), embedding (§9.9), interface text (§9.10) |
 | 6 | Launcher (§9.7): GitHub Pages, USB, Bluetooth and network ways, a NowTP gateway on USB | Any node reachable from a published page, with no UI assets on it. | implemented; the launcher's ways tested end to end against the host node (USB and Bluetooth through fakes cutting lines into pieces among log output). On hardware: the USB gateway driven over serial, mounting a peer over ESP-NOW with live notifications; the Bluetooth example driven from Chrome's Web Bluetooth and from a Mac (`bleak`); the ESP-IDF Bluetooth and USB gateway examples likewise. The network way from an HTTPS origin in Chrome, local network access granted: the test firmware polled over HTTP (CORS), the mixed content allowed with a console warning. Files in envelopes over a line: tested end to end against the host node through the USB and Bluetooth fakes; on hardware, 20 KB up and back through the bridge's serial port to the test firmware, at 7 to 8 KB/s, and through the test firmware's gateway to its peer over ESP-NOW in WebSocket envelopes (20 KB up in 1.3 s, down in 0.7 s, the page live throughout). Installing firmware (§9.7.1): end to end up to the port chooser (the flasher loaded only on demand, versions from a manifest, a file); on hardware, TesserKIT v0.1.12 `full` installed on an ESP32 devkit by the flasher in headless Chromium (its Web Serial relayed to the port, DTR and RTS included), Wi-Fi joined through TesserKIT's service in 20 s, then the device's page over the same line. The workspace (§9.7.2): end to end against the host node, two connections at once with one tab per device and a change applied across them, network connections opened again on the next visit, a USB port on a click, the bridge's nodes joining as tabs. On hardware (2026-10-13), through the bridge's mDNS: two devkits on TesserKIT 27e8589 (TesserAPI b852626), each mounting the other over NowTP, and ballet-photophonique's Gledopto, its own firmware without a root id. The devkits are a tab each, each hiding the other's stub by id. The Gledopto shows twice, directly and through a devkit, having no id. A brightness applied to all from one devkit reached the other (✓, read back), was absent on the Gledopto both ways, and wasn't sent to two offline peers, as the toast said. |
