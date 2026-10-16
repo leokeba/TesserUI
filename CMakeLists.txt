@@ -1,5 +1,6 @@
 # ESP-IDF component when built by idf.py, host library + tests otherwise.
 set(TESSERUI_CORE_SRCS
+    src/tesserui/model.cpp
     src/tesserui/views.cpp
     src/tesserui/web_page.cpp)
 
@@ -72,7 +73,8 @@ target_compile_options(tesserui_core PRIVATE ${TESSERUI_WARNINGS})
 
 if(TESSERUI_BUILD_TESTS)
     enable_testing()
-    add_executable(tesserui_tests test/test_main.cpp)
+    add_executable(tesserui_tests test/test_main.cpp test/model_tests.cpp)
+    target_compile_definitions(tesserui_tests PRIVATE TESSERUI_FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
     add_executable(tesserui_fixtures test/fixtures_main.cpp test/trees.cpp)
     # A live demo node on stdin/stdout, for renderer tests (not run by ctest).
     add_executable(tesserui_demo test/demo_main.cpp test/trees.cpp)
