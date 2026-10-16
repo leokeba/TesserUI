@@ -639,6 +639,7 @@ void lvglTask() {
 ```
 
 - **Threading:** all LVGL calls and all `ApiClient` callbacks run in the task that calls `ui.loop()`. That is what `ApiClient::process()` guarantees (TesserAPI §14.2), so no locks are needed. The UI takes the client's notification handler (`onNotification`). The application calls `api.poll()` in that loop too, for change notifications, unless `api.startTask()` does. `pdMS_TO_TICKS(5)` is 0 at FreeRTOS's default 100 Hz tick, and a loop that never blocks starves the idle task: `CONFIG_FREERTOS_HZ=1000`, or a delay of at least one tick.
+- **Orientation** is the application's, like its drivers: it turns the panel and the touch mapping and gives LVGL the new resolution (`lv_display_set_resolution()`), and the UI lays itself out again, on the page it is on. A half turn keeps the resolution, so the application invalidates the screen for LVGL to redraw it. The examples' boards (`examples/idf/components/cyd`) have four orientations, chosen by a persisted setting (`/display/orientation`, `/remote/orientation`), applied from the UI loop since writes may come from another task.
 - **Input:** pointer (touch) devices work directly. For encoders and keypads, each page's focusable widgets go into one `lv_group_t`, which the application attaches to its input device with `ui.group()`.
 
 ### 10.2 Memory

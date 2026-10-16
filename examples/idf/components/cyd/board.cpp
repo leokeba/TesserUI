@@ -46,6 +46,8 @@ constexpr int kMinPressure = 120;
 const char* kTag = "board";
 
 esp_lcd_panel_handle_t panel = nullptr;
+lv_display_t* lvDisplay = nullptr;
+Orientation current = Orientation::Landscape;
 spi_device_handle_t touch = nullptr;
 adc_oneshot_unit_handle_t adc = nullptr;
 
@@ -97,8 +99,28 @@ void readTouch(lv_indev_t*, lv_indev_data_t* data) {
         ry /= 4;
         // Lifted during the reading: keep the last point.
         if (xpt2046(0xB1) >= kMinPressure) {
-            lastX = map(ry, kRawYLeft, kRawYRight, kWidth);
-            lastY = map(rx, kRawXTop, kRawXBottom, kHeight);
+            // Calibrated in landscape, then turned as the panel is (see
+            // orientation()).
+            int32_t lx = map(ry, kRawYLeft, kRawYRight, kWidth);
+            int32_t ly = map(rx, kRawXTop, kRawXBottom, kHeight);
+            switch (current) {
+                case Orientation::Landscape:
+                    lastX = lx;
+                    lastY = ly;
+                    break;
+                case Orientation::LandscapeFlipped:
+                    lastX = kWidth - 1 - lx;
+                    lastY = kHeight - 1 - ly;
+                    break;
+                case Orientation::Portrait:
+                    lastX = ly;
+                    lastY = kWidth - 1 - lx;
+                    break;
+                case Orientation::PortraitFlipped:
+                    lastX = kHeight - 1 - ly;
+                    lastY = lx;
+                    break;
+            }
             data->state = LV_INDEV_STATE_PRESSED;
             counters.touches++;
             counters.x = lastX;
@@ -129,7 +151,38 @@ void duty(ledc_channel_t channel, uint32_t value) {
 
 }  // namespace
 
-lv_display_t* begin() {
+void orientation(Orientation o) {
+    current = o;
+    // The panel is 240x320: landscape exchanges rows and columns. Rows are
+    // flipped on this board (measured), and each half turn flips both.
+    switch (o) {
+        case Orientation::Landscape:
+            esp_lcd_panel_swap_xy(panel, true);
+            esp_lcd_panel_mirror(panel, false, true);
+            break;
+        case Orientation::LandscapeFlipped:
+            esp_lcd_panel_swap_xy(panel, true);
+            esp_lcd_panel_mirror(panel, true, false);
+            break;
+        case Orientation::Portrait:
+            esp_lcd_panel_swap_xy(panel, false);
+            esp_lcd_panel_mirror(panel, false, false);
+            break;
+        case Orientation::PortraitFlipped:
+            esp_lcd_panel_swap_xy(panel, false);
+            esp_lcd_panel_mirror(panel, true, true);
+            break;
+    }
+    bool portrait = o == Orientation::Portrait || o == Orientation::PortraitFlipped;
+    if (!lvDisplay) return;
+    lv_display_set_resolution(lvDisplay, portrait ? kHeight : kWidth, portrait ? kWidth : kHeight);
+    // A half turn keeps the resolution, so LVGL wouldn't redraw: the panel
+    // would show the last frame flipped.
+    lv_obj_invalidate(lv_display_get_screen_active(lvDisplay));
+    lv_obj_invalidate(lv_display_get_layer_top(lvDisplay));
+}
+
+lv_display_t* begin(Orientation o) {
     // Backlight and LED: 8-bit PWM at 5 kHz.
     ledc_timer_config_t timer = {};
     timer.speed_mode = LEDC_LOW_SPEED_MODE;
@@ -179,9 +232,7 @@ lv_display_t* begin() {
     ESP_ERROR_CHECK(esp_lcd_new_panel_st7789(io, &pc, &panel));
     esp_lcd_panel_reset(panel);
     esp_lcd_panel_init(panel);
-    // Landscape: the panel is 240x320, rows flipped on this board.
-    esp_lcd_panel_swap_xy(panel, true);
-    esp_lcd_panel_mirror(panel, false, true);
+    orientation(o);
     esp_lcd_panel_disp_on_off(panel, true);
 
     size_t bytes = static_cast<size_t>(kWidth) * kBufferLines * 2;
@@ -191,6 +242,8 @@ lv_display_t* begin() {
     lv_display_set_color_format(display, LV_COLOR_FORMAT_RGB565_SWAPPED);
     lv_display_set_buffers(display, buf1, buf2, static_cast<uint32_t>(bytes), LV_DISPLAY_RENDER_MODE_PARTIAL);
     lv_display_set_flush_cb(display, flush);
+    lvDisplay = display;
+    orientation(o);  // LVGL's resolution
     lv_tick_set_cb(ticks);
     backlight(80);
 

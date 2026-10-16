@@ -155,6 +155,21 @@ TEST(lcd_number_steps) {
     CHECK_EQ(std::string(lv_textarea_get_text(ta)), "5");
 }
 
+TEST(lcd_turns_to_portrait) {
+    Rig r;
+    r.open("/lamp");
+    r.screen.resize(240, 320);
+    r.screen.run(100, r.each);
+    lv_obj_t* sw = r.screen.control("On");
+    CHECK(sw != nullptr);
+    if (!sw) return;
+    lv_area_t a;
+    lv_obj_get_coords(sw, &a);
+    CHECK(a.x2 < 240);  // laid out again at the new width
+    r.screen.tap(sw, r.each);
+    CHECK(r.node.on);
+}
+
 TEST(lcd_button_calls) {
     Rig r;
     r.open("/lamp");

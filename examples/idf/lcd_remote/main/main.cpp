@@ -41,6 +41,8 @@ nowtp::EspNowTransport radio;
 tesser::NowTpTransport nowApi(&api, radio);
 
 int backlight = 80;
+board::Orientation orientation = board::Orientation::Landscape;  // set by the API, applied by the UI loop
+tesser::NvsStorage storage("remote");
 std::string pairing = "idle";  // guarded by the API lock
 bool pairingBusy = false;
 
@@ -65,14 +67,11 @@ void buildTree() {
     auto& peers = api.object("peers").label("Nodes").ui("icon", "radio");
 
     auto& self = api.object("remote").label("This remote").ui("icon", "settings");
-    self.value("backlight", [] { return backlight; },
-               [](int v) {
-                   backlight = v;
-                   board::backlight(static_cast<uint8_t>(v));
-               })
-        .range(10, 100)
-        .step(5)
-        .unit("%");
+    self.value("backlight", backlight).range(10, 100).step(5).unit("%").persist();
+    // Applied by the UI loop: a write over the console comes from its task.
+    self.value("orientation", orientation, {"landscape", "portrait", "landscape-flipped", "portrait-flipped"})
+        .ui("labels", "Landscape,Portrait,Landscape (turned),Portrait (turned)")
+        .persist();
     self.value("channel", [] { return radio.channel(); }).watch();
     self.value("heap", [] { return esp_get_free_heap_size(); }).unit("B").watch();
     self.value("minHeap", [] { return esp_get_minimum_free_heap_size(); }).unit("B").label("Lowest heap").watch();
@@ -111,10 +110,14 @@ extern "C" void app_main() {
     }
     ESP_ERROR_CHECK(err);
     buildTree();
+    api.persistence(storage);  // the backlight and the orientation, in NVS
+    api.load();
 
     lv_init();
-    lv_display_t* display = board::begin();
-    board::backlight(static_cast<uint8_t>(backlight));
+    board::Orientation shown = orientation;
+    lv_display_t* display = board::begin(shown);
+    int lit = backlight;
+    board::backlight(static_cast<uint8_t>(lit));
     board::led(0, 0, 0);
 
     nowtp::EspNowConfig cfg;
@@ -131,7 +134,9 @@ extern "C" void app_main() {
     ESP_ERROR_CHECK(serialApi.begin());  // requests over the console, in its own task
 
     for (;;) {
-        api.poll(now());  // forwarded notifications, watched values
+        if (orientation != shown) board::orientation(shown = orientation);
+        if (backlight != lit) board::backlight(static_cast<uint8_t>(lit = backlight));
+        api.poll(now());  // forwarded notifications, watched values, saving settings
         ui.loop();
         lv_timer_handler();
         vTaskDelay(pdMS_TO_TICKS(5) ? pdMS_TO_TICKS(5) : 1);  // at least a tick: the idle task must run

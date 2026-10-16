@@ -38,6 +38,9 @@ public:
     void press(int32_t x, int32_t y);
     void release();
 
+    // Turns the screen (same number of pixels): landscape to portrait.
+    void resize(int32_t width, int32_t height);
+
     // Draws now and writes the screen as a PNG.
     bool png(const std::string& path);
 

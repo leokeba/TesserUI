@@ -174,6 +174,13 @@ void Screen::tap(lv_obj_t* obj, const std::function<void()>& each, float fx, flo
     run(100, each);
 }
 
+void Screen::resize(int32_t width, int32_t height) {
+    pixels_.resize(static_cast<size_t>(width) * static_cast<size_t>(height));
+    lv_display_set_buffers(display_, pixels_.data(), nullptr, static_cast<uint32_t>(pixels_.size() * 2),
+                           LV_DISPLAY_RENDER_MODE_DIRECT);
+    lv_display_set_resolution(display_, width, height);
+}
+
 bool Screen::png(const std::string& path) {
     lv_obj_invalidate(lv_display_get_screen_active(display_));
     lv_refr_now(display_);

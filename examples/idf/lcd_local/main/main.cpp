@@ -13,6 +13,7 @@
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "nvs_flash.h"
 
 #include "TesserAPI.h"
 #include "TesserUI.h"
@@ -33,6 +34,8 @@ tesser::Api api;
 tesser::UartTransport serialApi(api, UART_NUM_0);
 Led led;
 int backlight = 80;
+board::Orientation orientation = board::Orientation::Landscape;  // set by the API, applied by the UI loop
+tesser::NvsStorage storage("lcd");
 int blinks = 0;  // left to show, twice per blink
 
 uint32_t now() { return static_cast<uint32_t>(esp_timer_get_time() / 1000); }
@@ -57,14 +60,11 @@ void buildTree() {
     l.action("blink", [] { blinks = 6; }).label("Blink");
 
     auto& d = api.object("display").label("Display");
-    d.value("backlight", [] { return backlight; },
-            [](int v) {
-                backlight = v;
-                board::backlight(static_cast<uint8_t>(v));
-            })
-        .range(10, 100)
-        .step(5)
-        .unit("%");
+    d.value("backlight", backlight).range(10, 100).step(5).unit("%").persist();
+    // Applied by the UI loop: a write over the console comes from its task.
+    d.value("orientation", orientation, {"landscape", "portrait", "landscape-flipped", "portrait-flipped"})
+        .ui("labels", "Landscape,Portrait,Landscape (turned),Portrait (turned)")
+        .persist();
 
     auto& s = api.object("sensors").label("Sensors");
     s.value("light", [] { return static_cast<int>(board::light()); }).unit("%").watch();
@@ -86,10 +86,20 @@ void buildTree() {
 }  // namespace
 
 extern "C" void app_main() {
+    esp_err_t err = nvs_flash_init();  // settings
+    if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        err = nvs_flash_init();
+    }
+    ESP_ERROR_CHECK(err);
     buildTree();
+    api.persistence(storage);  // the backlight and the orientation, in NVS
+    api.load();
     lv_init();
-    lv_display_t* display = board::begin();
-    board::backlight(static_cast<uint8_t>(backlight));
+    board::Orientation shown = orientation;
+    lv_display_t* display = board::begin(shown);
+    int lit = backlight;
+    board::backlight(static_cast<uint8_t>(lit));
 
     tesser::LocalClient client(api);
     tesserui::LvglUi ui(client, display);
@@ -104,7 +114,9 @@ extern "C" void app_main() {
             blinks--;
         }
         showLed(ms);
-        api.poll(ms);  // change notifications and watched values
+        if (orientation != shown) board::orientation(shown = orientation);
+        if (backlight != lit) board::backlight(static_cast<uint8_t>(lit = backlight));
+        api.poll(ms);  // change notifications, watched values, saving settings
         ui.loop();
         lv_timer_handler();
         vTaskDelay(pdMS_TO_TICKS(5) ? pdMS_TO_TICKS(5) : 1);  // at least a tick: the idle task must run

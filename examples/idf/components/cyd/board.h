@@ -13,9 +13,17 @@
 
 namespace board {
 
+// How the screen is held: landscape (320x240, the USB ports on the right
+// as measured), portrait (240x320), and each turned half round.
+enum class Orientation : uint8_t { Landscape, Portrait, LandscapeFlipped, PortraitFlipped };
+
 // Starts the panel, the backlight and the touch controller, and creates
-// the LVGL display (landscape, 320x240) and its pointer. Call lv_init() first.
-lv_display_t* begin();
+// the LVGL display and its pointer. Call lv_init() first.
+lv_display_t* begin(Orientation orientation = Orientation::Landscape);
+
+// Turns the screen: the panel's scan direction, LVGL's resolution (the UI
+// lays itself out again) and the touch mapping. From the LVGL task.
+void orientation(Orientation o);
 
 // 0 to 100 %.
 void backlight(uint8_t percent);
