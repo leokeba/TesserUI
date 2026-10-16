@@ -7,8 +7,13 @@
 #include "esp_heap_caps.h"
 #include "esp_lcd_panel_io.h"
 #include "esp_lcd_panel_ops.h"
+#if __has_include("esp_lcd_panel_st7789.h")
 #include "esp_lcd_panel_st7789.h"
+#else
+#include "esp_lcd_panel_vendor.h"  // ESP-IDF 5.1: the ST7789 is declared here
+#endif
 #include "esp_log.h"
+#include "esp_idf_version.h"
 #include "esp_timer.h"
 
 namespace board {
@@ -227,7 +232,11 @@ lv_display_t* begin(Orientation o) {
     ESP_ERROR_CHECK(esp_lcd_new_panel_io_spi(SPI2_HOST, &ioc, &io));
     esp_lcd_panel_dev_config_t pc = {};
     pc.reset_gpio_num = GPIO_NUM_NC;  // tied to EN
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 2, 0)
     pc.rgb_ele_order = LCD_RGB_ELEMENT_ORDER_RGB;
+#else
+    pc.rgb_endian = LCD_RGB_ENDIAN_RGB;  // ESP-IDF 5.1's name
+#endif
     pc.bits_per_pixel = 16;
     ESP_ERROR_CHECK(esp_lcd_new_panel_st7789(io, &pc, &panel));
     esp_lcd_panel_reset(panel);
