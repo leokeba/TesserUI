@@ -128,7 +128,11 @@ export class Session {
     this.store = new Store(() => this.client);
     this.store.onUnauthorized = () => (this.needToken = true);
     this.store.t = (text) => this.t(text);
-    this.store.onWrite = (path, body) => this.all && this.applyAll(path, body);
+    this.store.onWrite = (path, body) => {
+      const shared = this.all ? this.shared(path, body) : undefined;
+      if (shared !== undefined) this.applyAll(path, shared);
+    };
+    this.store.onWritten = (path, body) => this.names(path, body) && this.relabel(path);
     this.subs = new Subscriptions(() => this.client, this.store);
     this.subs.childNames = (path) => {
       const s = this.schemaAt(path);
@@ -432,6 +436,37 @@ export class Session {
     this.store.toasts.show(text.join('. '), 'warn', path);
   }
 
+  // What of a write goes to the other nodes: not a node's own values
+  // (ui.perNode, ui.nodeName), even inside a form's patch (DESIGN.md §6.6).
+  // Undefined when nothing is left.
+  private shared(path: string, body: unknown): unknown {
+    const s = this.schemaAt(path);
+    if (s?.ui?.perNode || s?.ui?.nodeName) return undefined;
+    if (s?.type !== 'object' || !isObject(body)) return body;
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(body)) {
+      const c = this.shared(joinPath(path, k), v);
+      if (c !== undefined) out[k] = c;
+    }
+    return Object.keys(out).length ? out : undefined;
+  }
+
+  // Whether a write renames a node: it reaches a value with ui.nodeName.
+  private names(path: string, body: unknown): boolean {
+    const s = this.schemaAt(path);
+    return !!s?.ui?.nodeName || (s?.type === 'object' && isObject(body) && Object.keys(body).some((k) => this.names(joinPath(path, k), body[k])));
+  }
+
+  // A renamed node's label is its root's (DESIGN.md §6.5): read again, past
+  // the cache, whose entries are the old hash's. The node itself is asked
+  // for its new hash first, for what is cached from now on.
+  private async relabel(path: string) {
+    const root = this.nodeRoot(path);
+    if (root === '/') this.identity = await this.identify();
+    const r = await this.ask({ op: 'get', path: root, view: 'schema', depth: 0 });
+    if (r.status === 'ok') this.merge(root, r.body as Schema);
+  }
+
   // The nodes this connection shows as tabs: itself, then its remote nodes.
   tabs(): string[] {
     return this.only ?? ['/', ...this.nodes()];
@@ -669,6 +704,9 @@ export class Session {
       const base = commonAncestor(outside.map(parentPath));
       all.push({ path: base, depth: Math.max(...outside.map((p) => segments(p).length - segments(base).length)) });
     }
+    // The stubs of the node's remote nodes, for their tabs' online states
+    // and labels, and the one of the peer being shown.
+    for (const p of new Set(this.nodes().map(parentPath))) all.push({ path: p, depth: 1 });
     const remote = remoteOf(this.root, at);
     if (remote) {
       const name = remote.path.slice(remote.path.lastIndexOf('/') + 1);

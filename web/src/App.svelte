@@ -98,15 +98,18 @@
   });
   const home = $derived(tabs?.findLast((n) => n.path && isUnder(route.path, n.path))?.path ?? top);
   // Remote nodes' labels are in their own root schemas, and their views at
-  // their /_ui: each read once.
+  // their /_ui: each read once, a label once per advertised hash (a node
+  // renamed advertises another).
   const asked = new Set<string>();
   $effect(() => {
     if (!tabs) return;
     const ui = home + '/_ui';
-    const want = [ui, ...nodes.filter((p) => !session.schemaAt(p)?.tree && !session.isOffline(p))].filter((p) => p !== '//_ui' && !asked.has(p));
+    const want = [ui, ...nodes.filter((p) => !session.schemaAt(p)?.tree && !session.isOffline(p))].filter((p) => p !== '//_ui');
     untrack(async () => {
       for (const p of want) {
-        asked.add(p);
+        const key = p === ui ? p : p + ' ' + session.schemaAt(p)?.schema;
+        if (asked.has(key)) continue;
+        asked.add(key);
         if (p !== ui) await session.fetchSchema(p, 0);
         else if (await session.ensure(home, 1)) await session.loadViews(home);
         // Offline: no views until it's back (asked again then).

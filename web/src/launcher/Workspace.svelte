@@ -209,14 +209,15 @@
     }
   });
   // Every connection's remote nodes are labelled from their own roots, as
-  // the shown one's are (App), each read once.
+  // the shown one's are (App), each read once per advertised hash.
   const labelled = new Set<string>();
   $effect(() => {
     for (const { c, paths } of tabs) {
       const s = c.session!;
       for (const p of paths?.slice(1) ?? []) {
-        if (labelled.has(c.key + p) || s.schemaAt(p)?.tree || s.isOffline(p)) continue;
-        labelled.add(c.key + p);
+        const key = c.key + p + ' ' + s.schemaAt(p)?.schema;
+        if (labelled.has(key) || s.schemaAt(p)?.tree || s.isOffline(p)) continue;
+        labelled.add(key);
         s.fetchSchema(p, 0);
       }
     }

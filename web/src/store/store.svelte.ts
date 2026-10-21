@@ -46,6 +46,8 @@ export class Store {
   onUnauthorized: (() => void) | null = null;
   // Every write the user makes, values and calls: "apply to all" (DESIGN.md §6.6).
   onWrite: ((path: string, body: unknown) => void) | null = null;
+  // Each write and call the node took (a node's name: DESIGN.md §6.5).
+  onWritten: ((path: string, body: unknown) => void) | null = null;
   // The interface's text (Session.t).
   t: (text: string) => string = (x) => x;
 
@@ -185,8 +187,10 @@ export class Store {
     this.put(path, value);
     if (!drag) this.onWrite?.(path, value);
     const r = await this.client().request({ op: 'set', path, body: value });
-    if (r.status === 'ok') this.succeed(path, r.body);
-    else this.fail(path, r);
+    if (r.status === 'ok') {
+      this.succeed(path, r.body);
+      this.onWritten?.(path, value);
+    } else this.fail(path, r);
     this.release(path);
     return r;
   }
@@ -244,7 +248,10 @@ export class Store {
     this.onWrite?.(path, arg ?? null);
     const r = await this.client().request({ op: 'set', path, body: arg ?? null }, timeoutMs);
     if (r.status !== 'ok') this.fail(path, r);
-    else this.toasts.clear(path);
+    else {
+      this.toasts.clear(path);
+      this.onWritten?.(path, arg ?? null);
+    }
     return r;
   }
 

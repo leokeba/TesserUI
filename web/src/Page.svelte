@@ -14,13 +14,21 @@
   const t = (text: string) => session.t(text);
 
   let failed = $state(false);
+  let loading = false;
   async function load() {
+    loading = true;
     failed = false;
     failed = !(await session.ensure(path, 3));
+    loading = false;
   }
   load();
 
   const schema = $derived(session.pageSchema(path));
+  // A remote node's tree goes when it advertises another hash (renamed,
+  // updated: DESIGN.md §7.2): read again.
+  $effect(() => {
+    if (!schema && !failed && !loading) untrack(load);
+  });
   const nodeRoot = $derived.by(() => {
     void session.schemaVersion;
     return session.nodeRoot(path);
