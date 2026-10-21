@@ -321,7 +321,9 @@ TEST(page_self_hosted) {
     o.minVersion = "0.1.0";
     CHECK_EQ(tesserui::renderPage(o),
              "<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" "
-             "content=\"width=device-width,initial-scale=1\"><title>TesserUI</title><link rel=\"icon\" href=\"data:,\"><script>"
+             "content=\"width=device-width,initial-scale=1\"><title>TesserUI</title><link rel=\"icon\" href=\"data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'>"
+             "<path d='M1 1h14v14H1zm4 4v6h6V5zl-4-4m14 0-4 4m0 6 4 4m-14 0 4-4' fill='none' stroke='%232f5bd3' "
+             "stroke-width='2'/></svg>\"><script>"
              "window.TESSER={api:\"/api\",ws:\"/ws\",minVersion:\"0.1.0\"}</script></head><body>"
              "<script src=\"/ui.js\"></script></body></html>");
 }
@@ -332,7 +334,14 @@ TEST(page_without_websocket_or_min_version) {
     o.ws = nullptr;
     std::string page = tesserui::renderPage(o);
     CHECK(page.find("<script>window.TESSER={api:\"/rest\",ws:null}</script>") != std::string::npos);
-    CHECK(page.size() < 300);
+    CHECK(page.size() < 500);
+}
+
+TEST(page_icon) {
+    tesserui::PageOptions o;
+    o.icon = "/icon.svg?v=\"2\"";
+    std::string page = tesserui::renderPage(o);
+    CHECK(page.find("<link rel=\"icon\" href=\"/icon.svg?v=&quot;2&quot;\">") != std::string::npos);
 }
 
 TEST(page_stub) {
@@ -341,7 +350,9 @@ TEST(page_stub) {
     o.fallback = true;
     CHECK_EQ(tesserui::renderPage(o),
              "<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" "
-             "content=\"width=device-width,initial-scale=1\"><title>TesserUI</title><link rel=\"icon\" href=\"data:,\"><script>"
+             "content=\"width=device-width,initial-scale=1\"><title>TesserUI</title><link rel=\"icon\" href=\"data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'>"
+             "<path d='M1 1h14v14H1zm4 4v6h6V5zl-4-4m14 0-4 4m0 6 4 4m-14 0 4-4' fill='none' stroke='%232f5bd3' "
+             "stroke-width='2'/></svg>\"><script>"
              "window.TESSER={api:\"/api\",ws:\"/ws\"}</script></head><body>"
              "<script src=\"https://cdn.jsdelivr.net/npm/tesserui@0.1.0/dist/ui.js\" data-fallback=\""
              "The interface could not be loaded from https://cdn.jsdelivr.net/npm/tesserui@0.1.0/dist/ui.js: "

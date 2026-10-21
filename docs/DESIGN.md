@@ -463,7 +463,7 @@ web/
 
 The build produces `ui.js` (one IIFE script, CSS injected), `ui.js.gz` and `index.html` (for a CDN or Pages). It also produces `tesserui_bundle.h` with the gzipped script as a byte array, its version, and its FNV-1a hash for the ETag. The gzip is made with zopfli, about 4 % smaller than `gzip -9`, and that is what the budget measures.
 
-A node doesn't store `index.html`: `WebUi` generates the page at `/` (about 300 bytes) with the configuration of §9.2 in `window.TESSER` (API and WebSocket paths, `minVersion`).
+A node doesn't store `index.html`: `WebUi` generates the page at `/` (about 500 bytes) with the configuration of §9.2 in `window.TESSER` (API and WebSocket paths, `minVersion`). Its favicon is TesserUI's, a tesseract inlined as an SVG `data:` URL (200 bytes, no request, nothing in the bundle), unless `web.icon("/icon.svg")` names another (an asset, say).
 
 ```cpp
 tesser::HttpServer http(api);

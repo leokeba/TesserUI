@@ -21,11 +21,15 @@ if (gz.length > BUDGET) {
 }
 if (process.argv.includes('--check')) process.exit(0);
 
+// TesserUI's icon, as src/tesserui/web_page.cpp inlines it.
+const icon =
+  "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M1 1h14v14H1zm4 4v6h6V5zl-4-4m14 0-4 4m0 6 4 4m-14 0 4-4' fill='none' stroke='%232f5bd3' stroke-width='2'/></svg>";
+
 // For a CDN or GitHub Pages; a node generates its own page (WebUi).
 writeFileSync(
   new URL('index.html', dist),
   '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
-    '<title>TesserUI</title><link rel="icon" href="data:,"></head><body><script type="module" src="launcher.js"></script></body></html>\n',
+    `<title>TesserUI</title><link rel="icon" href="${icon}"></head><body><script type="module" src="launcher.js"></script></body></html>\n`,
 );
 writeFileSync(new URL('ui.js.gz', dist), gz);
 

@@ -17,6 +17,7 @@ struct PageOptions {
     const char* minVersion = nullptr;  // oldest bundle the node accepts; null: any
     const char* script = "/ui.js";     // the bundle's URL
     const char* title = nullptr;       // the page title until the device's label is known
+    const char* icon = nullptr;        // the favicon's URL; null: TesserUI's, inline
     // Module scripts defining custom elements (section 9.8).
     std::vector<const char*> scripts;
     // CSS variables, without "--": {"accent", "#d97706"} (section 9.2).
@@ -28,7 +29,7 @@ struct PageOptions {
     bool fallback = false;
 };
 
-// About 300 bytes:
+// About 500 bytes, 200 of them the icon:
 //   <!doctype html><html><head>...<script>window.TESSER={api:"/api",ws:"/ws",minVersion:"0.1.0"}</script>
 //   </head><body><script src="/ui.js"></script></body></html>
 std::string renderPage(const PageOptions& options);

@@ -6,6 +6,12 @@ namespace tesserui {
 
 namespace {
 
+// TesserUI's icon, a tesseract in the accent colour.
+const char kIcon[] =
+    "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path "
+    "d='M1 1h14v14H1zm4 4v6h6V5zl-4-4m14 0-4 4m0 6 4 4m-14 0 4-4' fill='none' stroke='%232f5bd3' "
+    "stroke-width='2'/></svg>";
+
 // A JavaScript string literal's content; "<" is escaped so the text can't
 // close the script element.
 void appendJs(std::string& out, const char* s) {
@@ -62,12 +68,18 @@ std::string renderPage(const PageOptions& o) {
     const char* script = o.script ? o.script : "/ui.js";
 
     std::string out;
-    out.reserve(320 + strlen(script) * 3);
+    out.reserve(520 + strlen(script) * 3);
     out += "<!doctype html><html><head><meta charset=\"utf-8\">"
            "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
            "<title>";
     appendHtml(out, o.title ? o.title : "TesserUI");
-    out += "</title><link rel=\"icon\" href=\"data:,\"><script>window.TESSER={api:\"";
+    out += "</title><link rel=\"icon\" href=\"";
+    if (o.icon) {
+        appendHtml(out, o.icon);
+    } else {
+        out += kIcon;  // as it is: no '"' or '&' in it
+    }
+    out += "\"><script>window.TESSER={api:\"";
     appendJs(out, api.c_str());
     out += "\",ws:";
     if (o.ws) {

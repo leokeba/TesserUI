@@ -70,9 +70,11 @@ clients.set(0, (line) => {
 });
 
 // The page WebUi generates (src/tesserui/web_page.cpp), and the bundle.
+const icon =
+  "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M1 1h14v14H1zm4 4v6h6V5zl-4-4m14 0-4 4m0 6 4 4m-14 0 4-4' fill='none' stroke='%232f5bd3' stroke-width='2'/></svg>";
 const page =
   '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
-  `<title>TesserUI</title><link rel="icon" href="data:,"><script>window.TESSER={api:"/api",ws:"/ws",minVersion:"${version}"}</script>` +
+  `<title>TesserUI</title><link rel="icon" href="${icon}"><script>window.TESSER={api:"/api",ws:"/ws",minVersion:"${version}"}</script>` +
   '</head><body><script src="/ui.js"></script></body></html>';
 
 const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*', 'Access-Control-Allow-Methods': 'GET, PUT, POST, PATCH, OPTIONS' };

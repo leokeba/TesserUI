@@ -25,6 +25,7 @@ namespace tesserui {
 // Options, all before serve() (strings must outlive the WebUi):
 //   web.basePath("/ui/")                         // the UI at /ui/ and /ui/ui.js, leaving / to the app
 //      .title("Heliostat 3")
+//      .icon("/icon.svg")                        // the favicon, instead of TesserUI's
 //      .theme("accent", "#d97706")               // CSS variables (DESIGN.md §9.2)
 //      .text("Advanced", "Avancé")               // the interface's text (§9.10)
 //      .script("/ext/sun-dial.js")               // custom elements (§9.8)...
@@ -56,6 +57,11 @@ public:
     // The page title until the bundle shows the device's label.
     WebUi& title(const char* title) {
         pageOptions_.title = title;
+        return *this;
+    }
+    // The favicon's URL (an asset, a data: URL); default: TesserUI's.
+    WebUi& icon(const char* url) {
+        pageOptions_.icon = url;
         return *this;
     }
     // A module script defining custom elements, loaded before any is drawn.
