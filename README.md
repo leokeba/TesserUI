@@ -160,10 +160,10 @@ The interface's colors (`theme`) and its own text (`strings`) are options too: `
 | Example | Arduino | ESP-IDF |
 |---|---|---|
 | HTTP, WebSocket and the UI on one node | [SelfHosted](examples/arduino/SelfHosted) | [self_hosted](examples/idf/self_hosted) |
-| A UI host and the NowTP-only nodes it renders (the host needs the *Minimal SPIFFS* partition scheme) | [UiHost](examples/arduino/UiHost), [NowTpNode](examples/arduino/NowTpNode) | |
+| A UI host and the NowTP-only nodes it renders (the host needs the *Minimal SPIFFS* partition scheme, and so does the node on an ESP32-C3) | [UiHost](examples/arduino/UiHost), [NowTpNode](examples/arduino/NowTpNode) | |
 | The UI loaded from a CDN by a 300-byte page | [Stub](examples/arduino/Stub) | |
 | A custom element served from flash, on a node and as a custom page | [CustomWidget](examples/arduino/CustomWidget) | |
-| A NowTP gateway on USB, for the launcher | [UsbGateway](examples/arduino/UsbGateway) | [usb_gateway](examples/idf/usb_gateway) |
+| A NowTP gateway on USB, for the launcher (on an ESP32-C3, the *Minimal SPIFFS* partition scheme) | [UsbGateway](examples/arduino/UsbGateway) | [usb_gateway](examples/idf/usb_gateway) |
 | A node over Bluetooth LE, for the launcher | [Bluetooth](examples/arduino/Bluetooth) | [bluetooth](examples/idf/bluetooth) |
 | A node over classic Bluetooth serial (ESP32 only) | [BluetoothSerial](examples/arduino/BluetoothSerial) | |
 | A touchscreen UI for the node on the chip (the "cheap yellow display" with two USB ports) | | [lcd_local](examples/idf/lcd_local) |

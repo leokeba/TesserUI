@@ -5,6 +5,10 @@
 // Channel: ESP-NOW nodes only hear each other on the same Wi-Fi channel, and
 // a UI host in station mode uses its router's. Set NOWTP_CHANNEL to that
 // channel (the host prints it at boot).
+//
+// Partitions: on an ESP32-C3 it is about 1.32 MB, past the default 1.25 MB
+// app partition. Choose Tools > Partition Scheme > "Minimal SPIFFS (1.9MB
+// APP with OTA)" (min_spiffs) there.
 #include <NowTP.h>
 #include <TesserAPI.h>
 

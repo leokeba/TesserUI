@@ -12,6 +12,10 @@
 // The serial port carries the envelopes: the launcher skips log lines, but
 // a log line written in the middle of a reply would break it, so keep the
 // log level low (Arduino's default "None" or "Error").
+//
+// Partitions: on an ESP32-C3 it is about 1.32 MB, past the default 1.25 MB
+// app partition. Choose Tools > Partition Scheme > "Minimal SPIFFS (1.9MB
+// APP with OTA)" (min_spiffs) there.
 #include <NowTP.h>
 #include <TesserAPI.h>
 #include <TesserUI.h>
