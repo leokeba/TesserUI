@@ -262,7 +262,10 @@ Demo::Demo()
         });
 
     auto& settings = api.object("settings").label("Settings").ui("form").persist();
-    settings.value("ssid", ssid);
+    // Refused empty: a field error in a form, which a later submit clears.
+    settings.value("ssid", ssid).validate([](const std::string& v) {
+        return v.empty() ? tesser::Check::fail(tesser::Status::InvalidValue, "a network name") : tesser::Check::ok();
+    });
     settings.value("password", password).secret();
     settings.value("notes", notes).ui("widget", "textarea");
     settings.action("apply", [] {}).ui("submit");

@@ -201,6 +201,26 @@ test('conditions and forms', async ({ page }) => {
   await settings.getByRole('button', { name: 'Apply' }).click();
   await expect(settings.locator('.form-actions span')).toHaveCount(0);
   await expect(row(page, 'Ssid').locator('input')).toHaveValue('field-net');
+
+  // A field's error goes when it is edited, and with the next submit.
+  const ssid = row(page, 'Ssid');
+  await ssid.locator('input').fill('');
+  await ssid.locator('input').press('Enter');
+  await settings.getByRole('button', { name: 'Apply' }).click();
+  await expect(ssid.locator('.error')).toHaveText(/a network name/);
+  await ssid.locator('input').fill('x');
+  await ssid.locator('input').press('Enter');
+  await expect(ssid.locator('.error')).toHaveCount(0);
+  await ssid.locator('input').fill('');
+  await ssid.locator('input').press('Enter');
+  await settings.getByRole('button', { name: 'Apply' }).click();
+  await expect(ssid.locator('.error')).toHaveCount(1);
+  await settings.getByRole('button', { name: 'Reset' }).click();
+  await row(page, 'Notes').locator('textarea').fill('Moved.');
+  await row(page, 'Notes').locator('textarea').press('Tab');
+  await settings.getByRole('button', { name: 'Apply' }).click();
+  await expect(settings.locator('.form-actions span')).toHaveCount(0);
+  await expect(ssid.locator('.error')).toHaveCount(0);
 });
 
 test('a password shows on demand', async ({ page }) => {

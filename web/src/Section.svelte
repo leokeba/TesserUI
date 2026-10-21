@@ -57,6 +57,8 @@
       for (const n of names.slice(0, -1)) o = (o[n] ??= {}) as Record<string, unknown>;
       o[names[names.length - 1]] = v;
     }
+    // The errors of an earlier submit go; this one's replace them.
+    store.clearErrors(sec.path);
     if (save) {
       busy = true;
       await save(patch);

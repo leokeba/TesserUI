@@ -61,7 +61,7 @@
   let revert = $state(0);
   function set(v: unknown, drag = false) {
     stalled = false;
-    if (draft) return void (draft.values[leaf.path] = v);
+    if (draft) return void ((draft.values[leaf.path] = v), delete store.errors[leaf.path]);
     if (leaf.confirm && !drag && !confirm(leaf.confirm)) return void revert++;
     if (drag) store.writeSoon(leaf.path, v);
     else store.write(leaf.path, v);
