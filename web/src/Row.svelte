@@ -1,6 +1,6 @@
 <script lang="ts">
   import { getContext, untrack } from 'svelte';
-  import { useSession, DRAFT, SHOWN, type Draft } from './shared.svelte';
+  import { useSession, reader, DRAFT, SHOWN, type Draft } from './shared.svelte';
   import Icon from './Icon.svelte';
   import { holds } from './model/conditions';
   import type { Leaf } from './model/model';
@@ -11,7 +11,7 @@
   const store = session.store;
   const draft = getContext<Draft | undefined>(DRAFT);
 
-  const get = (p: string) => store.get(p);
+  const get = reader(store, draft);
   const visible = $derived(!leaf.visibleWhen || holds(leaf.visibleWhen, get));
   const disabled = $derived(
     session.state !== 'open' ||

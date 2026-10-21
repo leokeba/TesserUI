@@ -19,6 +19,7 @@
     type Network,
   } from './firmware';
   import { handOver, openLine } from './line';
+  import Secret from '../widgets/Secret.svelte';
 
   interface Props {
     firmware: Firmware;
@@ -290,7 +291,7 @@
       </label>
       <label>
         <span>{t('Password')}</span>
-        <input type="password" bind:value={password} autocomplete="off" />
+        <Secret show={t('Show password')} bind:value={password} autocomplete="off" />
       </label>
       <span class="buttons">
         <button class="primary">{t('Join')}</button>

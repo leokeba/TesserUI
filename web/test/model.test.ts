@@ -108,6 +108,31 @@ describe('widget inference (DESIGN §4)', () => {
   });
 });
 
+describe('ui.suggest and forms in lists', () => {
+  const row: Schema = { type: 'object', children: { ssid: { type: 'string', writable: true }, password: { type: 'string', writable: true, secret: true } } };
+  const wifi: Schema = {
+    type: 'object',
+    children: {
+      networks: { type: 'list', writable: true, key: 'ssid', items: row, ui: { suggest: 'scan' } },
+      scan: { type: 'action', arg: 'any', deferred: true },
+    },
+  };
+  it("names the action, relative like a condition's, which the list draws", () => {
+    const page = buildPage({ type: 'object', children: { wifi } }, '/');
+    const [networks, scan] = page.cards[0].items as Leaf[];
+    expect(networks).toMatchObject({ suggest: '/wifi/scan', widget: 'table' });
+    expect(scan).toMatchObject({ suggests: '/wifi/networks', hidden: false });
+    // Directly under a page: not a button by its title either.
+    expect(buildPage(wifi, '/').actions).toEqual([]);
+  });
+  it("ignores it on a list clients can't add to", () => {
+    expect(leaf({ ...wifi.children!.networks, writable: false }).suggest).toBeUndefined();
+  });
+  it('opens elements edited as forms one by one, never as table rows', () => {
+    expect(leaf({ type: 'list', writable: true, key: 'ssid', items: { ...row, ui: { form: true } } }).widget).toBe('list');
+  });
+});
+
 describe('ui.reorder', () => {
   const row: Schema = { type: 'object', children: { name: { type: 'string', writable: true }, secret: { type: 'string', writable: true, secret: true } } };
   it('moves the rows of writable arrays and keyed lists', () => {

@@ -4,14 +4,18 @@
   // (§4.4 there), and keyed lists match rows by key, so unread secrets
   // survive. A list (widget "list"): one line per element, which opens into
   // the element's own controls, each writing its own path; its file nodes
-  // have buttons on its line.
+  // have buttons on its line. Elements edited as forms (ui.form) are added
+  // through a draft, which a suggestion (ui.suggest) can fill.
+  import { tick } from 'svelte';
   import { isObject, parse, stringify } from '../client/json';
+  import { DEFERRED_TIMEOUT_MS } from '../client/types';
   import Icon from '../Icon.svelte';
   import Section from '../Section.svelte';
   import { holds } from '../model/conditions';
-  import { formatValue } from '../model/format';
+  import { formatValue, humanize } from '../model/format';
   import { buildLeaf, buildSection, visiblePaths, type Leaf } from '../model/model';
   import File from './File.svelte';
+  import Secret from './Secret.svelte';
   import { useSession } from '../shared.svelte';
   import { parseNumber, type WidgetProps } from './types';
   let { leaf, value, set, disabled }: WidgetProps = $props();
@@ -29,7 +33,7 @@
   // element): read-only fields, which it would refuse, and secrets, which read
   // as null. The key stays, as rows are matched by it.
   const omitted = $derived(cols.filter((c) => c.path && c.path !== leaf.key && (!c.editable || c.secret)));
-  function send(next: unknown[]) {
+  function strip(next: unknown[]) {
     for (const row of next) {
       for (const c of omitted) {
         const names = c.path.split('/');
@@ -39,8 +43,9 @@
         if (isObject(o) && (!c.editable || o[last] === null)) delete o[last];
       }
     }
-    set(next);
+    return next;
   }
+  const send = (next: unknown[]) => set(strip(next));
   const cell = (row: unknown, col: Leaf): unknown => {
     if (!col.path) return row;
     let v = row;
@@ -69,6 +74,7 @@
     return Math.min(Math.max(0, c.min ?? -Infinity), c.max ?? Infinity);
   }
   function add() {
+    if (form) return void begin({});
     send([...copy(), leaf.key ? { [leaf.key]: newKey } : cols.length === 1 && !cols[0].path ? scalar(cols[0]) : {}]);
     if (leaf.key) open = newKey;
     newKey = '';
@@ -108,6 +114,61 @@
     const l = buildLeaf(f.name, `${path}/${f.name}`, f.schema, path, session.nodeRoot(leaf.path), leaf.access);
     return { ...l, label: `${l.label} ${k}` };
   }
+  // A new element edited as a form: a draft of its fields at a path no
+  // element has, sent with the list once saved. Its key may name an element
+  // already there: the draft patches it then.
+  const form = $derived(leaf.schema.items?.ui?.form === true);
+  // svelte-ignore state_referenced_locally
+  const NEW = `${leaf.path}/+`;
+  let fresh: { sec: ReturnType<typeof buildSection>; values: Record<string, unknown> } | null = $state.raw(null);
+  let box: HTMLElement | undefined = $state();
+  async function begin(values: Record<string, unknown>) {
+    fresh = { sec: detail(NEW), values };
+    await tick();
+    // Focus: the first empty field; once a suggestion filled some, the first
+    // empty secret (a network's password).
+    const empty = cols.filter((c) => c.editable && !(`${NEW}/${c.path}` in values));
+    const f = (empty.length < cols.length && empty.find((c) => c.secret)) || empty[0];
+    if (f) box?.querySelector<HTMLElement>(`#t${`${NEW}/${f.path}`.replace(/[^\w-]/g, '_')}`)?.focus();
+  }
+  async function create(patch: Record<string, unknown> | null) {
+    if (!patch) return void (fresh = null);
+    const next = copy();
+    const k = key ? patch[key] : undefined;
+    const i = key ? next.findIndex((e) => isObject(e) && e[key] === k) : -1;
+    if (i < 0) next.push(patch);
+    else next[i] = patch;
+    if ((await session.store.write(leaf.path, strip(next))).status !== 'ok') return;
+    fresh = found = null;
+    if (key) open = String(k);
+  }
+
+  // Suggestions (ui.suggest): the rows an action replies (a Wi-Fi scan's
+  // networks), each a new element's draft with the fields of the same names.
+  // svelte-ignore state_referenced_locally
+  const via = leaf.suggest;
+  let found: Record<string, unknown>[] | null = $state(null);
+  let looking = $state(false);
+  const named = $derived(cols.find((c) => c.path === key) ?? cols[0]);
+  const saved = (k: unknown) => !!key && rows.some((e) => isObject(e) && e[key] === k);
+  const dbm = (r: Record<string, unknown>) => (typeof r.rssi === 'number' ? `${r.rssi} dBm` : '');
+  async function look() {
+    looking = true;
+    const r = await session.store.call(via!, null, session.schemaAt(via!)?.deferred ? DEFERRED_TIMEOUT_MS : undefined);
+    looking = false;
+    found = r.status === 'ok' && Array.isArray(r.body) ? r.body.filter((x) => isObject(x) && typeof cell(x, named) === 'string' && cell(x, named) !== '') : null;
+  }
+  function pick(r: Record<string, unknown>) {
+    const k = cell(r, named);
+    if (saved(k)) return void ((open = String(k)), (found = null));
+    const values: Record<string, unknown> = {};
+    for (const c of cols) {
+      const v = cell(r, c);
+      if (c.editable && v != null && typeof v !== 'object' && (c.type === 'string') === (typeof v === 'string')) values[`${NEW}/${c.path}`] = v;
+    }
+    begin(values);
+  }
+
   // The element's controls, built when it opens; its paths are on screen,
   // so errors show on its fields.
   function detail(path: string) {
@@ -125,13 +186,37 @@
   </span>
 {/snippet}
 
-<!-- Adding: a keyed list's new element needs its key first. -->
+<!-- Adding: a keyed list's new element needs its key first; a form's is a
+     draft. Suggestions: the action's button, then its rows to pick from. -->
 {#snippet adder()}
-  {#if resizable}
+  {#if fresh}
+    <div class="new" bind:this={box}><Section sec={fresh.sec} save={create} values={fresh.values} /></div>
+  {:else if resizable}
     <form class="add" onsubmit={(e) => (e.preventDefault(), add())}>
-      {#if key}<input bind:value={newKey} required placeholder={cols.find((c) => c.path === key)?.label ?? key} aria-label={t('New')} {disabled} />{/if}
+      {#if key && !form}<input bind:value={newKey} required placeholder={named?.label ?? key} aria-label={t('New')} {disabled} />{/if}
       <button disabled={disabled || full}><Icon name="plus" /> {full ? t('Add (max {n})', { n: leaf.maxSize! }) : t('Add')}</button>
+      {#if via}
+        <button type="button" disabled={disabled || looking} aria-busy={looking} onclick={look}>
+          {session.schemaAt(via)?.label ?? humanize(via.slice(via.lastIndexOf('/') + 1))}{looking ? '…' : ''}
+        </button>
+      {/if}
     </form>
+    {#if via && session.store.errors[via]}<p class="error" role="alert">{session.store.errors[via]}</p>{/if}
+    {#if found}
+      <div class="list">
+        {#each found as r, i (i)}
+          {@const k = String(cell(r, named))}
+          <button type="button" class="quiet pick" {disabled} onclick={() => pick(r)}>
+            <span class="name">{k}</span>
+            {#if r.secure === true}<Icon name="lock" />{/if}
+            <span class="muted">{dbm(r)}</span>
+            {#if saved(k)}<span class="saved" title={t('Saved')}><Icon name="check" /></span>{/if}
+          </button>
+        {:else}
+          <p class="muted">{t('Nothing found')}</p>
+        {/each}
+      </div>
+    {/if}
   {/if}
 {/snippet}
 
@@ -219,16 +304,10 @@
                     if (n !== undefined) edit(i, c, n);
                   }}
                 />
+              {:else if c.secret}
+                <Secret show={t('Show password')} maxlength={c.maxLength} placeholder="••••••••" {disabled} label="{c.label} {i}" onchange={(e) => edit(i, c, e.currentTarget.value)} />
               {:else}
-                <input
-                  type={c.secret ? 'password' : 'text'}
-                  maxlength={c.maxLength}
-                  placeholder={c.secret ? '••••••••' : undefined}
-                  value={v ?? ''}
-                  {disabled}
-                  aria-label="{c.label} {i}"
-                  onchange={(e) => edit(i, c, e.currentTarget.value)}
-                />
+                <input type="text" maxlength={c.maxLength} value={v ?? ''} {disabled} aria-label="{c.label} {i}" onchange={(e) => edit(i, c, e.currentTarget.value)} />
               {/if}
             </td>
           {/each}
@@ -276,9 +355,8 @@
   td {
     padding: 3px 6px 3px 0;
   }
-  td input[type='number'],
-  td input[type='text'],
-  td input[type='password'] {
+  td input:not([type='checkbox']),
+  td :global(.secret) {
     width: 100%;
     min-width: 6em;
   }
@@ -349,14 +427,38 @@
   .detail {
     padding: 0 12px 10px;
   }
-  .detail > :global(fieldset) {
+  .detail > :global(fieldset),
+  .new > :global(fieldset) {
     margin: 0;
     padding: 0;
     border: 0;
   }
   .add {
     display: flex;
+    flex-wrap: wrap;
     gap: 8px;
+  }
+  .new {
+    padding: 0 12px 10px;
+    border: 1px solid var(--border);
+    border-radius: calc(var(--radius) - 2px);
+  }
+  .pick {
+    justify-content: flex-start;
+    gap: 8px;
+    padding: 0 12px;
+    border-radius: 0;
+    color: var(--muted);
+  }
+  .pick + .pick {
+    border-top: 1px solid var(--border);
+  }
+  .pick .name {
+    color: var(--text);
+  }
+  .saved {
+    margin-left: auto;
+    color: var(--accent);
   }
   .add input {
     flex: 1;

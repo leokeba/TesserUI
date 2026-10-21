@@ -24,6 +24,7 @@
   import { isUnder } from './model/schema';
   import Page from './Page.svelte';
   import Toasts from './Toasts.svelte';
+  import Secret from './widgets/Secret.svelte';
   import { storageGet, storageSet, type Session } from './store/session.svelte';
   import ViewPage from './ViewPage.svelte';
 
@@ -296,20 +297,18 @@
         <h2 id="token-title"><Icon name="lock" /> {t('Authentication')}</h2>
         {#if session.login}
           {#each loginFields as f, i (f.name)}
-            <!-- svelte-ignore a11y_autofocus -->
-            <input
-              autofocus={i === 0}
-              type={f.secret ? 'password' : 'text'}
-              bind:value={creds[f.name]}
-              placeholder={f.label}
-              aria-label={f.label}
-              autocomplete={f.secret ? 'current-password' : 'username'}
-            />
+            {#if f.secret}
+              <!-- svelte-ignore a11y_autofocus -->
+              <Secret show={t('Show password')} autofocus={i === 0} bind:value={creds[f.name]} placeholder={f.label} label={f.label} autocomplete="current-password" />
+            {:else}
+              <!-- svelte-ignore a11y_autofocus -->
+              <input autofocus={i === 0} bind:value={creds[f.name]} placeholder={f.label} aria-label={f.label} autocomplete="username" />
+            {/if}
           {/each}
           {#if loginError}<p class="error" role="alert">{loginError}</p>{/if}
         {:else}
           <p>{t('This node needs a token to make changes.')}</p>
-          <input type="password" bind:value={token} aria-label={t('Token')} autocomplete="current-password" />
+          <Secret show={t('Show password')} bind:value={token} label={t('Token')} autocomplete="current-password" />
         {/if}
         <div class="actions">
           <button type="button" class="quiet" onclick={() => (session.needToken = false)}>{t('Cancel')}</button>

@@ -118,6 +118,17 @@ void describe(tesser::Object& o, Network& n) {
     o.action("join", [] {});  // actions still run in a read-only list
 }
 
+void describe(tesser::Object& o, SavedNetwork& n) {
+    // Saved whole, its password with it: added through a draft.
+    o.ui("form");
+    o.value("ssid", n.ssid).label("Network");
+    o.value("password", n.password).secret();
+    o.value("bssid", n.bssid).label("Access point").ui("placeholder", "any").ui("advanced");
+    auto& s = o.object("static").label("Static IP").ui("collapsed");
+    s.value("enabled", n.fixed).label("Use a static address");
+    s.value("ip", n.ip).label("Address").ui("visibleWhen", "enabled=true");
+}
+
 void describe(tesser::Object& o, Channel& c) {
     o.value("gain", c.gain).range(0, 2).step(0.1);
     o.value("mute", c.mute);
@@ -374,6 +385,35 @@ Demo::Demo()
         tesser::Pending p = call.defer();
         p.reply(std::string(prefix) + "-net");
     });
+    // TesserKIT's Wi-Fi: saved networks, suggested by a scan (ui.suggest)
+    // whose rows are networks by name, strongest first.
+    auto& wifi = system.object("wifi").label("Wi-Fi");
+    wifi.list("networks", saved).key("ssid").maxSize(3).label("Saved networks").ui("suggest", "scan");
+    wifi.action("scan", [](tesser::Call& call) {
+            tesser::Pending p = call.defer();
+            p.replyWith([](tesser::JsonWriter& w) {
+                const struct {
+                    const char* ssid;
+                    int rssi;
+                    bool secure;
+                } rows[] = {{"home", -48, true}, {"lab", -60, true}, {"cafe", -71, false}};
+                w.beginArray();
+                for (const auto& r : rows) {
+                    w.beginObject();
+                    w.key("ssid");
+                    w.string(r.ssid);
+                    w.key("rssi");
+                    w.integer(r.rssi);
+                    w.key("channel");
+                    w.integer(6);
+                    w.key("secure");
+                    w.boolean(r.secure);
+                    w.endObject();
+                }
+                w.endArray();
+            });
+        })
+        .label("Scan");
     // A log, like TesserKIT's /sys/log: one ESP-IDF line per event.
     log = &system.event("log").label("Log").ui("widget", "log").ui("lines", 200);
     // Public: a node requires its ancestors' levels, so sign-in can't live

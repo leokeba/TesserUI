@@ -85,6 +85,15 @@ struct Network {
     int rssi = 0;
 };
 
+// A saved Wi-Fi network (TesserKIT's): edited as a form, added from a scan.
+struct SavedNetwork {
+    std::string ssid;
+    std::string password;
+    std::string bssid;
+    bool fixed = false;  // static/enabled
+    std::string ip;
+};
+
 struct Channel {
     double gain = 1.0;
     bool mute = false;
@@ -170,6 +179,7 @@ struct Demo {
     Channel ch2{0.5, true};
     std::vector<Slot> schedule{{7, true, "Morning", 12}, {19, false, "Evening", 0}};
     std::vector<Network> networks{{"home", -48}, {"cafe", -71}};
+    std::vector<SavedNetwork> saved{{"home", "hunter2", "", false, ""}};  // /system/wifi/networks
     std::string raw = "{\"curve\":[0,10,40,100]}";
     // widgets: overrides reachable only through hints
     bool sw = true;

@@ -8,8 +8,8 @@
   let { item }: { item: Item } = $props();
 </script>
 
-{#if item.hidden}
-  <!-- read, never shown -->
+{#if item.hidden || (item.kind === 'leaf' && item.suggests)}
+  <!-- read, never shown; or drawn by the list it suggests elements of -->
 {:else if item.kind === 'section'}
   <Section sec={item} />
 {:else if item.kind === 'link'}

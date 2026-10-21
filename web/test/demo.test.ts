@@ -124,6 +124,10 @@ describe('demo: widgets', () => {
       ['password', 'password'],
     ]);
     expect(find('/account/whoami')?.hidden).toBe(true);
+    // Saved Wi-Fi networks: elements edited as forms (a list, not a table),
+    // suggested by the scan, which the list draws instead of a button.
+    expect(leaf('/system/wifi/networks')).toMatchObject({ widget: 'list', key: 'ssid', suggest: '/system/wifi/scan' });
+    expect(leaf('/system/wifi/scan')).toMatchObject({ suggests: '/system/wifi/networks', hidden: false });
     expect(leaf('/tables/offsets')).toMatchObject({ widget: 'chart', unit: '°', fixed: true, editable: false });
     expect(leaf('/tables/gains')).toMatchObject({ widget: 'table', editable: true, maxSize: 6, fixed: false });
     expect(leaf('/tables/gains').columns?.[0]).toMatchObject({ widget: 'slider', min: 0, max: 100 });

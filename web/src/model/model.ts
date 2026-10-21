@@ -118,6 +118,10 @@ export interface Leaf extends Base {
   reorder?: boolean;
   // Keyed lists: the field naming each row.
   key?: string;
+  // Lists: the action whose reply rows suggest new elements (ui.suggest).
+  suggest?: string;
+  // That action: drawn by its list, not as a button of its own (web only).
+  suggests?: string;
   // Lists: the file nodes of each element (paths relative to it), on its line.
   files?: Leaf[];
   // Files: downloadable, and the type of what they hold.
@@ -314,6 +318,8 @@ export function buildLeaf(name: string, path: string, s: Schema, parent: string,
       leaf.maxSize = s.maxSize;
       const cols = (leaf.columns = s.items ? columns(s.items, '') : []);
       if (s.key) leaf.key = s.key;
+      const suggest = uiStr(s, 'suggest');
+      if (suggest && leaf.editable) leaf.suggest = resolvePath(suggest, parent, nodeRoot);
       // An indexed list's moved rows would leave their unwritten fields
       // (read-only, secret) behind at their index: only keyed lists move.
       if (leaf.editable && s.key && ui(s, 'reorder') === true) leaf.reorder = true;
@@ -322,11 +328,11 @@ export function buildLeaf(name: string, path: string, s: Schema, parent: string,
       if (files.length) leaf.files = files.map(([name, c]) => buildLeaf(name, name, c, ''));
       // A row of a few short fields fits a table; anything more (nested
       // objects, conditions, wider widgets, actions and files, which a table
-      // has no cell for) is one line per element that opens into the
-      // element's own controls.
+      // has no cell for, and elements edited as forms) is one line per
+      // element that opens into the element's own controls.
       const actions = children.some(([, c]) => c.type === 'action');
       const compact =
-        !actions && !files.length && cols.length <= 3 && cols.every((c) => !c.path.includes('/') && !c.visibleWhen && !c.optionsFrom && TABLE_CELLS.includes(c.widget));
+        !actions && !files.length && !(s.items && ui(s.items, 'form')) && cols.length <= 3 && cols.every((c) => !c.path.includes('/') && !c.visibleWhen && !c.optionsFrom && TABLE_CELLS.includes(c.widget));
       leaf.widget = uiStr(s, 'widget') === 'list' || (!compact && uiStr(s, 'widget') !== 'table') ? 'list' : 'table';
       return leaf;
     }
@@ -518,6 +524,9 @@ function section(name: string, path: string, s: Schema, level: number, parent: s
     (item.advanced ? sec.advancedItems : sec.items).push(item);
   }
   inherited = above;
+  // An action suggesting a sibling list's elements is drawn by the list.
+  const all = [...sec.items, ...sec.advancedItems];
+  for (const l of all) if (l.kind === 'leaf' && l.suggest) for (const a of all) if (a.path === l.suggest && a.kind === 'leaf' && a.schema.type === 'action') a.suggests = l.path;
   if (sec.form) {
     const actions = sec.items.filter((i): i is Leaf => i.kind === 'leaf' && i.schema.type === 'action');
     const submit = actions.find((a) => a.submit) ?? actions[0];
@@ -580,7 +589,7 @@ export function buildPage(s: Schema, path: string, root = '/', t: (text: string)
     } else if (item.kind === 'leaf' && (item.widget === 'list' || item.widget === 'table') && !item.advanced) {
       // A list is a card of its own, titled by it.
       page.cards.push({ ...first, path: item.path, label: item.label, description: item.description, items: [{ ...item, label: '' }], advancedItems: [] });
-    } else if (item.kind === 'leaf' && item.widget === 'button' && !item.value && !item.advanced && !item.hidden && !item.visibleWhen) {
+    } else if (item.kind === 'leaf' && item.widget === 'button' && !item.value && !item.advanced && !item.hidden && !item.visibleWhen && !item.suggests) {
       page.actions.push(item);
     } else {
       (item.advanced ? first.advancedItems : first.items).push(item);

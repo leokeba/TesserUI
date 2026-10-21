@@ -203,6 +203,94 @@ test('conditions and forms', async ({ page }) => {
   await expect(row(page, 'Ssid').locator('input')).toHaveValue('field-net');
 });
 
+test('a password shows on demand', async ({ page }) => {
+  await open(page, '#/settings');
+  const password = row(page, 'Password');
+  await expect(password.locator('input')).toHaveAttribute('type', 'password');
+  await password.getByRole('button', { name: 'Show password' }).click();
+  await expect(password.locator('input')).toHaveAttribute('type', 'text');
+  await expect(password.getByRole('button', { name: 'Show password' })).toHaveAttribute('aria-pressed', 'true');
+});
+
+// Elements edited as forms (ui.form): each element's edits are a draft sent
+// as one patch; a new one is a draft too, sent with the list on Save, or
+// filled from the scan's rows (ui.suggest). Nothing is written before.
+test('a list of forms: drafts, and new elements from suggestions', async ({ page }) => {
+  const sent: { path: string; body: unknown }[] = [];
+  page.on('websocket', (ws) =>
+    ws.on('framesent', (f) => {
+      const m = typeof f.payload === 'string' ? JSON.parse(f.payload) : null;
+      if (m?.op === 'set' && m.path.startsWith('/system/wifi')) sent.push(m);
+    }),
+  );
+  await open(page, '#/system');
+  const wifi = card(page, 'Wi-Fi');
+  const items = wifi.locator('.lv .item');
+  await expect(items).toHaveCount(1);
+  // The scan is the list's, not a button of its own.
+  await expect(wifi.getByRole('button', { name: 'Scan' })).toHaveCount(1);
+
+  // A saved element: its conditions follow the draft.
+  await items.first().locator('.head').click();
+  const detail = wifi.locator('.detail');
+  await detail.getByText('Static IP').click();
+  await page.getByRole('switch', { name: 'Use a static address' }).click();
+  const address = page.getByRole('textbox', { name: 'Address', exact: true });
+  await address.fill('192.168.1.80');
+  await address.press('Enter');
+  expect(sent).toEqual([]);
+  await detail.getByRole('button', { name: 'Apply' }).click();
+  await expect(detail.locator('.form-actions span')).toHaveCount(0);
+  expect(sent).toEqual([expect.objectContaining({ path: '/system/wifi/networks/home', body: { static: { enabled: true, ip: '192.168.1.80' } } })]);
+  await items.first().locator('.head').click();
+
+  // A new one: the key field first; Save sends the list with it whole, the
+  // others without their unread passwords.
+  await wifi.getByRole('button', { name: /^Add/ }).click();
+  const draft = wifi.locator('.new');
+  await expect(wifi.getByRole('textbox', { name: /^Network/ })).toBeFocused();
+  await expect(draft.getByRole('button', { name: 'Save' })).toBeDisabled();
+  await wifi.getByRole('textbox', { name: /^Network/ }).fill('office');
+  await draft.getByRole('textbox', { name: 'Password', exact: true }).fill('secret1');
+  await draft.getByRole('button', { name: 'Save' }).click();
+  await expect(items).toHaveCount(2);
+  expect(sent.length).toBe(2);
+  expect(sent[1].path).toBe('/system/wifi/networks');
+  expect((sent[1].body as Record<string, unknown>[]).map((e) => [e.ssid, e.password])).toEqual([
+    ['home', undefined],
+    ['office', 'secret1'],
+  ]);
+  await expect(items.nth(1)).toHaveClass(/open/);
+  await items.nth(1).locator('.head').click();
+
+  // Suggestions: the scan's rows, the saved one marked; picking one fills
+  // its name and asks for its password. Cancel goes back to them.
+  await wifi.getByRole('button', { name: 'Scan' }).click();
+  const picks = wifi.locator('.pick');
+  await expect(picks).toHaveText([/home/, /lab/, /cafe/]);
+  await expect(picks.nth(0).locator('.saved')).toBeVisible();
+  await expect(picks.nth(1)).toContainText('-60 dBm');
+  await picks.nth(2).click();
+  await expect(wifi.getByRole('textbox', { name: /^Network/ })).toHaveValue('cafe');
+  await draft.getByRole('button', { name: 'Cancel' }).click();
+  await picks.nth(1).click();
+  await expect(wifi.getByRole('textbox', { name: /^Network/ })).toHaveValue('lab');
+  await expect(draft.getByRole('textbox', { name: 'Password', exact: true })).toBeFocused();
+  await page.keyboard.type('secret2');
+  await draft.getByRole('button', { name: 'Save' }).click();
+  await expect(items).toHaveCount(3);
+  expect(sent[2]).toMatchObject({ path: '/system/wifi/scan', body: null });
+  expect((sent[3].body as Record<string, unknown>[])[2]).toEqual({ ssid: 'lab', password: 'secret2' });
+  await expect(picks).toHaveCount(0);
+  // A saved one opens.
+  await items.nth(2).locator('.head').click();
+  await wifi.getByRole('button', { name: 'Scan' }).click();
+  await picks.first().click();
+  await expect(items.first()).toHaveClass(/open/);
+  await expect(draft).toHaveCount(0);
+  expect(sent.length).toBe(5);
+});
+
 test("a select of a keyed list's keys", async ({ page }) => {
   await open(page, '#/widgets');
   const select = row(page, 'Source').locator('select');

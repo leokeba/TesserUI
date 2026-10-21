@@ -1722,6 +1722,125 @@
       "field": "text"
      },
      {
+      "name": "wifi",
+      "path": "/system/wifi",
+      "label": "Wi-Fi",
+      "advanced": false,
+      "hidden": false,
+      "access": "admin",
+      "kind": "section",
+      "level": 2,
+      "items": [
+       {
+        "name": "networks",
+        "path": "/system/wifi/networks",
+        "label": "Saved networks",
+        "advanced": false,
+        "hidden": false,
+        "access": "admin",
+        "kind": "leaf",
+        "widget": "list",
+        "type": "list",
+        "editable": true,
+        "maxSize": 3,
+        "columns": [
+         {
+          "name": "ssid",
+          "path": "ssid",
+          "label": "Network",
+          "advanced": false,
+          "hidden": false,
+          "access": "admin",
+          "kind": "leaf",
+          "widget": "text",
+          "type": "string",
+          "editable": true
+         },
+         {
+          "name": "password",
+          "path": "password",
+          "label": "Password",
+          "advanced": false,
+          "hidden": false,
+          "access": "admin",
+          "kind": "leaf",
+          "widget": "password",
+          "type": "string",
+          "editable": true,
+          "secret": true
+         },
+         {
+          "name": "bssid",
+          "path": "bssid",
+          "label": "Access point",
+          "advanced": true,
+          "hidden": false,
+          "access": "admin",
+          "kind": "leaf",
+          "widget": "text",
+          "type": "string",
+          "editable": true,
+          "placeholder": "any"
+         },
+         {
+          "name": "enabled",
+          "path": "static/enabled",
+          "label": "Use a static address",
+          "advanced": false,
+          "hidden": false,
+          "access": "admin",
+          "kind": "leaf",
+          "widget": "toggle",
+          "type": "boolean",
+          "editable": true
+         },
+         {
+          "name": "ip",
+          "path": "static/ip",
+          "label": "Address",
+          "advanced": false,
+          "hidden": false,
+          "access": "admin",
+          "visibleWhen": [
+           {
+            "path": "/enabled",
+            "equal": true,
+            "literal": "true"
+           }
+          ],
+          "kind": "leaf",
+          "widget": "text",
+          "type": "string",
+          "editable": true
+         }
+        ],
+        "key": "ssid",
+        "suggest": "/system/wifi/scan"
+       },
+       {
+        "name": "scan",
+        "path": "/system/wifi/scan",
+        "label": "Scan",
+        "advanced": false,
+        "hidden": false,
+        "access": "admin",
+        "kind": "leaf",
+        "widget": "button",
+        "type": "action",
+        "editable": false,
+        "deferred": true,
+        "submit": false,
+        "suggests": "/system/wifi/networks"
+       }
+      ],
+      "advancedItems": [],
+      "lazy": false,
+      "tabs": false,
+      "inline": false,
+      "collapsed": false,
+      "form": false
+     },
+     {
       "name": "log",
       "path": "/system/log",
       "label": "Log",
@@ -3924,6 +4043,125 @@
      "inline": false,
      "collapsed": false,
      "form": false
+    },
+    {
+     "name": "wifi",
+     "path": "/system/wifi",
+     "label": "Wi-Fi",
+     "advanced": false,
+     "hidden": false,
+     "access": "admin",
+     "kind": "section",
+     "level": 1,
+     "items": [
+      {
+       "name": "networks",
+       "path": "/system/wifi/networks",
+       "label": "Saved networks",
+       "advanced": false,
+       "hidden": false,
+       "access": "admin",
+       "kind": "leaf",
+       "widget": "list",
+       "type": "list",
+       "editable": true,
+       "maxSize": 3,
+       "columns": [
+        {
+         "name": "ssid",
+         "path": "ssid",
+         "label": "Network",
+         "advanced": false,
+         "hidden": false,
+         "access": "admin",
+         "kind": "leaf",
+         "widget": "text",
+         "type": "string",
+         "editable": true
+        },
+        {
+         "name": "password",
+         "path": "password",
+         "label": "Password",
+         "advanced": false,
+         "hidden": false,
+         "access": "admin",
+         "kind": "leaf",
+         "widget": "password",
+         "type": "string",
+         "editable": true,
+         "secret": true
+        },
+        {
+         "name": "bssid",
+         "path": "bssid",
+         "label": "Access point",
+         "advanced": true,
+         "hidden": false,
+         "access": "admin",
+         "kind": "leaf",
+         "widget": "text",
+         "type": "string",
+         "editable": true,
+         "placeholder": "any"
+        },
+        {
+         "name": "enabled",
+         "path": "static/enabled",
+         "label": "Use a static address",
+         "advanced": false,
+         "hidden": false,
+         "access": "admin",
+         "kind": "leaf",
+         "widget": "toggle",
+         "type": "boolean",
+         "editable": true
+        },
+        {
+         "name": "ip",
+         "path": "static/ip",
+         "label": "Address",
+         "advanced": false,
+         "hidden": false,
+         "access": "admin",
+         "visibleWhen": [
+          {
+           "path": "/enabled",
+           "equal": true,
+           "literal": "true"
+          }
+         ],
+         "kind": "leaf",
+         "widget": "text",
+         "type": "string",
+         "editable": true
+        }
+       ],
+       "key": "ssid",
+       "suggest": "/system/wifi/scan"
+      },
+      {
+       "name": "scan",
+       "path": "/system/wifi/scan",
+       "label": "Scan",
+       "advanced": false,
+       "hidden": false,
+       "access": "admin",
+       "kind": "leaf",
+       "widget": "button",
+       "type": "action",
+       "editable": false,
+       "deferred": true,
+       "submit": false,
+       "suggests": "/system/wifi/networks"
+      }
+     ],
+     "advancedItems": [],
+     "lazy": false,
+     "tabs": false,
+     "inline": false,
+     "collapsed": false,
+     "form": false
     }
    ],
    "actions": [
@@ -3944,7 +4182,7 @@
     }
    ],
    "columns": 3,
-   "depth": 1
+   "depth": 4
   },
   "/account": {
    "path": "/account",

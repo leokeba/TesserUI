@@ -22,6 +22,9 @@ export class Draft {
 }
 
 export const DRAFT = Symbol('draft');
+// What conditions read (DESIGN.md §5.3): in a form, its draft first.
+export const reader = (store: { get(p: string): unknown }, draft?: Draft | null) => (p: string) =>
+  draft && p in draft.values ? draft.values[p] : store.get(p);
 // Whether a section's content is shown (no closed group above it): a
 // function, for keep-alives (DESIGN.md §7.4).
 export const SHOWN = Symbol('shown');

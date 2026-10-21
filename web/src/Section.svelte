@@ -1,6 +1,6 @@
 <script lang="ts">
   import { getContext, setContext } from 'svelte';
-  import { useSession, Draft, DRAFT, SHOWN } from './shared.svelte';
+  import { useSession, reader, Draft, DRAFT, SHOWN } from './shared.svelte';
   import { isObject } from './client/json';
   import Icon from './Icon.svelte';
   import Item from './Item.svelte';
@@ -9,13 +9,16 @@
   import { segments } from './model/schema';
   import EventList from './widgets/EventList.svelte';
 
-  let { sec }: { sec: Section } = $props();
+  // save: a new list element's draft (DESIGN.md §4): Save gives it the
+  // element, Cancel null; `values` fill it to begin with.
+  let { sec, save, values }: { sec: Section; save?: (patch: Record<string, unknown> | null) => unknown; values?: Record<string, unknown> } = $props();
   const session = useSession();
   const store = session.store;
   const t = (text: string, vars?: Record<string, string | number>) => session.t(text, vars);
 
-  const visible = $derived(!sec.visibleWhen || holds(sec.visibleWhen, (p) => store.get(p)));
-  const enabled = $derived(!sec.enabledWhen || holds(sec.enabledWhen, (p) => store.get(p)));
+  const get = reader(store, getContext<Draft | undefined>(DRAFT));
+  const visible = $derived(!sec.visibleWhen || holds(sec.visibleWhen, get));
+  const enabled = $derived(!sec.enabledWhen || holds(sec.enabledWhen, get));
   const foldable = $derived(sec.collapsed || sec.level >= 3);
   // Groups start open unless collapsed; one whose schema isn't loaded yet
   // (the page's depth cut it) loads when open.
@@ -35,8 +38,10 @@
   // Forms (ui.form): rows edit a local draft; submit sends one patch with
   // the edited values and the submit action (DESIGN.md §7.4).
   // svelte-ignore state_referenced_locally
-  const draft = sec.form ? new Draft() : null;
+  const draft = sec.form || save ? new Draft() : null;
   if (draft) setContext(DRAFT, draft);
+  // svelte-ignore state_referenced_locally
+  if (draft && values) draft.values = values;
   // Shown: not inside a closed group (keep-alives stop there).
   const above = getContext<(() => boolean) | undefined>(SHOWN);
   setContext(SHOWN, () => (!foldable || open) && (above?.() ?? true));
@@ -51,6 +56,11 @@
       let o = patch;
       for (const n of names.slice(0, -1)) o = (o[n] ??= {}) as Record<string, unknown>;
       o[names[names.length - 1]] = v;
+    }
+    if (save) {
+      busy = true;
+      await save(patch);
+      return void (busy = false);
     }
     if (submitAction) {
       if (submitAction.confirm && !confirm(submitAction.confirm)) return;
@@ -108,10 +118,10 @@
   {/if}
   {#if draft}
     <div class="form-actions">
-      {#if draft.size}<span class="muted">{t('{n} modified', { n: draft.size })}</span>{/if}
-      <button class="quiet" disabled={!draft.size || busy} onclick={() => (draft.values = {})}>{t('Reset')}</button>
-      <button class={submitAction?.style ?? 'primary'} disabled={busy || session.state !== 'open' || !enabled || !session.can(submitAction?.access ?? sec.access)} onclick={submit}>
-        {submitAction?.label ?? t('Apply')}
+      {#if draft.size && !save}<span class="muted">{t('{n} modified', { n: draft.size })}</span>{/if}
+      <button class="quiet" disabled={!save && (!draft.size || busy)} onclick={() => (save ? save(null) : (draft.values = {}))}>{t(save ? 'Cancel' : 'Reset')}</button>
+      <button class={submitAction?.style ?? 'primary'} disabled={busy || session.state !== 'open' || !enabled || !session.can(submitAction?.access ?? sec.access) || (save && !draft.size)} onclick={submit}>
+        {save ? t('Save') : (submitAction?.label ?? t('Apply'))}
       </button>
     </div>
   {/if}
