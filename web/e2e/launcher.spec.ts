@@ -100,6 +100,30 @@ test('the bridge lists the nodes it finds, and serves them live', async ({ page 
   await expect(temperature).not.toHaveText(first!, { timeout: 8000 });
 });
 
+// A node's own scripts run beside every saved node's token: only for the
+// nodes the user added or opened, not for every node the bridge finds
+// (DESIGN.md §9.8). Closing the shown connection doesn't show one.
+test("a node the bridge found runs its scripts only once opened", async ({ page }) => {
+  const scripts: string[] = [];
+  page.on('request', (r) => r.url().endsWith('/ext/sun-dial.js') && scripts.push(r.url()));
+  await page.goto('/?bridge=http://localhost:8766');
+  await page.getByRole('button', { name: 'Look for the bridge' }).click();
+  const found = page.locator('nav.tabs').getByRole('link', { name: 'TesserUI demo' });
+  await expect(found).toBeVisible();
+  await page.getByLabel('Address').fill('localhost:8091');
+  await page.getByRole('button', { name: 'Connect' }).click();
+  await expect(page.locator('.state')).toHaveText('Live');
+  await page.locator('header').getByRole('button', { name: 'Close this connection' }).click();
+  await expect(page.locator('h2')).toHaveText('Connect to a node');
+  expect(scripts).toEqual([]);
+
+  await found.click();
+  await expect(page.locator('.state')).toHaveText('Live');
+  await page.evaluate(() => (location.hash = '#/v/sky'));
+  await expect(page.locator('x-sun-dial p')).toContainText('target 180° / 45°');
+  expect(scripts).toEqual(['http://localhost:8766/n/localhost%3A8091/ext/sun-dial.js']);
+});
+
 test('through the bridge over HTTP too', async ({ page }) => {
   await page.goto(`/?api=${encodeURIComponent('http://localhost:8766/n/localhost:8091/api')}&ws=`);
   await expect(page.locator('.state')).toHaveText('Polling');

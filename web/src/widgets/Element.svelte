@@ -76,12 +76,13 @@
   // against the node, i.e. its API's URL, and a path from its root against
   // the folder above its API: the node's root, also behind the bridge's
   // proxy (/n/<host>/api, DESIGN.md §9.8). Only paths on the node: a URL
-  // elsewhere is refused, like a script that fails to load.
+  // elsewhere is refused, like a script that fails to load; so is any, in a
+  // launcher, of a node the user neither added nor opened.
   // svelte-ignore state_referenced_locally
   const urls = [...(session.config.scripts ?? []).map((u) => new URL(u, location.href).href)];
   // svelte-ignore state_referenced_locally
   const script = leaf.script;
-  const own = script && nodeScript(script, session.apiUrl());
+  const own = script && session.nodeScripts && nodeScript(script, session.apiUrl());
   if (script && !own) console.error(`<${tag}>: ui.script refused:`, script), (failed = !customElements.get(tag));
   for (const url of urls) load(url).then((ok) => ok || customElements.get(tag) || (failed = true));
   if (own) {

@@ -108,6 +108,10 @@ export class Session {
   // which apply to all reaches too.
   only: string[] | null = $state(null);
   others?: (rel: string, body: unknown) => Promise<[string, Applied][]>[];
+  // Whether its nodes' own scripts (ui.script, DESIGN.md §9.8) may run on
+  // this page: in a launcher, not for a node the bridge found until the
+  // user opens it.
+  nodeScripts = true;
   // The hash of the node's schema as this client reads it (view=hash), for
   // its schema cache; null when the node doesn't say, or once its tree
   // changed (a peer's stub).

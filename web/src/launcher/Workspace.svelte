@@ -3,7 +3,9 @@
   // each a Session, every node of every connection a tab. The connections
   // are remembered for the next visit (USB ports open on a click), and the
   // nodes the bridge finds join by themselves. One device reached several ways is one
-  // tab (devices.ts).
+  // tab (devices.ts). A node's own scripts (ui.script) run only for the
+  // connections the user added or opened, not for every node the bridge
+  // finds: they run beside every saved node's token (DESIGN.md §9.8).
   import App, { type Tab } from '../App.svelte';
   import { NUS_SERVICE } from '../client/envelope';
   import { HttpClient } from '../client/http';
@@ -123,6 +125,7 @@
     const known = conns.find((c) => c.key === key);
     if (known) return known;
     const s = new Session(resolve({ ...options, api: url, ws, transport: undefined }));
+    s.nodeScripts = saved;
     setup(s);
     conns.push({ key, session: s, saved: saved ? { key, api: url, ws } : null, hash: '' });
     remember();
@@ -158,13 +161,21 @@
     storageSet(ACTIVE, c?.key ?? null);
   }
 
+  // Chosen by the user: its node's scripts may run.
+  function pick(c: Conn, hash?: string) {
+    if (c.session) c.session.nodeScripts = true;
+    activate(c, hash);
+  }
+
+  // The shown one closed, the next the user added or opened is shown.
   function close(c: Conn) {
     c.session?.close();
     dismissed.add(c.key);
     conns.splice(conns.indexOf(c), 1);
     remember();
+    if (active !== c) return;
     active = null;
-    activate(conns.find((x) => x.session) ?? null);
+    activate(conns.find((x) => x.session?.nodeScripts) ?? null);
   }
 
   // A remembered port, or a device that didn't open by itself, opens on a
@@ -256,7 +267,7 @@
 
   function tabsOf(c: Conn, paths: string[] | null): Tab[] {
     const s = c.session;
-    if (!s || !paths) return [{ key: c.key, label: label(c), off: c.live ? s?.state !== 'open' : !c.peek?.ok, go: () => (s ? activate(c) : reopen(c)) }];
+    if (!s || !paths) return [{ key: c.key, label: label(c), off: c.live ? s?.state !== 'open' : !c.peek?.ok, go: () => (s ? pick(c) : reopen(c)) }];
     return paths.map((p) => {
       const stub = s.schemaAt(p);
       return {
@@ -265,7 +276,7 @@
         off: p === '/' ? s.state !== 'open' : stub?.online === false,
         title: [stub?.id, stub?.route].filter(Boolean).join(' · '),
         mark: shown.all ? s.applied[p] : undefined,
-        go: () => activate(c, `#${p}`),
+        go: () => pick(c, `#${p}`),
       };
     });
   }
