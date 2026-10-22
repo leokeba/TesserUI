@@ -54,6 +54,9 @@ export class Subscriptions {
   // again from `eventsAt`.
   private events: 'off' | 'on' | 'failed' | 'none' = 'off';
   private eventsAt = 0;
+  // A page hidden for a while gives its subscriptions back (DESIGN.md §7.3):
+  // what it wants is kept, and subscribed again when it wakes.
+  asleep = false;
   // Names of the children of a path, for reading a too-large page in pieces.
   childNames: (path: string) => string[] = () => [];
 
@@ -78,7 +81,7 @@ export class Subscriptions {
       if (!nextKeys.has(k)) {
         this.active.delete(k);
         delete this.store.stale[a.spec.path];
-        if (a.mode === 'sub' && !a.failed) {
+        if (a.mode === 'sub' && !a.failed && !this.asleep) {
           this.client().request({ op: 'unsub', path: a.spec.path });
           // That removed the events subscription too.
           if (a.spec.path === '/' && this.events === 'on') this.events = 'off';
@@ -93,11 +96,12 @@ export class Subscriptions {
       if (mode === 'sub') subs++;
       const a: Active = { spec, mode, failed: false, tries: 0, next: 0, wait: POLL_MS, due: 0, ok: Date.now() };
       this.active.set(k, a);
+      if (this.asleep) continue;
       if (mode === 'sub') this.subscribe(a);
       else this.poll(a);
     }
     // After the page's: they come first within the node's budget.
-    if (this.events === 'off') this.subscribeEvents();
+    if (this.events === 'off' && !this.asleep) this.subscribeEvents();
     this.schedule();
   }
 
@@ -105,6 +109,7 @@ export class Subscriptions {
   // fresh: the node still has them, at a lower level (a line that signed
   // in): replaced.
   renew(fresh = false) {
+    if (this.asleep) return;
     let root = false;
     for (const a of this.active.values()) {
       if (a.mode === 'sub' && fresh && !a.failed) this.client().request({ op: 'unsub', path: a.spec.path });
@@ -140,6 +145,22 @@ export class Subscriptions {
     this.active.clear();
     this.events = 'off';
     this.store.stale = {};
+  }
+
+  // Gives the node back every subscription and the events stream; polls
+  // pause already while the page is hidden.
+  sleep() {
+    if (this.asleep) return;
+    for (const a of this.active.values()) if (a.mode === 'sub' && !a.failed) this.client().request({ op: 'unsub', path: a.spec.path });
+    if (this.events === 'on') this.client().request({ op: 'unsub', path: '/' });
+    if (this.events !== 'none') this.events = 'off';
+    this.asleep = true;
+  }
+
+  // Subscribes again: each snapshot brings what changed meanwhile.
+  wake() {
+    this.asleep = false;
+    this.renew();
   }
 
   stop() {
@@ -195,6 +216,8 @@ export class Subscriptions {
     const { path, keys, depth } = a.spec;
     let r = await this.client().request({ op: 'sub', path, keys, depth, interval: 100 });
     if (!this.isCurrent(a)) return;
+    // Asleep meanwhile: woken, it subscribes again.
+    if (this.asleep) return void (r.status === 'ok' && this.client().request({ op: 'unsub', path }));
     if (r.status === 'too_large') {
       r = await this.client().request({ op: 'sub', path, keys, depth, interval: 100, snapshot: false });
       if (r.status === 'ok') {
@@ -235,6 +258,7 @@ export class Subscriptions {
   private async subscribeEvents() {
     this.events = 'on';
     const r = await this.client().request(EVENTS);
+    if (this.asleep && r.status === 'ok') this.client().request({ op: 'unsub', path: '/' });
     if (this.events !== 'on' || r.status === 'ok') return;
     // Not to be had (a transport that can't deliver them; firmware without
     // streams): not asked for again on this node. Refused (its streams, held

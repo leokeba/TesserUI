@@ -85,6 +85,39 @@ describe.each([1, 2])('reconnection, protocol %i (DESIGN §7.5)', (protocol) => 
     expect(client.features).toEqual(protocol > 1 ? ['info'] : undefined);
   });
 
+  it('gives its subscriptions back while hidden, and takes them again when shown', async () => {
+    const doc = Object.assign(new EventTarget(), { hidden: false });
+    vi.stubGlobal('document', doc);
+    const show = (hidden: boolean) => ((doc.hidden = hidden), doc.dispatchEvent(new Event('visibilitychange')));
+    const { s, client, dev } = node();
+    client.state('open');
+    await settle();
+    s.subs.want([{ path: '/', depth: 1 }]);
+    await settle();
+    vi.useFakeTimers();
+    const sent = () => client.sent.splice(0).map((r) => [r.op, r.path, r.view ?? null].join(' ').trim());
+    sent();
+    // A quick look at another tab: nothing changes.
+    show(true);
+    await vi.advanceTimersByTimeAsync(20000);
+    show(false);
+    show(true);
+    await vi.advanceTimersByTimeAsync(20000);
+    expect(sent()).toEqual([]);
+    // The page's and the events subscription: both at /.
+    await vi.advanceTimersByTimeAsync(10000);
+    expect(sent()).toEqual(['unsub /', 'unsub /']);
+    await vi.advanceTimersByTimeAsync(60000);
+    expect(sent()).toEqual([]);
+    dev.values = { lamp: false, old: 4 };
+    show(false);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(sent()).toEqual(['get / info', ...(protocol > 1 ? [] : ['get / hash', 'get / schema']), 'sub /', 'sub /']);
+    expect(s.store.values).toEqual({ lamp: false, old: 4 });
+    s.close();
+    vi.useRealTimers();
+  });
+
   it('reads everything again after a new firmware (another hash)', async () => {
     const { s, client, dev } = node();
     client.state('open');

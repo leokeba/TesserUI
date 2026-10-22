@@ -73,6 +73,10 @@ export interface Applied {
   text?: string;
 }
 
+// A hidden page keeps its subscriptions this long: switching tabs and back
+// doesn't churn them (DESIGN.md §7.3).
+export const HIDDEN_MS = 30000;
+
 const LEVELS: Level[] = ['public', 'user', 'admin'];
 const asLevel = (v: unknown): Level | null => (LEVELS.includes(v as Level) ? (v as Level) : null);
 
@@ -138,7 +142,22 @@ export class Session {
       const s = this.schemaAt(path);
       return Object.keys((s?.type === 'remote' ? s.tree : s)?.children ?? {});
     };
+    globalThis.document?.addEventListener('visibilitychange', this.visibility);
   }
+
+  // Hidden for HIDDEN_MS, the page gives the node its subscriptions and
+  // events stream back; shown again, it takes them (with snapshots of what
+  // changed) once the node is known to be the same one (DESIGN.md §7.3).
+  private hiding: ReturnType<typeof setTimeout> | undefined;
+  private visibility = () => {
+    clearTimeout(this.hiding);
+    if (document.hidden) this.hiding = setTimeout(() => this.subs.sleep(), HIDDEN_MS);
+    else if (this.subs.asleep) {
+      this.subs.asleep = false;
+      // Down: the connection's return does it.
+      if (this.state === 'open') this.resume();
+    }
+  };
 
   // The interface's text, translated by config.strings; {name} in the text
   // is replaced by vars.name.
@@ -249,6 +268,8 @@ export class Session {
   }
 
   close() {
+    globalThis.document?.removeEventListener('visibilitychange', this.visibility);
+    clearTimeout(this.hiding);
     this.subs.stop();
     this.client?.close();
   }
@@ -328,20 +349,22 @@ export class Session {
       if (s !== 'open' || !wasDown) return;
       // The banner said it was lost.
       if (this.loaded) this.store.toasts.show(this.t('Connected again'), 'ok');
-      // Another device at that address, or the same with new firmware (an
-      // update, a reboot): read again, as on the first connection.
-      const go = async () => {
-        if (this.loaded && (await this.identify()) === this.identity) return this.subs.renew();
-        this.forget();
-        this.subs.forget();
-        this.store.values = {};
-        this.load();
-      };
       // A line forgets its token when it reconnects.
-      if (this.line() && this.token()) this.authLine().then(go);
-      else go();
+      if (this.line() && this.token()) this.authLine().then(() => this.resume());
+      else this.resume();
     });
     client.connect();
+  }
+
+  // After a reconnection, or a long hide: the same node is subscribed
+  // again. Another device at that address, or the same with new firmware
+  // (an update, a reboot), is read again, as on the first connection.
+  private async resume() {
+    if (this.loaded && (await this.identify()) === this.identity) return this.subs.renew();
+    this.forget();
+    this.subs.forget();
+    this.store.values = {};
+    this.load();
   }
 
   // Opening a serial port resets most boards, which answer once booted (a
