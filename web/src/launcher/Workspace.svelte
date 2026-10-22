@@ -210,14 +210,15 @@
   });
   // One events subscription per device (DESIGN.md §9.7.2), which allows two
   // streams: the first live connection to it holds it, and passes its events
-  // to the others reaching it.
+  // to the others reaching it. A device by its id, else by its API's URL.
   $effect(() => {
     const holders = new Map<string, Session>();
     for (const c of conns) {
       const s = c.session;
       if (!s) continue;
       void s.schemaVersion;
-      const id = c.live && s.loaded && s.state === 'open' ? s.root.id : undefined;
+      const network = s.kind === 'ws' || s.kind === 'http';
+      const id = c.live && s.loaded && s.state === 'open' ? (s.root.id ?? (network ? s.apiUrl() : undefined)) : undefined;
       const holder = id ? holders.get(id) : undefined;
       if (id && !holder) holders.set(id, s);
       s.eventsFrom(holder ?? null);
