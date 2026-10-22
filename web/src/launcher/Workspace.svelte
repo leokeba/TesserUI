@@ -208,6 +208,21 @@
       if (!paths.length && !c.saved) close(c);
     }
   });
+  // One events subscription per device (DESIGN.md §9.7.2), which allows two
+  // streams: the first live connection to it holds it, and passes its events
+  // to the others reaching it.
+  $effect(() => {
+    const holders = new Map<string, Session>();
+    for (const c of conns) {
+      const s = c.session;
+      if (!s) continue;
+      void s.schemaVersion;
+      const id = c.live && s.loaded && s.state === 'open' ? s.root.id : undefined;
+      const holder = id ? holders.get(id) : undefined;
+      if (id && !holder) holders.set(id, s);
+      s.eventsFrom(holder ?? null);
+    }
+  });
   // Every connection's remote nodes are labelled from their own roots, as
   // the shown one's are (App), each read once per advertised hash.
   const labelled = new Set<string>();

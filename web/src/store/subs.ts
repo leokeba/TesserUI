@@ -51,8 +51,9 @@ export class Subscriptions {
   private pollTimer: ReturnType<typeof setInterval> | undefined;
   private retryTimer: ReturnType<typeof setInterval> | undefined;
   // The events subscription: 'none' once stopped; one that failed is tried
-  // again from `eventsAt`.
-  private events: 'off' | 'on' | 'failed' | 'none' = 'off';
+  // again from `eventsAt`; 'shared': another connection to the device holds
+  // it (share()).
+  private events: 'off' | 'on' | 'failed' | 'none' | 'shared' = 'off';
   private eventsAt = 0;
   // A page hidden for a while gives its subscriptions back (DESIGN.md §7.3):
   // what it wants is kept, and subscribed again when it wakes.
@@ -117,7 +118,7 @@ export class Subscriptions {
       else this.poll(a);
       root ||= a.mode === 'sub' && a.spec.path === '/';
     }
-    if (this.events === 'none') return;
+    if (this.events === 'none' || this.events === 'shared') return;
     // A page subscription at / was unsubscribed above, and this one with it.
     if (fresh && this.events === 'on' && !root) this.client().request({ op: 'unsub', path: '/' });
     this.subscribeEvents();
@@ -128,10 +129,11 @@ export class Subscriptions {
     for (const a of this.active.values()) if (isUnder(path, a.spec.path)) this.read(a.spec);
   }
 
-  // Whether the page watches `path`: its events are shown there.
-  covers(path: string): boolean {
-    for (const { spec } of this.active.values()) {
-      if (!isUnder(path, spec.path)) continue;
+  // Whether the page watches `path`: its events are shown there. Or, with
+  // `subscribed`, whether a subscription brings them.
+  covers(path: string, subscribed = false): boolean {
+    for (const { spec, mode, failed } of this.active.values()) {
+      if (!isUnder(path, spec.path) || (subscribed && (mode !== 'sub' || failed || this.asleep))) continue;
       const rest = segments(path).slice(segments(spec.path).length);
       if (spec.keys && rest.length && !spec.keys.split(',').includes(rest[0])) continue;
       if (spec.depth === undefined || rest.length <= spec.depth) return true;
@@ -153,8 +155,24 @@ export class Subscriptions {
     if (this.asleep) return;
     for (const a of this.active.values()) if (a.mode === 'sub' && !a.failed) this.client().request({ op: 'unsub', path: a.spec.path });
     if (this.events === 'on') this.client().request({ op: 'unsub', path: '/' });
-    if (this.events !== 'none') this.events = 'off';
+    if (this.events === 'on' || this.events === 'failed') this.events = 'off';
     this.asleep = true;
+  }
+
+  // In a launcher's workspace, another connection to the same device holds
+  // the events subscription and passes its events on (DESIGN.md §9.7.2):
+  // this one gives its own back; or takes it again.
+  share(shared: boolean) {
+    if (shared === (this.events === 'shared') || this.events === 'none') return;
+    const on = this.events === 'on';
+    this.events = shared ? 'shared' : 'off';
+    this.store.noEvents = false;
+    if (on && !this.asleep) {
+      // That removes the page's subscription at / too: taken again.
+      this.client().request({ op: 'unsub', path: '/' });
+      for (const a of this.active.values()) if (a.mode === 'sub' && !a.failed && a.spec.path === '/') this.subscribe(a);
+    }
+    if (!shared && !this.asleep) this.subscribeEvents();
   }
 
   // Subscribes again: each snapshot brings what changed meanwhile.
@@ -258,7 +276,7 @@ export class Subscriptions {
   private async subscribeEvents() {
     this.events = 'on';
     const r = await this.client().request(EVENTS);
-    if (this.asleep && r.status === 'ok') this.client().request({ op: 'unsub', path: '/' });
+    if (r.status === 'ok') this.store.noEvents = false;
     if (this.events !== 'on' || r.status === 'ok') return;
     // Not to be had (a transport that can't deliver them; firmware without
     // streams): not asked for again on this node. Refused (its streams, held
@@ -266,6 +284,7 @@ export class Subscriptions {
     const passing = ['timeout', 'disconnected'].includes(r.status) || (r.status === 'busy' && transient(r));
     this.events = r.status === 'not_allowed' ? 'none' : 'failed';
     this.eventsAt = Date.now() + (passing ? 0 : 60000);
+    this.store.noEvents = r.status === 'busy' && !passing;
   }
 
   // Whether the values came: whole, or in pieces when too large (not for

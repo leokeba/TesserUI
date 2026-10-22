@@ -386,6 +386,58 @@ describe('session: events (DESIGN §7.8)', () => {
     expect(Object.keys(s.store.events)).toEqual(['/lamp']);
     s.close();
   });
+
+  it("are one subscription per device in a launcher's workspace (DESIGN §9.7.2)", async () => {
+    const { Session } = await import('../src/store/session.svelte');
+    const { schemaAt } = await import('../src/model/schema');
+    const connect = async () => {
+      const client = new FakeClient();
+      client.answer = (r) => {
+        if (r.view === 'schema') return { status: 'ok', body: cut(r.path === '/' ? tree : schemaAt(tree, r.path)!, r.depth ?? 99) };
+        return { status: 'ok', body: r.op === 'unsub' ? 1 : null };
+      };
+      const s = new Session({ api: '/api', ws: '/ws', transport: 'ws' });
+      (s as unknown as { use(c: FakeClient): void }).use(client);
+      await s.ensure('/', 3);
+      s.subs.want([{ path: '/lamp' }]);
+      await tick();
+      return { s, client };
+    };
+    const a = await connect();
+    const b = await connect();
+    b.client.sent = [];
+    b.s.eventsFrom(a.s);
+    expect(b.client.sent).toEqual([{ op: 'unsub', path: '/' }]);
+    // b's own subscription brings /lamp's events; a passes on the rest.
+    a.client.push({ op: 'event', path: '/lamp/blinked', body: 1 });
+    a.client.push({ op: 'event', path: '/sys/net/wifi/joined', body: 'Workshop' });
+    await vi.waitFor(() => expect(b.s.store.toasts.list.length).toBe(1));
+    expect(b.s.store.toasts.list[0]).toMatchObject({ kind: 'ok', text: 'Workshop' });
+    // Its holder gone, b takes its own again.
+    b.s.eventsFrom(null);
+    expect(b.client.sent.at(-1)).toBe(EVENTS);
+    a.client.push({ op: 'event', path: '/sys/net/wifi/joined', body: 'Shed' });
+    await tick();
+    expect(b.s.store.toasts.list.length).toBe(1);
+    a.s.close();
+    b.s.close();
+  });
+
+  it('say when the node refused their subscription', async () => {
+    const { client, store } = setup();
+    let refuse = true;
+    client.answer = (r) =>
+      r === EVENTS && refuse ? { status: 'busy', body: { error: 'busy', reason: 'subscription_limit', message: 'too many streams' } } : { status: 'ok', body: null };
+    const subs = new Subscriptions(() => client, store);
+    subs.want([{ path: '/a' }]);
+    await tick();
+    expect(store.noEvents).toBe(true);
+    refuse = false;
+    subs.renew();
+    await tick();
+    expect(store.noEvents).toBe(false);
+    subs.stop();
+  });
 });
 
 describe("session: a view's item a peer lacks", () => {

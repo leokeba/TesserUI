@@ -268,6 +268,7 @@ export class Session {
   }
 
   close() {
+    this.via?.relay.delete(this);
     globalThis.document?.removeEventListener('visibilitychange', this.visibility);
     clearTimeout(this.hiding);
     this.subs.stop();
@@ -516,8 +517,23 @@ export class Session {
     if (r.status === 'ok') this.level = asLevel(isObject(r.body) ? r.body.access : r.body);
   }
 
+  // In a launcher's workspace, the connection holding the events
+  // subscription of this one's device, and those it passes them to
+  // (DESIGN.md §9.7.2).
+  private via: Session | null = null;
+  private relay = new Set<Session>();
+  eventsFrom(holder: Session | null) {
+    if (holder === this.via) return;
+    this.via?.relay.delete(this);
+    this.via = holder;
+    holder?.relay.add(this);
+    this.subs.share(!!holder);
+  }
+
   private notify(n: Notification) {
     if (n.op === 'event') {
+      // Not those a subscription of its own brings.
+      for (const s of this.relay) if (!s.subs.covers(n.path, true)) s.event(n);
       this.event(n);
       return;
     }

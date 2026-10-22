@@ -231,7 +231,11 @@
       {#if nodes.length && !around}
         <button type="button" class="quiet" aria-pressed={tabsOn} title={t('Nodes as tabs')} aria-label={t('Nodes as tabs')} onclick={() => storageSet(TABS, (tabsOn = !tabsOn) ? '1' : '0')}><Icon name="layers" /></button>
       {/if}
-      {#if session.kind}<span class="state {session.state}" role="status"><i></i>{stateText}</span>{/if}
+      {#if session.kind}
+        <span class="state {session.state}" role="status" title={session.store.noEvents ? t('The node refused its events subscription (other pages hold its streams): toasts from outside this page wait for one. Asked again every minute.') : undefined}>
+          <i></i>{stateText}{#if session.store.noEvents && session.state === 'open'}, {t('no events')}{/if}
+        </span>
+      {/if}
       {#if close && session.kind}
         <button type="button" class="quiet" title={t('Close this connection')} aria-label={t('Close this connection')} onclick={close}><Icon name="x" /></button>
       {/if}

@@ -30,6 +30,9 @@ export class Store {
   // what is under them shows as stale.
   stale: Record<string, boolean> = $state({});
   readonly toasts = new Toasts();
+  // The node refused the events subscription (its streams held by other
+  // pages, DESIGN.md §7.8): toasts from elsewhere don't come meanwhile.
+  noEvents = $state(false);
   // Bumped when chart history grows.
   historyTick = $state(0);
 
