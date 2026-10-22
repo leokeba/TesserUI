@@ -168,7 +168,7 @@ jobs:
         run: pnpm check
       - name: Model and store tests
         run: pnpm test
-      - name: Bundle within budget (65 KB gzipped, 80 KB with its chunks)
+      - name: Bundle within budget (65 KB gzipped, 70 KB with its chunk)
         run: pnpm build
       - name: Generated files are up to date (bundle header, embedded element)
         run: git diff --exit-code -- ../src/tesserui/bundle/tesserui_bundle.h ../examples/arduino/CustomWidget/sun_dial.h

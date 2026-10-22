@@ -2,14 +2,14 @@
 // and its chunks (zopfli, which any gzip decoder reads) and the C++ header
 // the node serves them from (src/tesserui/bundle/tesserui_bundle.h, DESIGN.md
 // §9.4), and enforces the budgets (§2): 65 KB for ui.js, what a page loads
-// first, 80 KB with every chunk, what a node's flash holds. `--check` only
+// first, 70 KB with every chunk, what a node's flash holds. `--check` only
 // measures.
 
 import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { gzipAsync } from '@gfx/zopfli';
 
 const BUDGET = 65 * 1024;
-const TOTAL = 80 * 1024;
+const TOTAL = 70 * 1024;
 const web = new URL('../', import.meta.url);
 const dist = new URL('dist/', web);
 const header = new URL('../src/tesserui/bundle/tesserui_bundle.h', web);
