@@ -220,3 +220,51 @@ describe('schema cache (DESIGN §7.2)', () => {
     expect((await open('http://localhost:8091/n/192.168.1.59/api', { type: 'object', label: 'Changed' })).schemaReads).toBe(0);
   });
 });
+
+describe('a serial port’s token is its device’s (DESIGN §9.7)', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  // A board answering view=info with its id, recording the tokens it is
+  // presented.
+  function board(id: string) {
+    const client = Object.assign(new FakeClient(), { kind: 'serial' }) as unknown as FakeClient;
+    const tokens: string[] = [];
+    client.answer = (r: Request) => {
+      if (r.view === 'info') return { status: 'ok', body: { protocol: 2, hash: 'h', id } };
+      if (r.op === 'auth') return tokens.push((r as { token?: string }).token ?? ''), { status: 'ok', body: { access: 'admin' } };
+      if (r.op === 'get') return { status: 'ok', body: { type: 'object', id } };
+      return undefined;
+    };
+    return { client, tokens };
+  }
+
+  it('presents each board its own token, and forgets the one every port shared', async () => {
+    const store = new Map<string, string>([
+      ['tesserui:token:serial', 'any-port'],
+      ['tesserui:token:serial:aaaaaaaaaaaa', 'token-a'],
+    ]);
+    vi.stubGlobal('localStorage', {
+      getItem: (k: string) => store.get(k) ?? null,
+      setItem: (k: string, v: string) => void store.set(k, v),
+      removeItem: (k: string) => void store.delete(k),
+    });
+    const a = board('aaaaaaaaaaaa');
+    const b = board('bbbbbbbbbbbb');
+    const sa = new Session({ api: '/api', ws: null, transport: 'serial' });
+    const sb = new Session({ api: '/api', ws: null, transport: 'serial' });
+    sa.useSerial(a.client);
+    sb.useSerial(b.client);
+    expect(store.has('tesserui:token:serial')).toBe(false);
+    a.client.state('open');
+    b.client.state('open');
+    await vi.waitFor(() => expect(sa.loaded && sb.loaded).toBe(true));
+    expect(a.tokens).toEqual(['token-a']);
+    expect(b.tokens).toEqual([]);
+    expect([sa.signedIn, sb.signedIn]).toEqual([true, false]);
+
+    // Signing in on board B keeps its token by its id.
+    sb.setToken('token-b');
+    expect(store.get('tesserui:token:serial:bbbbbbbbbbbb')).toBe('token-b');
+    expect(store.get('tesserui:token:serial:aaaaaaaaaaaa')).toBe('token-a');
+  });
+});

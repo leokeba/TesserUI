@@ -277,16 +277,23 @@ for (const twin of [false, true]) {
 }
 
 // Lines present the token in an auth envelope (TesserAPI §10.4): the stored
-// one after connecting, an empty one to sign out.
+// one after connecting, an empty one to sign out. A serial port's is its
+// device's, by id (the demo has none), never another board's.
 test('over USB, the token goes in an auth envelope', async ({ page }) => {
   await page.addInitScript(fakeDevices);
-  await page.addInitScript(() => localStorage.setItem('tesserui:token:serial', 'demo-token'));
+  await page.addInitScript(() => {
+    localStorage.setItem('tesserui:token:serial:', 'demo-token');
+    localStorage.setItem('tesserui:token:serial:246f28010203', 'another-board');
+    // Every port's, as kept before: forgotten.
+    localStorage.setItem('tesserui:token:serial', 'any-port');
+  });
   await page.goto('/');
   await page.getByRole('button', { name: 'Choose a port' }).click();
   await expect(page.locator('.brand')).toHaveText('TesserUI demo');
   const auths = () =>
     page.evaluate(() => (window as unknown as { sent: string[] }).sent.filter((l) => l.includes('"op":"auth"')).map((l) => JSON.parse(l).token));
   expect(await auths()).toEqual(['demo-token']);
+  expect(await page.evaluate(() => localStorage.getItem('tesserui:token:serial'))).toBeNull();
   await page.locator('header').getByRole('button', { name: 'Sign out' }).click();
   await expect.poll(auths).toEqual(['demo-token', '']);
   await expect(page.locator('.brand')).toHaveText('TesserUI demo');

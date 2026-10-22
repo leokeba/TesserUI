@@ -289,6 +289,8 @@ export class Session {
 
   private useLine(key: string, client: Client) {
     this.tokenKey = `tesserui:token:${key}`;
+    // Every port's token, before they were kept per device: forgotten.
+    if (key === 'serial') storageSet(this.tokenKey, null);
     this.lineKey = key;
     this.signedIn = !!this.token();
     this.use(client);
@@ -296,6 +298,18 @@ export class Session {
 
   private line() {
     return this.client?.kind === 'serial' || this.client?.kind === 'ble';
+  }
+
+  // A line presents its token again after each connection. A serial port
+  // has no identity of its own (Web Serial gives only its USB ids, which
+  // every board with the same bridge chip shares): its token is its
+  // device's, by the id read first (DESIGN.md §9.7).
+  private async relog() {
+    if (this.lineKey === 'serial') {
+      this.tokenKey = 'tesserui:token:serial:' + (JSON.parse(await this.identify())[1] ?? '');
+      this.signedIn = !!this.token();
+    }
+    if (this.token()) await this.authLine();
   }
 
   // A line (serial, Bluetooth) presents its token in an auth envelope
@@ -351,7 +365,7 @@ export class Session {
       // The banner said it was lost.
       if (this.loaded) this.store.toasts.show(this.t('Connected again'), 'ok');
       // A line forgets its token when it reconnects.
-      if (this.line() && this.token()) this.authLine().then(() => this.resume());
+      if (this.line()) this.relog().then(() => this.resume());
       else this.resume();
     });
     client.connect();
