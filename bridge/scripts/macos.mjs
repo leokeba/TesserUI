@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // The bridge as a macOS executable, for Macs without Node: Bun compiles
 // bridge.mjs with a project's launcher built in (its page and its own files
-// beside it, ui.js, launcher.js and the flasher, from TesserUI's web/dist
+// beside it, ui.js and its chunks, launcher.js and the flasher, from TesserUI's web/dist
 // after `pnpm build` there), its launcher's URL and the repository whose
 // releases it installs.
 // One file per architecture, each zipped so a download keeps it executable.
@@ -61,7 +61,8 @@ for (const f of [page, ...extraFiles.map((f) => resolve(f.path)), join(ui, 'ui.j
 
 // The entry sets what's built in before the bridge starts, which reads it.
 const files = { 'index.html': readFileSync(page, 'utf8') };
-for (const f of ['ui.js', 'launcher.js', ...readdirSync(join(ui, 'flash')).filter((f) => f.endsWith('.js')).map((f) => `flash/${f}`)]) {
+const scripts = (dir) => readdirSync(join(ui, dir)).filter((f) => f.endsWith('.js')).map((f) => `${dir}/${f}`);
+for (const f of ['ui.js', 'launcher.js', ...scripts('ui'), ...scripts('flash')]) {
   files[f] = readFileSync(join(ui, f), 'utf8');
 }
 const build = join(here, 'build');

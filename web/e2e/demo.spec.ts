@@ -558,3 +558,33 @@ test('apply to all: writes reach every node, each result on its tab', async ({ p
   await page.getByRole('button', { name: 'Apply to all' }).click();
   await expect(tabs.locator('.mark')).toHaveCount(0);
 });
+
+// DESIGN.md §9.4: the node's own page loads ui.js alone, and the chunk of
+// the widgets few pages use once a page draws one, from beside ui.js.
+test('widgets few pages use come from a chunk, loaded on demand', async ({ page }) => {
+  const chunks: { path: string; status: number; cache?: string }[] = [];
+  page.on('response', (r) => {
+    const path = new URL(r.url()).pathname;
+    if (path.startsWith('/ui/')) chunks.push({ path, status: r.status(), cache: r.headers()['cache-control'] });
+  });
+  // Settings: a form of fields every page has (the device's root has lists).
+  await page.goto('http://localhost:8091/#/settings');
+  await expect(page.locator('.state')).toHaveText('Live');
+  await expect(row(page, 'Notes')).toBeVisible();
+  expect(chunks).toEqual([]);
+  await page.goto('http://localhost:8091/#/lamp');
+  await expect(row(page, 'Power').getByRole('meter')).toBeVisible();
+  expect(chunks).toEqual([{ path: expect.stringMatching(/^\/ui\/widgets-[\w-]+\.js$/), status: 200, cache: expect.stringContaining('immutable') }]);
+  // The others are in it already.
+  await page.locator('nav.side').getByRole('link', { name: 'Motor', exact: true }).click();
+  await expect(row(page, 'Speed').getByRole('slider')).toBeVisible();
+  await expect(row(page, 'Position').getByRole('img')).toBeVisible();
+  expect(chunks).toHaveLength(1);
+});
+
+test('a widget whose chunk fails to load shows as a readout', async ({ page }) => {
+  await page.route('**/ui/*.js', (r) => r.abort());
+  await page.goto('http://localhost:8091/#/lamp');
+  await expect(row(page, 'Power').locator('output')).toHaveText('36 W');
+  await expect(row(page, 'Power').getByRole('meter')).toHaveCount(0);
+});

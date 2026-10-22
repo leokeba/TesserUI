@@ -28,7 +28,7 @@
     "start": "node bridge.mjs",
     "test": "node --test test/*.test.mjs",
     "macos": "node scripts/macos.mjs",
-    "prepack": "mkdir -p ui && cp ../web/dist/index.html ../web/dist/ui.js ../web/dist/launcher.js ui/ && cp -R ../web/dist/flash ui/"
+    "prepack": "mkdir -p ui/ui && cp ../web/dist/index.html ../web/dist/ui.js ../web/dist/launcher.js ui/ && cp ../web/dist/ui/*.js ui/ui/ && cp -R ../web/dist/flash ui/"
   },
   "dependencies": {
     "ws": "^8.22.0"

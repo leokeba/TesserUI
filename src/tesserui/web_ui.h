@@ -17,7 +17,7 @@ namespace tesserui {
 //   http.enableWebSocket("/ws");
 //   http.begin(80, "/api");
 //   tesserui::WebUi web;
-//   web.serve(http.handle());      // GET / and GET /ui.js on the same server
+//   web.serve(http.handle());      // GET /, /ui.js and /ui/* on the same server
 //
 // Stub, with the bundle loaded from elsewhere:
 //   web.serveStub(http.handle(), "https://cdn.jsdelivr.net/npm/tesserui@0.1.0/dist/ui.js");
@@ -33,8 +33,8 @@ namespace tesserui {
 //
 // The server must use httpd_uri_match_wildcard (HttpServer::begin() does) and
 // serve the API under a non-empty base path, or the API's "/*" shadows "/".
-// HttpServer::begin() allows 10 handlers: the API takes up to 6, serve() 2,
-// each asset 1.
+// HttpServer::begin() allows 10 handlers: the API takes up to 6, serve() 3,
+// serveStub() 1, each asset 1.
 class WebUi {
 public:
     WebUi() = default;
@@ -86,8 +86,9 @@ public:
         return *this;
     }
 
-    // Registers GET <base> (the page) and GET <base>ui.js (the gzipped bundle
-    // compiled into the firmware), and the assets. `apiPath` is HttpServer's
+    // Registers GET <base> (the page), GET <base>ui.js (the gzipped bundle
+    // compiled into the firmware) and GET <base>ui/* (the chunks it loads
+    // when a page draws a widget few pages use), and the assets. `apiPath` is HttpServer's
     // base path and `wsPath` its WebSocket path, or null without one.
     esp_err_t serve(httpd_handle_t server, const char* apiPath = "/api", const char* wsPath = "/ws");
     // Registers GET <base> and the assets: a page that loads the bundle from
@@ -113,6 +114,7 @@ private:
 
     static esp_err_t onPage(httpd_req_t* req);
     static esp_err_t onScript(httpd_req_t* req);
+    static esp_err_t onChunk(httpd_req_t* req);
     static esp_err_t onAsset(httpd_req_t* req);
     esp_err_t start(httpd_handle_t server, bool script);
 
@@ -121,6 +123,7 @@ private:
     const char* base_ = "/";
     std::string pageUri_;
     std::string scriptUri_;
+    std::string chunkUri_;
     PageOptions pageOptions_;
     std::vector<Asset> assets_;
     size_t registered_ = 0;  // assets registered

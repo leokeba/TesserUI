@@ -135,7 +135,7 @@ async function listing() {
   };
 }
 
-// The launcher's own files (index.html, ui.js, launcher.js, flash/*.js):
+// The launcher's own files (index.html, ui.js and ui/*.js, launcher.js, flash/*.js):
 // built into the executable, else from this package (ui/) or the
 // repository's build, the page from --page.
 const dir = [new URL('./ui/', import.meta.url), new URL('../web/dist/', import.meta.url)].find((u) => existsSync(new URL('ui.js', u)));
@@ -266,7 +266,7 @@ const server = createServer(async (req, res) => {
 
   // The launcher, told that its own origin is the bridge.
   const file = url.pathname === '/' ? 'index.html' : url.pathname.slice(1);
-  const body = /^(index\.html|ui\.js|launcher\.js|flash\/[\w.-]+\.js)$/.test(file) && ui(file);
+  const body = /^(index\.html|ui\.js|launcher\.js|(ui|flash)\/[\w.-]+\.js)$/.test(file) && ui(file);
   if (body) {
     const text = file === 'index.html' ? body.replace('<head>', '<head><meta name="tesserui-bridge" content="">') : body;
     return res.writeHead(200, { 'Content-Type': contentType(file), 'Cache-Control': 'no-cache' }).end(text);

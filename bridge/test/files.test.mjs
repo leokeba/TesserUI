@@ -9,7 +9,7 @@ test('a file under its base name, or a name of its own', () => {
 });
 
 test("no traversal, and none of the bridge's own paths", () => {
-  for (const bad of ['../x.js=x.js', 'a/../b.js=x', './x.js=x', 'a//b=x', '=x.js', 'x.js=', 'ui.js=x', 'index.html=x', 'launcher.js=x', 'flash/flash.js=x', 'firmware/manifest.json=x', 'n/x=x', 's/x=x', 'nodes=x', 'a b.js=x']) {
+  for (const bad of ['../x.js=x.js', 'a/../b.js=x', './x.js=x', 'a//b=x', '=x.js', 'x.js=', 'ui.js=x', 'index.html=x', 'launcher.js=x', 'flash/flash.js=x', 'ui/widgets.js=x', 'firmware/manifest.json=x', 'n/x=x', 's/x=x', 'nodes=x', 'a b.js=x']) {
     assert.throws(() => fileOption(bad), /--file/, bad);
   }
   // Names that only begin like the bridge's own are fine.

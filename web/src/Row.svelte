@@ -4,7 +4,7 @@
   import Icon from './Icon.svelte';
   import { holds } from './model/conditions';
   import type { Leaf } from './model/model';
-  import { widgetOf } from './widgets/registry';
+  import { widgetOf } from './widgets/registry.svelte';
 
   let { leaf }: { leaf: Leaf } = $props();
   const session = useSession();

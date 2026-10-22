@@ -1,22 +1,37 @@
-// After `vite build`: writes dist/index.html, dist/ui.js.gz (zopfli, which
-// any gzip decoder reads) and the C++ header the node serves the bundle from
-// (src/tesserui/bundle/tesserui_bundle.h, DESIGN.md §9.4), and enforces the
-// 65 KB budget (§2). `--check` only measures.
+// After `vite build`: writes dist/index.html, the gzipped copies of ui.js
+// and its chunks (zopfli, which any gzip decoder reads) and the C++ header
+// the node serves them from (src/tesserui/bundle/tesserui_bundle.h, DESIGN.md
+// §9.4), and enforces the budgets (§2): 65 KB for ui.js, what a page loads
+// first, 80 KB with every chunk, what a node's flash holds. `--check` only
+// measures.
 
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { gzipAsync } from '@gfx/zopfli';
 
 const BUDGET = 65 * 1024;
+const TOTAL = 80 * 1024;
 const web = new URL('../', import.meta.url);
 const dist = new URL('dist/', web);
 const header = new URL('../src/tesserui/bundle/tesserui_bundle.h', web);
 const { version } = JSON.parse(readFileSync(new URL('package.json', web), 'utf8'));
 
+const zopfli = async (file) => Buffer.from(await gzipAsync(readFileSync(new URL(file, dist)), { numiterations: 15 }));
 const js = readFileSync(new URL('ui.js', dist));
-const gz = Buffer.from(await gzipAsync(js, { numiterations: 15 }));
+const gz = await zopfli('ui.js');
+// ui/<widget>-<hash>.js, by name: the header's order follows the build.
+const chunks = await Promise.all(
+  readdirSync(new URL('ui/', dist))
+    .filter((f) => f.endsWith('.js'))
+    .sort()
+    .map(async (name) => ({ name, gz: await zopfli(`ui/${name}`) })),
+);
+const total = gz.length + chunks.reduce((n, c) => n + c.gz.length, 0);
 console.log(`ui.js: ${js.length} bytes, ${gz.length} gzipped (budget ${BUDGET})`);
-if (gz.length > BUDGET) {
-  console.error(`over budget by ${gz.length - BUDGET} bytes`);
+console.log(`with ui/ (${chunks.length} chunk${chunks.length === 1 ? "" : "s"}): ${total} gzipped (budget ${TOTAL})`);
+for (const c of chunks) console.log(`  ui/${c.name}: ${c.gz.length}`);
+if (gz.length > BUDGET || total > TOTAL) {
+  if (gz.length > BUDGET) console.error(`ui.js over budget by ${gz.length - BUDGET} bytes`);
+  if (total > TOTAL) console.error(`ui.js and its chunks over budget by ${total - TOTAL} bytes`);
   process.exit(1);
 }
 if (process.argv.includes('--check')) process.exit(0);
@@ -32,16 +47,21 @@ writeFileSync(
     `<title>TesserUI</title><link rel="icon" href="${icon}"></head><body><script type="module" src="launcher.js"></script></body></html>\n`,
 );
 writeFileSync(new URL('ui.js.gz', dist), gz);
+for (const c of chunks) writeFileSync(new URL(`ui/${c.name}.gz`, dist), c.gz);
 
-// FNV-1a 32, like TesserAPI's schema hash.
+// FNV-1a 32, like TesserAPI's schema hash. ui.js names its chunks with their
+// own hashes, so its ETag covers them.
 let h = 0x811c9dc5;
 for (const b of gz) h = Math.imul(h ^ b, 0x01000193) >>> 0;
 const etag = h.toString(16).padStart(8, '0');
 
-const bytes = [];
-for (let i = 0; i < gz.length; i += 16) {
-  bytes.push('    ' + [...gz.subarray(i, i + 16)].map((b) => `0x${b.toString(16).padStart(2, '0')}`).join(', ') + ',');
-}
+const array = (name, data) => {
+  const bytes = [];
+  for (let i = 0; i < data.length; i += 16) {
+    bytes.push('    ' + [...data.subarray(i, i + 16)].map((b) => `0x${b.toString(16).padStart(2, '0')}`).join(', ') + ',');
+  }
+  return `alignas(4) inline constexpr uint8_t ${name}[] = {\n${bytes.join('\n')}\n};\n`;
+};
 writeFileSync(
   header,
   `#pragma once
@@ -53,11 +73,19 @@ namespace bundle {
 inline constexpr char kVersion[] = "${version}";
 inline constexpr char kEtag[] = "\\"${etag}\\"";
 inline constexpr size_t kUiJsGzSize = ${gz.length};
-alignas(4) inline constexpr uint8_t kUiJsGz[] = {
-${bytes.join('\n')}
+${array('kUiJsGz', gz)}${chunks.map((c, i) => array(`kChunk${i}`, c.gz)).join('')}
+// The chunks ui.js loads from ui/, gzipped.
+struct Chunk {
+    const char* name;
+    const uint8_t* data;
+    size_t size;
 };
+inline constexpr Chunk kChunks[] = {
+${chunks.map((c, i) => `    {"${c.name}", kChunk${i}, sizeof(kChunk${i})},`).join('\n')}
+};
+inline constexpr size_t kChunkCount = ${chunks.length};
 }  // namespace bundle
 }  // namespace tesserui
 `,
 );
-console.log(`wrote dist/index.html, dist/ui.js.gz and ${header.pathname.replace(/.*\/src\//, 'src/')} (etag ${etag})`);
+console.log(`wrote dist/index.html, the gzipped copies and ${header.pathname.replace(/.*\/src\//, 'src/')} (etag ${etag})`);

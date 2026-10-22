@@ -69,7 +69,8 @@ clients.set(0, (line) => {
   waiting.delete(Number(m[1]));
 });
 
-// The page WebUi generates (src/tesserui/web_page.cpp), and the bundle.
+// The page WebUi generates (src/tesserui/web_page.cpp), the bundle and its
+// chunks (web_ui.cpp).
 const icon =
   "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M1 1h14v14H1zm4 4v6h6V5zl-4-4m14 0-4 4m0 6 4 4m-14 0 4-4' fill='none' stroke='%232f5bd3' stroke-width='2'/></svg>";
 const page =
@@ -86,6 +87,11 @@ const server = createServer((req, res) => {
     const gz = new URL('ui.js.gz', dist);
     if (!existsSync(gz)) return res.writeHead(404).end('no bundle: run pnpm build');
     return res.writeHead(200, { 'Content-Type': 'application/javascript', 'Content-Encoding': 'gzip', 'Cache-Control': 'no-cache' }).end(readFileSync(gz));
+  }
+  if (url.pathname.startsWith('/ui/')) {
+    const gz = new URL(`ui/${url.pathname.slice(4).replace(/[^\w.-]/g, '')}.gz`, dist);
+    if (!existsSync(gz)) return res.writeHead(404).end();
+    return res.writeHead(200, { ...cors, 'Content-Type': 'application/javascript', 'Content-Encoding': 'gzip', 'Cache-Control': 'public, max-age=31536000, immutable' }).end(readFileSync(gz));
   }
   if (url.pathname.startsWith('/ext/')) {
     const name = url.pathname.slice(5).replace(/[^\w.-]/g, '');

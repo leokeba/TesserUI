@@ -30,7 +30,7 @@ void setup() {
 
     http.enableWebSocket("/ws");
     http.begin(80, "/api");
-    web.serve(http.handle());   // GET / and GET /ui.js: the whole UI, about 60 KB of flash
+    web.serve(http.handle());   // GET /, /ui.js and /ui/*: the whole UI, about 66 KB of flash
     api.startTask();
 }
 ```
@@ -89,7 +89,7 @@ The full vocabulary is in [DESIGN.md §5](docs/DESIGN.md#5-hints-tier-1).
 
 | Mode | Who stores the bundle | How |
 |---|---|---|
-| Self-hosted | The node (~60 KB of flash) | `web.serve(http.handle())` |
+| Self-hosted | The node (~66 KB of flash) | `web.serve(http.handle())` |
 | UI host | One ESP with spare flash, also a NowTP gateway | `nowApi.mountPeers(api.object("peers"))`: every nearby node gets a page at `#/peers/<name>`, forwarded over ESP-NOW |
 | Stub | A CDN or the UI host | `web.serveStub(http.handle(), "https://cdn.jsdelivr.net/npm/tesserui@0.1.0/dist/ui.js")`: a 300-byte page |
 | Launcher | GitHub Pages | Pick a node: USB (Web Serial), Bluetooth (Web Bluetooth), or its address on the network; or install firmware |

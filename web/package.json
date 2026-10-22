@@ -13,6 +13,7 @@
   "packageManager": "pnpm@11.7.0",
   "files": [
     "dist/ui.js",
+    "dist/ui/*.js",
     "dist/launcher.js",
     "dist/index.html",
     "dist/flash",

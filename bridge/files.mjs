@@ -3,7 +3,7 @@
 // or `--file <path>` under its base name. A name may have folders, never
 // `.` or `..`, and never one of the bridge's own paths.
 
-const own = /^(index\.html|ui\.js|launcher\.js|nodes|(flash|firmware|n|s)(\/.*)?)$/;
+const own = /^(index\.html|ui\.js|launcher\.js|nodes|(ui|flash|firmware|n|s)(\/.*)?)$/;
 
 export function fileOption(arg) {
   const eq = arg.indexOf('=');

@@ -8,7 +8,7 @@
   import { DEFERRED_TIMEOUT_MS } from '../client/types';
   import Icon from '../Icon.svelte';
   import { formatValue } from '../model/format';
-  import { fieldOf } from './registry';
+  import { fieldOf } from './registry.svelte';
   import type { WidgetProps } from './types';
 
   let { leaf, disabled, id }: WidgetProps = $props();

@@ -28,7 +28,7 @@
   import { parentPath } from '../model/schema';
   import { useSession } from '../shared.svelte';
   import JsonView from './JsonView.svelte';
-  import { widgetOf } from './registry';
+  import { widgetOf } from './registry.svelte';
   import { nodeScript } from './script';
   import type { WidgetProps } from './types';
 

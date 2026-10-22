@@ -27,7 +27,7 @@ TesserUI renders user interfaces for [TesserAPI](https://github.com/leokeba/Tess
 | Item | Decision |
 |---|---|
 | Device side | C++17 and TesserAPI's rules: no exceptions, no RTTI, ESP-IDF ≥ 5.1 and Arduino-ESP32 ≥ 3.0. |
-| Web bundle | ≤ 65 KB gzipped for everything (JS and CSS), measured in CI. Evergreen browsers only. (Raised from 40 KB once phases 1, 2 and 4 were in: they measured 40.2 KB with every saving taken. Raised from 50 KB for the navigation menu, §6.3, from 52 KB for the launcher and Bluetooth, §9.7, from 54 KB for notifications, §7.8, from 55.5 KB for file nodes in list elements, §4, from 56.5 KB for events over HTTP, §9.2, from 57 KB for files over serial and Bluetooth, §4, from 57.5 KB for the log widget, §4, from 58 KB for installing firmware from the launcher, §9.7.1 (its flasher is a script of its own, outside the budget), from 58.5 KB for moving rows and choosing a node, §5.2, from 59 KB for nodes as tabs, §6.5, from 59.5 KB for applying a change to every node, §6.6, and from 60 KB for checking a node's identity on every reconnection, §7.5, and easing the load on a node under stress, §7.3. 65 KB is the ceiling: beyond it, what only a launcher uses is a script of its own, as the flasher and the launcher's workspace are, §9.7.2.) |
+| Web bundle | ≤ 65 KB gzipped for `ui.js` (JS and CSS), what a page loads first, and ≤ 80 KB with the chunk of widgets it loads on demand (§9.4), what a node's flash holds; both measured in CI. Evergreen browsers only. (Raised from 40 KB once phases 1, 2 and 4 were in: they measured 40.2 KB with every saving taken. Raised from 50 KB for the navigation menu, §6.3, from 52 KB for the launcher and Bluetooth, §9.7, from 54 KB for notifications, §7.8, from 55.5 KB for file nodes in list elements, §4, from 56.5 KB for events over HTTP, §9.2, from 57 KB for files over serial and Bluetooth, §4, from 57.5 KB for the log widget, §4, from 58 KB for installing firmware from the launcher, §9.7.1 (its flasher is a script of its own, outside the budget), from 58.5 KB for moving rows and choosing a node, §5.2, from 59 KB for nodes as tabs, §6.5, from 59.5 KB for applying a change to every node, §6.6, and from 60 KB for checking a node's identity on every reconnection, §7.5, and easing the load on a node under stress, §7.3. 65 KB is the ceiling: beyond it, what only a launcher uses is a script of its own, as the flasher and the launcher's workspace are, §9.7.2. At 64.3 KB, the widgets few pages use moved to a chunk loaded on demand, §9.4: 54.1 KB for `ui.js`, 67.3 KB with the chunk, 2026-10-22.) |
 | Web stack | Svelte 5 + TypeScript + Vite, without a CSS framework or chart library. |
 | LCD stack | LVGL 9.x. Display and touch drivers are the application's: TesserUI receives an `lv_display_t*`. |
 | Smallest node | A NowTP-only node with no Wi-Fi and no UI assets: its tree and its hint literals are all it stores. |
@@ -53,7 +53,7 @@ The two renderers share the model and its rules, not code: the web renderer is T
 
 | Mode | Who stores the bundle | How the browser reaches the node | Section |
 |---|---|---|---|
-| **Self-hosted** | The node itself (about 40–50 KB of flash) | `http://node/` | §9.4 |
+| **Self-hosted** | The node itself (about 70 KB of flash) | `http://node/` | §9.4 |
 | **UI host** | One ESP with spare flash, also a gateway | `http://host/#/peers/<node>`: requests forwarded over NowTP | §9.5 |
 | **Stub** | A CDN or the UI host; the node serves a 300-byte page | `http://node/`, script from elsewhere | §9.6 |
 | **Launcher** | GitHub Pages | The user picks the node: USB (Web Serial), Bluetooth (Web Bluetooth), or an address on the network; or installs firmware on a board (§9.7.1) | §9.7 |
@@ -407,7 +407,7 @@ web/
   src/client/      envelope client: WebSocket, HTTP, Web Serial and Web Bluetooth transports
   src/model/       schema → UI model (§4, §5), conditions, formatting, views
   src/store/       values, pending writes, merge patches, subscriptions, the session
-  src/widgets/     one Svelte component per semantic widget; registry.ts maps names to them
+  src/widgets/     one Svelte component per semantic widget; registry.svelte.ts maps names to them, some loaded on demand (§9.4)
   src/Item.svelte  recursive renderer: dispatches on the model node's kind and widget
   src/App.svelte   routing, connection state, the device list
   src/main.ts      the bundle a node serves (ui.js); src/lib.ts the npm module (§9.9)
@@ -417,7 +417,7 @@ web/
   e2e/             Playwright: the built bundle against the host node (§11)
 ```
 
-**Adding a widget:** its rules in `model.ts` (`fits()` and inference), its component in `widgets/registry.ts`, and its row in §5.1. Custom elements need none of this.
+**Adding a widget:** its rules in `model.ts` (`fits()` and inference), its component in `widgets/registry.svelte.ts` (loaded on demand when few pages use it), and its row in §5.1. Custom elements need none of this.
 
 ### 9.2 Client
 
@@ -463,7 +463,9 @@ web/
 
 ### 9.4 Self-hosted
 
-The build produces `ui.js` (one IIFE script, CSS injected), `ui.js.gz` and `index.html` (for a CDN or Pages). It also produces `tesserui_bundle.h` with the gzipped script as a byte array, its version, and its FNV-1a hash for the ETag. The gzip is made with zopfli, about 4 % smaller than `gzip -9`, and that is what the budget measures.
+The build produces `ui.js` (a classic script, CSS injected), `ui/widgets-<hash>.js`, `ui.js.gz`, `ui/widgets-<hash>.js.gz` and `index.html` (for a CDN or Pages). It also produces `tesserui_bundle.h` with the gzipped script and chunk as byte arrays, its version, and the script's FNV-1a hash for the ETag. The gzip is made with zopfli, about 4 % smaller than `gzip -9`, and that is what the budget measures.
+
+- **Chunks:** the widgets few pages use (`table` and `list`, `file`, `chart`, `gauge`, `knob`, `log`, `json`, `timezone`, and the host of custom elements, §9.8) come from a chunk beside `ui.js`, `ui/widgets-<hash>.js`, an ES module loaded with `import()` the first time a page draws one of them, relative to `ui.js`'s own URL: from the node, Pages, a CDN or a UI host alike. A row draws nothing until the chunk has arrived, and a readout if it can't load. One chunk rather than one per widget: they compress together (one per widget cost 3.6 KB more flash). `ui.js` stays a classic script, which stub pages already in the field load with a plain `<script src>`: the build makes every module the page loads first one chunk, then `ui.js` of it (`web/scripts/chunks.mjs`), its exports given to the chunk on a global, `__tesserui`; a chunk's imports from it become reads of that global, checked at build time to be bindings that never change. The npm module and `launcher.js` have no chunks: their widgets are imported as usual.
 
 A node doesn't store `index.html`: `WebUi` generates the page at `/` (about 500 bytes) with the configuration of §9.2 in `window.TESSER` (API and WebSocket paths, `minVersion`). Its favicon is TesserUI's, a tesseract inlined as an SVG `data:` URL (200 bytes, no request, nothing in the bundle), unless `web.icon("/icon.svg")` names another (an asset, say).
 
@@ -472,13 +474,13 @@ tesser::HttpServer http(api);
 http.begin(80, "/api");
 http.enableWebSocket("/ws");
 tesserui::WebUi web;
-web.serve(http.handle());              // GET / and GET /ui.js on the same server
+web.serve(http.handle());              // GET /, /ui.js and /ui/* on the same server
 ```
 
-- **Headers:** `ui.js` has `Content-Encoding: gzip`, `ETag`, and `Cache-Control: no-cache`, so a browser revalidates with `If-None-Match` and gets a 304. The page has `Cache-Control: no-cache`.
+- **Headers:** `ui.js` has `Content-Encoding: gzip`, `ETag`, and `Cache-Control: no-cache`, so a browser revalidates with `If-None-Match` and gets a 304. A chunk has `Content-Encoding: gzip`, `Cache-Control: public, max-age=31536000, immutable` (its name carries its content's hash, and `ui.js` names the chunks it loads) and `Access-Control-Allow-Origin: *`: `import()` fetches in CORS mode, and a stub page on another node loads it (§9.6). The page has `Cache-Control: no-cache`.
 - **API base path:** must not be empty: TesserAPI's wildcard would shadow `/`.
-- **Handlers:** two URI handlers. `HttpServer::begin()` registers 10, of which TesserAPI uses at most 6.
-- **Flash:** the bundle and about 2 KB of code.
+- **Handlers:** three URI handlers, the chunks' a wildcard (`<base>ui/*`). `HttpServer::begin()` registers 10, of which TesserAPI uses at most 6.
+- **Flash:** the bundle, its chunk and about 2 KB of code.
 - **Options** (before `serve()`): `basePath("/ui/")` serves the page there and the bundle next to it, leaving `/` to the application; `title()`, `theme(var, value)`, `text(english, translation)` and `script(url)` fill the configuration of §9.2; `asset(uri, data, size, type, gzipped)` serves a file from flash, such as a custom element's script (one handler slot each).
 
 ### 9.5 UI host
@@ -506,6 +508,7 @@ web.serveStub(http.handle(), "https://cdn.jsdelivr.net/npm/tesserui@1.0.0/dist/u
 - **Same origin:** the page's origin is the node, so API and WebSocket requests are same-origin. There's no CORS setup, and no mixed content: an HTTP page may load an HTTPS script.
 - **Offline fallback:** if the script doesn't load (no internet), the stub shows a one-line explanation and links to the raw API.
 - **Pinning:** the CDN URL pins an exact version, so the bundle stays compatible with the node's TesserUI version.
+- **Chunks:** `ui.js` loads its chunk from beside itself (§9.4), so wherever it comes from must serve `ui/` too, with CORS, since `import()` fetches across origins in CORS mode where `<script src>` doesn't: a CDN's copy of the package, Pages, and a UI host's `WebUi` do.
 
 ### 9.7 Launcher (GitHub Pages)
 
@@ -524,10 +527,10 @@ The launcher, published on GitHub Pages by CI from `main` (`https://leokeba.gith
   - it browses mDNS for `_tesser._tcp` services (what `HttpServer::advertise()` announces: the API's paths in the TXT record), with legacy unicast queries from an ephemeral port, so the system's own responder keeps port 5353; it lists them, with the serial ports, at `GET /nodes`, labelled from each node's schema;
   - it proxies each node's API (`/n/<host:port>/api/...`), WebSocket (`/n/<host:port>/ws`) and other files, read only (`/n/<host:port>/ext/x.js`, custom elements' scripts, §9.8): a page reaches `http://localhost` and `ws://localhost`, which Chromium and Firefox trust from HTTPS, so a node is live through it, not polled; responses are passed on as they come, streams included, and a request ends when the page goes away. Request bodies stream through too, with their `Content-Length` (a node reads no chunked body), so a firmware upload (1.7 MB at 50–70 KB/s over the node's Wi-Fi) goes at the node's pace: the node has 30 s to take each piece, and a minute after the last to answer (the system's buffers may still hold seconds of the body, then the node checks the image); a request without a body has 30 s for its answer to begin. Under Bun, whose `fetch` sends a stream chunked (1.3.6), the body is read whole first, and the node also has the time to take it at 8 KB/s;
   - it carries serial ports over WebSocket (`/s/<path>`), one page per port, for browsers without Web Serial;
-  - it serves the launcher at `/` (`index.html`, `ui.js`, `launcher.js`, and the flasher at `/flash/`), marked with `<meta name="tesserui-bridge">`, which works in every browser: Safari (WebKit) refuses `http://localhost` from an HTTPS page. The page is `--page`, else the bundle's `index.html`. The project's own files beside it (`scripts` for custom elements, images...) come with `--file <name>=<path>`, or `--file <path>` under its base name: a name may have folders, never `.` or `..`, and never one of the bridge's own paths (`index.html`, `ui.js`, `launcher.js`, `nodes`, `flash/`, `firmware/`, `n/`, `s/`), which are refused rather than overridden (`bridge/files.mjs`). Each is served with a type from its extension, binary files as they are;
+  - it serves the launcher at `/` (`index.html`, `ui.js` and its chunk at `/ui/`, `launcher.js`, and the flasher at `/flash/`), marked with `<meta name="tesserui-bridge">`, which works in every browser: Safari (WebKit) refuses `http://localhost` from an HTTPS page. The page is `--page`, else the bundle's `index.html`. The project's own files beside it (`scripts` for custom elements, images...) come with `--file <name>=<path>`, or `--file <path>` under its base name: a name may have folders, never `.` or `..`, and never one of the bridge's own paths (`index.html`, `ui.js`, `ui/`, `launcher.js`, `nodes`, `flash/`, `firmware/`, `n/`, `s/`), which are refused rather than overridden (`bridge/files.mjs`). Each is served with a type from its extension, binary files as they are;
   - it serves the firmware the page installs (§9.7.1) from a repository's latest GitHub releases (`--repo`, by default `leokeba/TesserUI`), at the paths a site has them: `/firmware/manifest.json`, then `/firmware/<tag>/<asset>`, only the images the manifest lists. Not being a page, it reads release assets despite their lack of CORS. The manifest is kept 5 minutes (GitHub's API allows 60 requests an hour without a token; `GITHUB_TOKEN` lifts it), a stale one served while GitHub fails, and each image once fetched.
   Only pages from the launcher's origin (`--launcher`, by default `https://leokeba.github.io/TesserUI/`, and TesserUI's), from localhost, or from `--origin` may use it, and it only reaches the nodes it listed. `--node host[:port]` adds a node by hand.
-- **The bridge as a macOS executable,** for Macs without Node: `bridge/scripts/macos.mjs` has Bun compile it for each architecture, with a project's launcher built in: its page and its own files (`--file`), TesserUI's `ui.js`, `launcher.js` and flasher, the launcher's URL and the repository whose releases it installs (the defaults of `--page`, `--launcher` and `--repo`). Each zip (`<name>-macos-arm64.zip`, `-x64.zip`) holds one executable, `<name>`, which a double-click runs in a Terminal window. TesserUI's releases carry `tesserui-bridge`, its own launcher with its firmware; another project's release workflow calls the reusable `.github/workflows/bridge.yml` with its page, a name, its release's tag and its page's own `files` (paths in its repository, one per line, served under their base names, or `name=path`), and its launcher links to it with `bridge`. The executables are signed ad hoc after Bun, whose payload leaves the linker's signature invalid (a quarantined download with an invalid signature is "damaged", with no way to open it); not notarized, so macOS asks once to open one anyway (*Privacy & Security*, *Open Anyway*). They have no serial ports: Bun's bundler breaks serialport's bindings (Bun 1.3.6).
+- **The bridge as a macOS executable,** for Macs without Node: `bridge/scripts/macos.mjs` has Bun compile it for each architecture, with a project's launcher built in: its page and its own files (`--file`), TesserUI's `ui.js` and its chunk, `launcher.js` and flasher, the launcher's URL and the repository whose releases it installs (the defaults of `--page`, `--launcher` and `--repo`). Each zip (`<name>-macos-arm64.zip`, `-x64.zip`) holds one executable, `<name>`, which a double-click runs in a Terminal window. TesserUI's releases carry `tesserui-bridge`, its own launcher with its firmware; another project's release workflow calls the reusable `.github/workflows/bridge.yml` with its page, a name, its release's tag and its page's own `files` (paths in its repository, one per line, served under their base names, or `name=path`), and its launcher links to it with `bridge`. The executables are signed ad hoc after Bun, whose payload leaves the linker's signature invalid (a quarantined download with an invalid signature is "damaged", with no way to open it); not notarized, so macOS asks once to open one anyway (*Privacy & Security*, *Open Anyway*). They have no serial ports: Bun's bundler breaks serialport's bindings (Bun 1.3.6).
 - **Nearby:** on Pages, the launcher asks the bridge only when the user clicks *Look for the bridge*, since Chrome asks before a public page reaches localhost; after a first answer, and on the bridge's own page, it asks every 5 s. `?bridge=` names another bridge. The nodes it lists join the workspace (§9.7.2).
 - **Signing in on a line:** serial and Bluetooth lines have no handshake, so the token goes in TesserAPI's `auth` envelope (TesserAPI §10.4): the stored one after each connection, the new one after signing in (through the login action, or a token typed in), an empty one to sign out; then the schema is read again and the subscriptions are made anew, since they keep the level they were made at. A token answered with `public` is stale, and forgotten. Tokens are kept per Bluetooth device (Chrome keeps its id across visits) and for serial ports as a whole (a port has no stable identity). Older firmware answers `bad_request`: nothing changes.
 - **A board that resets:** opening a serial port resets most devkits, and a Wi-Fi node then takes seconds to boot (7.6 s for TesserAPI's test firmware) before it answers. The first request is asked again every 1.5 s, for up to a minute, before the schema is read.
@@ -726,7 +729,7 @@ void lvglTask() {
 ```
 TesserUI/
   docs/DESIGN.md
-  web/                 the web renderer (npm package "tesserui": dist/ui.js for nodes, tesserui.js and its types for applications, dist/launcher.js, index.html and dist/flash/ for launchers, §9.7)
+  web/                 the web renderer (npm package "tesserui": dist/ui.js and dist/ui/ for nodes, tesserui.js and its types for applications, dist/launcher.js, index.html and dist/flash/ for launchers, §9.7)
   web/pages/           the launcher's page on GitHub Pages, with the firmware it installs
   bridge/              tesserui-bridge (npm): mDNS discovery, proxies and serial ports on localhost, for the launcher (§9.7)
   src/tesserui/        C++: WebUi (bundle and stub serving), Views, LvglUi

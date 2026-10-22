@@ -40,6 +40,7 @@ esp_err_t WebUi::serve(httpd_handle_t server, const char* apiPath, const char* w
     pageUri_ = base_ && *base_ ? base_ : "/";
     if (pageUri_.back() != '/') pageUri_ += '/';
     scriptUri_ = pageUri_ + "ui.js";
+    chunkUri_ = pageUri_ + "ui/*";
     PageOptions o = pageOptions_;
     o.api = apiPath;
     o.ws = wsPath;
@@ -84,6 +85,13 @@ esp_err_t WebUi::start(httpd_handle_t server, bool script) {
             return err;
         }
         script_ = true;
+        uri.uri = chunkUri_.c_str();
+        uri.handler = &WebUi::onChunk;
+        err = httpd_register_uri_handler(server, &uri);
+        if (err != ESP_OK) {
+            end();
+            return err;
+        }
     }
     // The vector doesn't grow while serving: asset pointers are stable.
     for (Asset& a : assets_) {
@@ -103,7 +111,10 @@ esp_err_t WebUi::start(httpd_handle_t server, bool script) {
 void WebUi::end() {
     if (!server_) return;
     httpd_unregister_uri_handler(server_, pageUri_.c_str(), HTTP_GET);
-    if (script_) httpd_unregister_uri_handler(server_, scriptUri_.c_str(), HTTP_GET);
+    if (script_) {
+        httpd_unregister_uri_handler(server_, scriptUri_.c_str(), HTTP_GET);
+        httpd_unregister_uri_handler(server_, chunkUri_.c_str(), HTTP_GET);
+    }
     for (size_t i = 0; i < registered_; i++) httpd_unregister_uri_handler(server_, assets_[i].uri, HTTP_GET);
     server_ = nullptr;
     script_ = false;
@@ -129,6 +140,24 @@ esp_err_t WebUi::onScript(httpd_req_t* req) {
     httpd_resp_set_type(req, "application/javascript");
     httpd_resp_set_hdr(req, "Content-Encoding", "gzip");
     return sendChunks(req, reinterpret_cast<const char*>(bundle::kUiJsGz), bundle::kUiJsGzSize);
+}
+
+esp_err_t WebUi::onChunk(httpd_req_t* req) {
+    // <base>ui/<name>: names carry their content's hash, and ui.js names the
+    // ones it loads, so a chunk never changes and caches for good. import()
+    // fetches it in CORS mode: a stub page on another node loads it too.
+    auto* self = static_cast<WebUi*>(req->user_ctx);
+    const char* name = req->uri + self->chunkUri_.size() - 1;
+    size_t len = strcspn(name, "?#");
+    for (const bundle::Chunk& c : bundle::kChunks) {
+        if (strlen(c.name) != len || strncmp(c.name, name, len) != 0) continue;
+        httpd_resp_set_type(req, "application/javascript");
+        httpd_resp_set_hdr(req, "Content-Encoding", "gzip");
+        httpd_resp_set_hdr(req, "Cache-Control", "public, max-age=31536000, immutable");
+        httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+        return sendChunks(req, reinterpret_cast<const char*>(c.data), c.size);
+    }
+    return httpd_resp_send_404(req);
 }
 
 esp_err_t WebUi::onAsset(httpd_req_t* req) {

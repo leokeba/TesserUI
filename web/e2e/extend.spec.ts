@@ -59,3 +59,17 @@ test('UIs embed in a page that owns the URL', async ({ page }) => {
   expect(await accent('#b .tesserui')).not.toBe('rgb(200, 0, 0)');
   expect(await page.evaluate(() => (window as unknown as { version: string }).version)).toMatch(/^\d+\.\d+\.\d+$/);
 });
+
+// A stub page (DESIGN.md §9.6) on one origin, ui.js from another: its chunk
+// comes from beside ui.js, through CORS, since import() asks for it.
+const stub = `<!doctype html><html><head><meta charset="utf-8"><title>Stub</title>
+<script>window.TESSER={api:"${api}",ws:"ws://localhost:8091/ws"}</script></head>
+<body><script src="http://localhost:8091/ui.js"></script></body></html>`;
+
+test('a stub page loads the chunk from beside ui.js, on its origin', async ({ page }) => {
+  await page.route('**/stub', (r) => r.fulfill({ contentType: 'text/html', body: stub }));
+  const chunk = page.waitForResponse((r) => /^http:\/\/localhost:8091\/ui\/widgets-[\w-]+\.js$/.test(r.url()));
+  await page.goto('/stub#/lamp');
+  expect((await chunk).status()).toBe(200);
+  await expect(page.locator('.row', { has: page.locator('label span:text-is("Power")') }).getByRole('meter')).toBeVisible();
+});

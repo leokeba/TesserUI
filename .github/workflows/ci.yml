@@ -168,7 +168,7 @@ jobs:
         run: pnpm check
       - name: Model and store tests
         run: pnpm test
-      - name: Bundle within budget (65 KB gzipped)
+      - name: Bundle within budget (65 KB gzipped, 80 KB with its chunks)
         run: pnpm build
       - name: Generated files are up to date (bundle header, embedded element)
         run: git diff --exit-code -- ../src/tesserui/bundle/tesserui_bundle.h ../examples/arduino/CustomWidget/sun_dial.h
@@ -189,7 +189,7 @@ jobs:
       # firmware.
       - name: Pages site
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-        run: mkdir -p _site && cp pages/index.html dist/ui.js dist/launcher.js _site/ && cp -R dist/flash _site/flash
+        run: mkdir -p _site/ui && cp pages/index.html dist/ui.js dist/launcher.js _site/ && cp dist/ui/*.js _site/ui/ && cp -R dist/flash _site/flash
       - uses: actions/upload-artifact@v4
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         with:
