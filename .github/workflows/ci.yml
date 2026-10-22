@@ -271,14 +271,16 @@ jobs:
         run: node web/scripts/firmware.mjs "$GITHUB_REPOSITORY" _site/firmware --releases 3
       # Only a release of this very commit gets a folder: one that failed, or
       # that a newer push superseded, leaves the bundle saying package.json's
-      # version.
+      # version. The tag is on this commit, or on the release commit made on
+      # top of it that states the version (DESIGN.md §12).
       - name: The bundle's versions
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ needs.firmware.outputs.version }}
         run: |
           git fetch -q --tags
-          if [ -z "$VERSION" ] || [ "$(git rev-parse -q --verify "v$VERSION^{commit}")" != "$GITHUB_SHA" ] || ! gh release view "v$VERSION" > /dev/null; then
+          tagged=$(git rev-parse -q --verify "v$VERSION^{commit}")
+          if [ -z "$VERSION" ] || { [ "$tagged" != "$GITHUB_SHA" ] && [ "$(git rev-parse -q --verify "$tagged^")" != "$GITHUB_SHA" ]; } || ! gh release view "v$VERSION" > /dev/null; then
             VERSION=
           fi
           node web/scripts/site.mjs _site --repo "$GITHUB_REPOSITORY" ${VERSION:+--version "$VERSION" --pack "tesserui-web-$VERSION.tar.gz"}
