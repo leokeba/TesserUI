@@ -10,7 +10,8 @@ export default defineConfig({
   webServer: [
     { command: 'node scripts/device.mjs demo --port 8091 --isolated', port: 8091, reuseExistingServer: false },
     { command: 'npx vite preview --port 4173 --strictPort', port: 4173, reuseExistingServer: false },
-    // The bridge (../bridge), with the demo device as its only node.
-    { command: 'node ../bridge/bridge.mjs --port 8766 --node localhost:8091 --no-mdns --no-serial', port: 8766, reuseExistingServer: false },
+    // The bridge (../bridge), with the demo device as its only node, for
+    // the preview's pages.
+    { command: 'node ../bridge/bridge.mjs --port 8766 --node localhost:8091 --no-mdns --no-serial --origin http://localhost:4173', port: 8766, reuseExistingServer: false },
   ],
 });

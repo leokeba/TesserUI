@@ -128,6 +128,19 @@ export async function browse(service = '_tesser._tcp.local', timeoutMs = 1500) {
   return [...found.values()];
 }
 
+// Whether the bridge may proxy a service it found (DESIGN.md §9.7): a
+// private IPv4 address (RFC 1918, or link-local), never loopback, nor one of
+// this machine's own link-local addresses, so a host on the network can't
+// point a page at this machine's local services. A name isn't one: it could
+// resolve to anything by the time it is fetched.
+export function proxiable(host, own = Object.values(os.networkInterfaces()).flat().map((i) => i?.address)) {
+  const m = /^(\d{1,3})\.(\d{1,3})\.\d{1,3}\.\d{1,3}$/.exec(host);
+  if (!m) return false;
+  const [a, b] = [Number(m[1]), Number(m[2])];
+  if (a === 169 && b === 254) return !own.includes(host);
+  return a === 10 || (a === 172 && b >= 16 && b < 32) || (a === 192 && b === 168);
+}
+
 function interfaces() {
   return Object.values(os.networkInterfaces())
     .flat()

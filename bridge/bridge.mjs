@@ -12,9 +12,9 @@
 //     flasher (/flash/) and the firmware of a repository's latest GitHub
 //     releases (/firmware/), which a page can't download from GitHub.
 //
-// Only pages from allowed origins may use it (GitHub Pages, localhost, and
-// --origin), and it only reaches nodes it listed: a page can't use it to
-// reach anything else.
+// Only pages from allowed origins may use it (the launcher's, its own, and
+// --origin), only by the name localhost, and it only reaches nodes it listed
+// and serial ports it lists: a page can't use it to reach anything else.
 //
 //   tesserui-bridge [--port 8765] [--origin https://example.com]... [--node host[:port]]...
 //                   [--page index.html] [--launcher https://leokeba.github.io/TesserUI/]
@@ -29,7 +29,7 @@ import { Readable } from 'node:stream';
 import { WebSocket, WebSocketServer } from 'ws';
 import pkg from './package.json' with { type: 'json' };
 import { contentType, fileOption } from './files.mjs';
-import { browse } from './mdns.mjs';
+import { browse, proxiable } from './mdns.mjs';
 import { latestReleases, manifest } from './releases.mjs';
 
 const args = process.argv.slice(2);
@@ -40,17 +40,24 @@ const builtIn = globalThis.tesseruiBridge;
 const name = builtIn?.name ?? 'tesserui-bridge';
 const launcher = values('--launcher')[0] ?? builtIn?.launcher ?? 'https://leokeba.github.io/TesserUI/';
 const repo = values('--repo')[0] ?? builtIn?.repo ?? 'leokeba/TesserUI';
-const origins = [new URL(launcher).origin, 'https://leokeba.github.io', ...values('--origin')];
+const hosts = ['localhost', '127.0.0.1', '[::1]'].map((h) => `${h}:${port}`);
+const origins = [new URL(launcher).origin, ...hosts.map((h) => `http://${h}`), ...values('--origin')];
 const useMdns = !args.includes('--no-mdns');
 const useSerial = !args.includes('--no-serial');
 const { version } = pkg;
 
-// Origins that may use the bridge: the launcher's, any page on this machine,
-// and those given. Requests without an Origin come from tools, not pages.
-function allowed(origin) {
-  if (!origin) return true;
-  if (origins.includes('*') || origins.includes(origin)) return true;
-  return /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(origin);
+// Who may use the bridge: requests to this machine by name (a page that
+// rebinds its own name to 127.0.0.1 sends its name as the Host, and its
+// requests carry no Origin, being its own), from the launcher's origin, the
+// bridge's own, and those given. A request without an Origin comes from a
+// tool, from the bridge's own page, or from the browser opening a page;
+// never from another site's page (an image, a no-cors fetch).
+function allowed(req) {
+  if (!hosts.includes(req.headers.host?.toLowerCase())) return false;
+  const origin = req.headers.origin;
+  if (origin) return origins.includes('*') || origins.includes(origin);
+  const site = req.headers['sec-fetch-site'];
+  return !site || site === 'none' || site === 'same-origin' || req.headers['sec-fetch-mode'] === 'navigate';
 }
 
 // Nodes by id ("host:port"): found by mDNS, or given with --node.
@@ -64,13 +71,13 @@ function addNode(n) {
   const id = `${n.host}:${n.port}`;
   const known = nodes.get(id);
   nodes.set(id, { ...known, ...n, id, seen: Date.now() });
-  if (!known) describe(id);
 }
 
 // The node's label, from its schema: what the launcher lists; and its
-// device id (TesserAPI's root "id"), if mDNS didn't give it.
-async function describe(id) {
-  const n = nodes.get(id);
+// device id (TesserAPI's root "id"), if mDNS didn't give it. Read once, when
+// a page first asks for the list, not as soon as a host announces itself.
+async function describe(n) {
+  const id = n.id;
   try {
     const r = await fetch(`http://${id}${n.api}/?view=schema&depth=0`, { signal: AbortSignal.timeout(3000) });
     const s = await r.json();
@@ -84,6 +91,7 @@ async function describe(id) {
 async function discover() {
   try {
     for (const s of await browse()) {
+      if (!proxiable(s.host)) continue;
       addNode({ name: s.instance, host: s.host, port: s.port, api: s.txt.api || '/api', ws: s.txt.ws || null, via: 'mdns', hostname: s.target, ...(s.txt.id && { device: s.txt.id }) });
     }
   } catch (e) {
@@ -118,6 +126,7 @@ async function serialPorts() {
 const base = `http://localhost:${port}`;
 const wsBase = `ws://localhost:${port}`;
 async function listing() {
+  for (const n of nodes.values()) if (!n.described) (n.described = true), describe(n);
   return {
     bridge: version,
     nodes: [...nodes.values()].map((n) => ({
@@ -197,9 +206,8 @@ function cors(origin) {
 }
 
 const server = createServer(async (req, res) => {
-  const origin = req.headers.origin;
-  if (!allowed(origin)) return res.writeHead(403).end('origin not allowed\n');
-  const h = cors(origin);
+  if (!allowed(req)) return res.writeHead(403).end('not allowed\n');
+  const h = cors(req.headers.origin);
   if (req.method === 'OPTIONS') return res.writeHead(204, h).end();
   const url = new URL(req.url, base);
 
@@ -313,16 +321,23 @@ async function requestBody(req, wait) {
   return { body, duplex: 'half' };
 }
 
-// WebSockets: /n/<id>/ws to a node's, /s/<path> to a serial port.
+// WebSockets: /n/<id>/ws to a node's, /s/<path> to a serial port the
+// bridge lists, which no other page holds (409 then: opening it again would
+// reset the board under the other page).
 const wss = new WebSocketServer({ noServer: true });
-server.on('upgrade', (req, socket, head) => {
-  if (!allowed(req.headers.origin)) return socket.destroy();
+server.on('upgrade', async (req, socket, head) => {
+  if (!allowed(req)) return socket.destroy();
   const url = new URL(req.url, base);
   const n = url.pathname.match(/^\/n\/([^/]+)\/ws$/);
   const s = url.pathname.match(/^\/s\/(.+)$/);
   const node = n && nodes.get(decodeURIComponent(n[1]));
   if (node?.ws) return wss.handleUpgrade(req, socket, head, (ws) => proxyWs(ws, `ws://${node.id}${node.ws}${url.search}`));
-  if (s && SerialPort) return wss.handleUpgrade(req, socket, head, (ws) => serial(ws, decodeURIComponent(s[1])));
+  const path = s && decodeURIComponent(s[1]);
+  if (path && (await serialPorts().catch(() => [])).some((p) => p.path === path)) {
+    if (lines.has(path)) return socket.end('HTTP/1.1 409 Conflict\r\n\r\n');
+    lines.set(path, null);
+    return wss.handleUpgrade(req, socket, head, (ws) => serial(ws, path));
+  }
   socket.destroy();
 });
 
@@ -341,15 +356,15 @@ function proxyWs(client, target) {
   client.on('close', end);
 }
 
-// One page per port at a time: a new one takes it over.
+// One page per port at a time: the port's line, until it closes.
 const lines = new Map();
 async function serial(ws, path) {
-  lines.get(path)?.close();
   lines.set(path, ws);
   const port = new SerialPort({ path, baudRate: 115200, autoOpen: false });
   try {
     await new Promise((resolve, reject) => port.open((e) => (e ? reject(e) : resolve())));
   } catch (e) {
+    lines.delete(path);
     ws.close(1011, String(e.message).slice(0, 100));
     return;
   }

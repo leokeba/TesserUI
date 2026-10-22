@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { decodeRecords, encodeQuery } from '../mdns.mjs';
+import { decodeRecords, encodeQuery, proxiable } from '../mdns.mjs';
 
 const name = (n) => Buffer.concat([...n.split('.').map((l) => Buffer.concat([Buffer.from([l.length]), Buffer.from(l)])), Buffer.from([0])]);
 const u16 = (v) => Buffer.from([v >> 8, v & 255]);
@@ -38,4 +38,10 @@ test('a response as ESP-IDF sends it: PTR, SRV, TXT and A, names compressed', ()
 test('a compression loop is refused', () => {
   const looped = Buffer.concat([Buffer.from([0, 0, 0x84, 0, 0, 0, 0, 1, 0, 0, 0, 0]), Buffer.from([0xc0, 12])]);
   assert.throws(() => decodeRecords(looped), /name loop/);
+});
+
+test('only private addresses are proxied, never this machine by loopback or link-local', () => {
+  const own = ['127.0.0.1', '192.168.1.20', '169.254.7.7'];
+  for (const host of ['192.168.1.59', '10.0.0.2', '172.16.0.1', '172.31.255.1', '169.254.1.2', '192.168.1.20']) assert.ok(proxiable(host, own), host);
+  for (const host of ['127.0.0.1', '127.1.2.3', '0.0.0.0', '169.254.7.7', '8.8.8.8', '172.32.0.1', '224.0.0.251', 'tesser-a67c.local', 'localhost', '::1']) assert.ok(!proxiable(host, own), host);
 });
