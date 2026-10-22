@@ -13,6 +13,7 @@
   import { resolve, type Options } from '../embed';
   import { parentPath, type Schema } from '../model/schema';
   import { Session, storageGet, storageSet } from '../store/session.svelte';
+  import Claim from './Claim.svelte';
   import { onePerDevice } from './devices';
   import Ways, { type Nearby } from './Ways.svelte';
 
@@ -355,5 +356,6 @@
         {/snippet}
       </Connect>
     {/snippet}
+    {#if shown.config.claim}<Claim session={shown} />{/if}
   </App>
 {/key}

@@ -448,6 +448,7 @@ web/
   | `routing` | `hash` (default) follows `location.hash`; `memory` keeps the route inside the UI, for pages that own the URL. |
   | `launcher` | `true`: the page is a launcher (§9.7) despite having a configuration. |
   | `firmware` | Firmware the launcher installs over USB (§9.7.1): `{images, wifi, manifest, flasher}`. |
+  | `claim` | The path of the node's accounts, TesserKIT's `/sys/auth` (§9.7.3): the launcher offers a node without an admin account its first one. |
   | `bridge` | The bridge's macOS executables the launcher links to (§9.7): `{repo, name}`, `<name>-macos-arm64.zip` and `-x64.zip` on `repo`'s latest release. Default: TesserUI's, `{repo: "leokeba/TesserUI", name: "tesserui-bridge"}`. |
 
   For development, the query string overrides the page's: `?api=http://<ip>/api`, `?ws=` (empty: HTTP only), `?transport=serial`.
@@ -560,6 +561,7 @@ window.TESSER = { launcher: true, title: 'TesserKIT', firmware: {
 - **Speed:** the stub flasher asks for 460800 baud, which reopens the port. A devkit's USB-to-UART bridge resets the board then, and esptool-js goes on at 115200: about 107 s for TesserKIT's 1.8 MB image on an ESP32 devkit. A chip's own USB (the C3's and S3's) keeps the faster rate. Talking to the ROM at 460800 from the start fails on an ESP32 devkit. Such a chip leaves with its reset and comes back as another port, which the flasher finds among the page's ports by its USB identity.
 - **After the install,** the flasher opens the port as the USB way does and waits up to a minute for the firmware to answer. If `wifi` names TesserKIT's Wi-Fi service (its DESIGN.md §5.2) and the firmware has it, it asks which network to join: the device's `scan`, strongest first, a network name, a password; the network goes first in the keyed `networks` list, the others rewritten by name alone so they keep their passwords. It follows `status` until the device has an address (45 s at most, the device's own words in the meantime), and offers *Open it over the network* (`?api=http://<ip>/api`) or *Stay on USB*. A device that joins a saved network on its own while asked skips the question. Then the launcher's session takes the line the flasher opened (`useSerial()` takes a client too): opening the port again would reset the board. A firmware that doesn't answer gets a word saying so; a Bluetooth one, the Bluetooth chooser.
 - **On the bridge's page:** the bridge serves the flasher and the firmware of its repository's latest releases at the paths a site has them (§9.7), fetched from GitHub when asked, so a project's executable installs its firmware with nothing but GitHub. `localhost` is a secure context: Web Serial works there.
+- **Claiming:** a release image starts without accounts (it resets the board's settings), so with `claim` the launcher offers the new node its first admin account once it is connected (§9.7.3).
 - **Through the bridge's serial ports** *(later)*: browsers without Web Serial would need them to carry DTR, RTS and the baud rate.
 
 ### 9.7.2 The workspace
@@ -578,6 +580,19 @@ A launcher holds several connections at once, so the user moves between all the 
   A line without an identity (a port without USB ids, the flasher's) isn't remembered. The connection shown last is shown again, unless `?api=` names one.
 - **The bridge's nodes** (§9.7, *Nearby*) join as connections of their own, through its proxy, unless a connection already reaches the device (the bridge lists its `device` id, from its mDNS record or its schema). They aren't remembered: the bridge finds them again. A node closed by hand doesn't come back until the next visit. Any host on the network can announce itself, so such a node's own scripts (§9.8) don't run until the user opens its tab; nor is it shown by itself: closing the shown connection shows the next one the user added or opened, else the connection screen.
 - **Apply to all** (§6.6) spans every connection: a write goes to every tab's node, through its own connection.
+
+### 9.7.3 Claiming
+
+A node without an admin account lets anyone who reaches it change everything: TesserKIT's devices start that way, and turn their secure behaviours on (the access point's password, UDP and HTTP checks) once an account with the admin role exists (TesserKIT §5.7). The launcher offers that step, the one switch, rather than leaving it to a settings page.
+
+```js
+window.TESSER = { launcher: true, title: 'TesserKIT', claim: '/sys/auth', firmware: { ... } };
+```
+
+- **When:** `claim` names the node's accounts, as `firmware.wifi` names its Wi-Fi service: `open` there (true while no admin account exists), `users` (a list keyed by `name`, of `name`, `password` and `role`) and the login action (`ui.auth: "login"`, §7.4). Each time the shown connection's node loads while the user isn't signed in, the launcher reads `<claim>/open`; while it is `true`, a dialog offers to create the admin account. A node without a login action isn't offered it: the new account couldn't sign in. That covers a board just flashed with a release image (§9.7.1), whose line the launcher takes, and any node connected later. Only the connection's own node, not the remote nodes behind it.
+- **Writing it:** the name (`admin` by default) and password are added to `users` with `role: "admin"`. A keyed list is written whole (TesserAPI §4.4): the accounts already there are written back by name alone, so they keep their other fields, secrets included, and one of the same name is made admin. Then the user is signed in through the login action, as by the sign-in dialog: the node closes to everyone else at once, and the page reads it again at the admin's level. An error (a password over 64 characters) shows in the dialog, and nothing is signed in.
+- **Not now** closes it, remembered per node (`tesserui:claim:<id>`, else the API's URL) in the browser: the node isn't offered it again there. TesserKIT's own warning (`openWarning`) still shows on its page.
+- **Without `claim`** (TesserUI's own launcher, whose examples have no accounts), nothing is offered. The dialog is in `launcher.js` (`web/src/launcher/Claim.svelte`, `claim.ts`): a node's own page never offers it.
 
 ### 9.8 Custom elements
 

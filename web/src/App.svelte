@@ -31,7 +31,8 @@
   // full: the UI is the whole page (the node's own), not embedded. A
   // launcher's workspace adds the other connections' tabs `around` this
   // one's, buttons to `add` a connection and `close` this one, and its own
-  // `connect` screen.
+  // `connect` screen, and what it shows over the page (`children`: the
+  // claim step, §9.7.3).
   let {
     session,
     full = false,
@@ -39,7 +40,8 @@
     add,
     close,
     connect,
-  }: { session: Session; full?: boolean; around?: [Tab[], Tab[]]; add?: () => void; close?: () => void; connect?: Snippet } = $props();
+    children,
+  }: { session: Session; full?: boolean; around?: [Tab[], Tab[]]; add?: () => void; close?: () => void; connect?: Snippet; children?: Snippet } = $props();
   // svelte-ignore state_referenced_locally
   provideSession(session);
   // svelte-ignore state_referenced_locally
@@ -325,6 +327,7 @@
     </dialog>
   {/if}
 
+  {@render children?.()}
   <Toasts />
 </div>
 

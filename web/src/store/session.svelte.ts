@@ -44,6 +44,10 @@ export interface Config {
   launcher?: boolean;
   // Firmware the launcher installs over USB (§9.7.1), with flash.js.
   firmware?: Firmware;
+  // Claiming (§9.7.3): the path of the node's accounts (TesserKIT's
+  // /sys/auth). While its `open` is true, the launcher offers a first
+  // admin account, added to its `users`.
+  claim?: string;
   // The bridge's macOS executables the launcher links to (§9.7): the latest
   // release of `repo` has <name>-macos-arm64.zip and -x64.zip. Default:
   // TesserUI's own.
@@ -678,7 +682,7 @@ export class Session {
   // default: 4) and answers `busy` beyond: schema reads wait and retry. So
   // they do when the node has no memory for the reply (TesserAPI dba7c1f),
   // longer, unless `split`: the caller asks for less instead.
-  private async ask(r: Request, split = false): Promise<Reply> {
+  async ask(r: Request, split = false): Promise<Reply> {
     for (let attempt = 0; ; attempt++) {
       const reply = await this.client.request(r);
       const memory = !split && lowMemory(reply);
