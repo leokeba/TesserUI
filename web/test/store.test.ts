@@ -257,6 +257,27 @@ describe('store: object writes', () => {
     await done;
     expect(store.get('/sky')).toEqual({ sunAz: 100, targetAz: 10, targetEl: 20 });
   });
+  it("holds notifications below it until the reply, then applies them in order", async () => {
+    const { client, store } = setup();
+    store.apply('/', { sky: { sunAz: 100, targetAz: 1, targetEl: 2 } });
+    const done = store.write('/sky', { targetAz: 10, targetEl: 20 });
+    // The node's 100 ms coalescing: the old target, then the sun moving.
+    store.apply('/sky/targetAz', 1);
+    store.apply('/', { sky: { sunAz: 101, targetEl: 2 } });
+    expect(store.get('/sky')).toEqual({ sunAz: 100, targetAz: 10, targetEl: 20 });
+    client.reply('ok', { targetAz: 10, targetEl: 20 });
+    await done;
+    expect(store.get('/sky')).toEqual({ sunAz: 101, targetAz: 10, targetEl: 20 });
+  });
+  it('puts the object back as it was when the write fails', async () => {
+    const { client, store } = setup();
+    store.apply('/', { sky: { targetAz: 1, targetEl: 2 } });
+    const done = store.write('/sky', { targetAz: 10 });
+    store.apply('/sky/targetEl', 3);
+    client.reply('invalid_value', { error: 'invalid_value', path: '/sky/targetAz' });
+    await done;
+    expect(store.get('/sky')).toEqual({ targetAz: 1, targetEl: 3 });
+  });
 });
 
 describe('session: transport fallback', () => {

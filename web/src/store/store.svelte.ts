@@ -3,7 +3,7 @@
 // optimistic writes reconciled against the device's read-back values.
 
 import { errorBody, errorText, type Client, type Notification, type Reply } from '../client/types';
-import { isObject } from '../client/json';
+import { isObject, parse, stringify } from '../client/json';
 import { isUnder, parentPath, segments } from '../model/schema';
 import { Toasts } from './toasts.svelte';
 
@@ -51,9 +51,10 @@ export class Store {
   // The interface's text (Session.t).
   t: (text: string) => string = (x) => x;
 
-  // The device's last value for each pending path: notifications for a
-  // pending path land here instead of on screen.
-  private confirmed = new Map<string, unknown>();
+  // The device's values for each pending path, in the order they came:
+  // notifications at or below a pending path (an object's fields, after a
+  // patch written to it) land here instead of on screen.
+  private confirmed = new Map<string, [string, unknown][]>();
   private history = new Map<string, [number, number][]>();
   private drags = new Map<
     string,
@@ -94,10 +95,8 @@ export class Store {
 
   private applyAt(segs: string[], body: unknown, left = NaN, only?: string[]) {
     const path = '/' + segs.join('/');
-    if (this.pending[path]) {
-      this.confirmed.set(path, body);
-      return;
-    }
+    const held = this.holding(path);
+    if (held) return this.confirm(held, path, body);
     if (isObject(body)) {
       const cur = this.get(path);
       if (!isObject(cur)) this.setLocal(path, {});
@@ -155,14 +154,32 @@ export class Store {
     return this.history.get(path) ?? [];
   }
 
+  // The innermost pending path at or above `path`.
+  private holding(path: string): string | undefined {
+    let held: string | undefined;
+    for (const p in this.pending) if (isUnder(path, p) && p.length > (held?.length ?? -1)) held = p;
+    return held;
+  }
+
+  // A value at the pending path itself replaces what came before it, unless
+  // it is an object: a patch, merged.
+  private confirm(held: string, path: string, body: unknown) {
+    const q = this.confirmed.get(held)!;
+    if (path === held && !isObject(body)) q.length = 0;
+    q.push([path, body]);
+  }
+
+  // The value before the write, a copy (an object write changes it in place):
+  // shown again if the write fails and nothing newer came.
   private hold(path: string) {
     const n = this.pending[path] ?? 0;
-    if (!n) this.confirmed.set(path, this.get(path));
+    const v = this.get(path);
+    if (!n) this.confirmed.set(path, [[path, v === undefined ? v : parse(stringify(v))]]);
     this.pending[path] = n + 1;
   }
 
-  // When the last pending write of a path is answered, the device's value
-  // (the last read-back, or a newer notification) replaces the optimistic one.
+  // When the last pending write of a path is answered, the device's values
+  // (the last read-back, newer notifications) replace the optimistic one.
   private release(path: string) {
     const left = (this.pending[path] ?? 1) - 1;
     if (left > 0) {
@@ -170,9 +187,9 @@ export class Store {
       return;
     }
     delete this.pending[path];
-    const v = this.confirmed.get(path);
+    const q = this.confirmed.get(path) ?? [];
     this.confirmed.delete(path);
-    if (v !== undefined) this.applyAt(segments(path), v);
+    for (const [p, v] of q) if (v !== undefined) this.applyAt(segments(p), v);
   }
 
   isStale(path: string) {
@@ -256,7 +273,7 @@ export class Store {
   }
 
   private succeed(path: string, v: unknown) {
-    this.confirmed.set(path, v);
+    this.confirm(path, path, v);
     this.toasts.clear(path);
   }
 
