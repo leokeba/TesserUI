@@ -203,8 +203,10 @@ jobs:
   # Each push to main that passes: a release of the ESP-IDF examples a board
   # runs as they are, which the launcher installs (DESIGN.md §9.7.1). The
   # self-hosted example isn't one: its Wi-Fi network is built in. TesserKIT's
-  # reusable workflow numbers the release (library.json's version at least)
-  # and builds each chip's images.
+  # reusable workflow numbers the release (a patch, unless a commit since the
+  # last tag says "Release: minor" or "Release: major", DESIGN.md §12),
+  # builds each chip's images, and tags a commit on top of this one stating
+  # the version in every file (stamp-command), never pushed to main.
   firmware:
     needs: [host-tests, esp-idf, web]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
@@ -220,7 +222,7 @@ jobs:
         [{"project": "examples/idf/usb_gateway", "name": "tesserui-usb-gateway"},
          {"project": "examples/idf/bluetooth", "name": "tesserui-bluetooth"}]
       targets: '["esp32", "esp32c3", "esp32s3"]'
-      version-command: jq -r .version library.json
+      stamp-command: node web/scripts/version.mjs "$VERSION"
       dependencies: |
         leokeba/TesserAPI
         leokeba/NowTP
