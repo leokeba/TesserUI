@@ -73,3 +73,38 @@ test('a stub page loads the chunk from beside ui.js, on its origin', async ({ pa
   expect((await chunk).status()).toBe(200);
   await expect(page.locator('.row', { has: page.locator('label span:text-is("Power")') }).getByRole('meter')).toBeVisible();
 });
+
+// Two nodes' versions of one custom element on one page (DESIGN.md §9.8):
+// the same script at two addresses is one element; another text is refused
+// on the second node's element, not drawn by the first one's.
+const two = `<!doctype html><html><head><meta charset="utf-8"><title>Two</title></head><body>
+<div id="a"></div><div id="b"></div>
+<script type="module">
+  import { mount } from '/tesserui.js';
+  mount(document.getElementById('a'), { api: '${api}', path: '/sky', routing: 'memory', header: false });
+  setTimeout(() => mount(document.getElementById('b'), { api: 'http://127.0.0.1:8091/api', path: '/sky', routing: 'memory', header: false }), 500);
+</script></body></html>`;
+
+for (const other of [false, true]) {
+  test(`a node's custom element ${other ? 'of another version is refused' : 'shared by two nodes draws on both'}`, async ({ page }) => {
+    await page.route('**/two', (r) => r.fulfill({ contentType: 'text/html', body: two }));
+    if (other) {
+      await page.route('http://127.0.0.1:8091/ext/sun-dial.js', async (r) => {
+        const res = await r.fetch();
+        r.fulfill({ response: res, body: (await res.text()) + '\n// another version\n' });
+      });
+    }
+    await page.goto('/two');
+    const a = page.locator('#a');
+    const b = page.locator('#b');
+    await expect(a.locator('x-sun-dial p')).toContainText('target 180° / 45°');
+    if (other) {
+      await expect(b.locator('.note')).toContainText('Another node’s <x-sun-dial> is in use on this page');
+      await expect(b.locator('pre')).toContainText('"targetAz": 180');
+      await expect(b.locator('x-sun-dial')).toHaveCount(0);
+    } else {
+      await expect(b.locator('x-sun-dial p')).toContainText('target 180° / 45°');
+      await expect(b.locator('.note')).toHaveCount(0);
+    }
+  });
+}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { nodeScript } from '../src/widgets/script';
+import { claim, disown, nodeScript } from '../src/widgets/script';
 
 describe('a node’s ui.script (DESIGN §9.8)', () => {
   it('resolves paths on the node', () => {
@@ -22,5 +22,30 @@ describe('a node’s ui.script (DESIGN §9.8)', () => {
       expect(nodeScript(s, bridge), s).toBeNull();
     expect(nodeScript('/../x.js', 'http://node/v1/api')).toBeNull();
     expect(nodeScript('/api/x.js', 'http://node/api')).toBeNull();
+  });
+});
+
+describe('custom elements of several nodes (DESIGN §9.8)', () => {
+  const texts: Record<string, string | null> = {
+    'http://a/ext/dial.js': 'v1',
+    'http://b/ext/dial.js': 'v1',
+    'http://c/ext/dial.js': 'v2',
+    'http://d/ext/dial.js': null,
+  };
+  const fetchText = async (u: string) => texts[u];
+
+  it('share a tag when their scripts are the same, and refuse another version', async () => {
+    expect(await claim('x-dial', 'http://a/ext/dial.js', fetchText)).toBe(true);
+    expect(await claim('x-dial', 'http://a/ext/dial.js', fetchText)).toBe(true);
+    expect(await claim('x-dial', 'http://b/ext/dial.js', fetchText)).toBe(true);
+    expect(await claim('x-dial', 'http://c/ext/dial.js', fetchText)).toBe(false);
+    expect(await claim('x-dial', 'http://d/ext/dial.js', fetchText)).toBe(false);
+    expect(await claim('x-other', 'http://c/ext/dial.js', fetchText)).toBe(true);
+  });
+
+  it('let the next node have a tag whose script failed to load', async () => {
+    expect(await claim('x-gauge', 'http://d/ext/dial.js', fetchText)).toBe(true);
+    disown('x-gauge', 'http://d/ext/dial.js');
+    expect(await claim('x-gauge', 'http://c/ext/dial.js', fetchText)).toBe(true);
   });
 });

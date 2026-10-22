@@ -12,3 +12,27 @@ export function nodeScript(script: string, api: string): string | null {
   const inApi = (url.pathname + '/').startsWith(new URL(api).pathname.replace(/\/?$/, '/'));
   return url.origin === root.origin && url.pathname.startsWith(root.pathname) && !inApi ? url.href : null;
 }
+
+// Custom elements are one registry per page, and a tag is defined once: the
+// first node script to claim it owns it (DESIGN.md §9.8). Another node's
+// script for the tag is the same element when it is the same text (two
+// devices on one firmware, at their own addresses); otherwise its element
+// is refused rather than drawn by the other version. The texts are read
+// as the browser reads module scripts, with CORS.
+const owners = new Map<string, string>();
+const texts = new Map<string, Promise<string | null>>();
+const read = (url: string) => fetch(url).then((r) => (r.ok ? r.text() : null), () => null);
+
+export async function claim(tag: string, url: string, fetchText = read): Promise<boolean> {
+  const owner = owners.get(tag);
+  if (!owner) owners.set(tag, url);
+  if (!owner || owner === url) return true;
+  const text = (u: string) => texts.get(u) ?? (texts.set(u, fetchText(u)), texts.get(u)!);
+  const [a, b] = await Promise.all([text(owner), text(url)]);
+  return a !== null && a === b;
+}
+
+// A script that failed to load owns nothing: the next node's may.
+export function disown(tag: string, url: string) {
+  if (owners.get(tag) === url) owners.delete(tag);
+}

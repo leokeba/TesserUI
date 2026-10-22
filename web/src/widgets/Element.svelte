@@ -29,7 +29,7 @@
   import { useSession } from '../shared.svelte';
   import JsonView from './JsonView.svelte';
   import { widgetOf } from './registry.svelte';
-  import { nodeScript } from './script';
+  import { claim, disown, nodeScript } from './script';
   import type { WidgetProps } from './types';
 
   let { leaf, value, set, disabled, id }: WidgetProps = $props();
@@ -40,6 +40,8 @@
   let host: HTMLDivElement | undefined = $state();
   let el: Custom | undefined = $state();
   let failed = $state(false);
+  // Another node's version of the element is defined (claim()).
+  let refused = $state(false);
 
   const copy = (v: unknown) => (v === undefined ? undefined : parse(stringify(v)));
   // Paths: relative to the node, or absolute within the node's tree.
@@ -80,12 +82,18 @@
   // svelte-ignore state_referenced_locally
   const script = leaf.script;
   const own = script && nodeScript(script, session.apiUrl());
-  if (own) urls.push(own);
-  else if (script) console.error(`<${tag}>: ui.script refused:`, script), (failed = !customElements.get(tag));
+  if (script && !own) console.error(`<${tag}>: ui.script refused:`, script), (failed = !customElements.get(tag));
   for (const url of urls) load(url).then((ok) => ok || customElements.get(tag) || (failed = true));
-  const timer = setTimeout(() => (failed = !customElements.get(tag)), 8000);
+  if (own) {
+    claim(tag, own).then((mine) => {
+      if (!mine) return console.error(`<${tag}>: another node's version is defined; not`, own), (refused = failed = true);
+      load(own).then((ok) => ok || (disown(tag, own), customElements.get(tag) || (failed = true)));
+    });
+  }
+  const timer = setTimeout(() => (failed = refused || !customElements.get(tag)), 8000);
   customElements.whenDefined(tag).then(() => {
     clearTimeout(timer);
+    if (refused) return;
     try {
       const e = document.createElement(tag) as Custom;
       e.tesser = handle;
@@ -127,11 +135,17 @@
   {:else}
     <JsonView leaf={{ ...leaf, widget: 'json', editable: false }} {value} {set} {disabled} {id} />
   {/if}
+  {#if refused}<p class="note">{session.t('Another node’s <{tag}> is in use on this page: reload this page to see this node’s own.', { tag })}</p>{/if}
 {:else}
   <div class="element" bind:this={host}></div>
 {/if}
 
 <style>
+  .note {
+    margin: 0.25rem 0 0;
+    color: var(--muted);
+    font-size: 0.85em;
+  }
   .element {
     min-width: 0;
     width: 100%;
