@@ -16,6 +16,9 @@ struct PageOptions {
     const char* ws = "/ws";            // WebSocket path; null: no WebSocket
     const char* minVersion = nullptr;  // oldest bundle the node accepts; null: any
     const char* script = "/ui.js";     // the bundle's URL
+    // The bundle's Subresource Integrity ("sha384-..."), for a stub pinned to
+    // a version (section 9.6): fetched with CORS, refused if it differs.
+    const char* integrity = nullptr;
     const char* title = nullptr;       // the page title until the device's label is known
     const char* icon = nullptr;        // the favicon's URL; null: TesserUI's, inline
     // Module scripts defining custom elements (section 9.8).

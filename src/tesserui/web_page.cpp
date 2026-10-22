@@ -110,6 +110,11 @@ std::string renderPage(const PageOptions& o) {
     out += "}</script></head><body><script src=\"";
     appendHtml(out, script);
     out += '"';
+    if (o.integrity) {
+        out += " integrity=\"";
+        appendHtml(out, o.integrity);
+        out += "\" crossorigin=\"anonymous\"";
+    }
     if (o.fallback) {
         // The fallback is HTML kept in a data attribute, so it is escaped
         // twice: once as HTML, once as an attribute value.

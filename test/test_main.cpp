@@ -360,6 +360,17 @@ TEST(page_stub) {
              "onerror=\"document.body.innerHTML=this.dataset.fallback\"></script></body></html>");
 }
 
+TEST(page_stub_integrity) {
+    tesserui::PageOptions o;
+    o.script = "https://leokeba.github.io/TesserUI/v0.1.20/ui.js";
+    o.integrity = "sha384-oqVuAfXRKap7fdgcCY5uykM6+R9GqQ8K/uxy9rx7HNQlGYl1kPzQho1wx4JwY8wC";
+    o.fallback = true;
+    std::string page = tesserui::renderPage(o);
+    CHECK(page.find("<script src=\"https://leokeba.github.io/TesserUI/v0.1.20/ui.js\" "
+                    "integrity=\"sha384-oqVuAfXRKap7fdgcCY5uykM6+R9GqQ8K/uxy9rx7HNQlGYl1kPzQho1wx4JwY8wC\" "
+                    "crossorigin=\"anonymous\" data-fallback=") != std::string::npos);
+}
+
 TEST(page_escapes) {
     tesserui::PageOptions o;
     o.api = "/a\"</script>";

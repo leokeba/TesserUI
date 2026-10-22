@@ -27,6 +27,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { Readable } from 'node:stream';
 import { WebSocket, WebSocketServer } from 'ws';
+import pkg from './package.json' with { type: 'json' };
 import { contentType, fileOption } from './files.mjs';
 import { browse } from './mdns.mjs';
 import { latestReleases, manifest } from './releases.mjs';
@@ -42,7 +43,7 @@ const repo = values('--repo')[0] ?? builtIn?.repo ?? 'leokeba/TesserUI';
 const origins = [new URL(launcher).origin, 'https://leokeba.github.io', ...values('--origin')];
 const useMdns = !args.includes('--no-mdns');
 const useSerial = !args.includes('--no-serial');
-const version = '0.1.0';
+const { version } = pkg;
 
 // Origins that may use the bridge: the launcher's, any page on this machine,
 // and those given. Requests without an Origin come from tools, not pages.

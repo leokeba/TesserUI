@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
 
 const api = 'http://localhost:8091/api';
@@ -106,5 +108,27 @@ for (const other of [false, true]) {
       await expect(b.locator('x-sun-dial p')).toContainText('target 180° / 45°');
       await expect(b.locator('.note')).toHaveCount(0);
     }
+  });
+}
+
+// A stub pinned to a version on the launcher's site (DESIGN.md §9.6), with
+// its integrity: fetched with CORS, as Pages serves it; refused, with the
+// stub's explanation, when it differs.
+for (const intact of [true, false]) {
+  test(`a stub pinned with its integrity ${intact ? 'loads' : 'refuses a bundle that differs'}`, async ({ page }) => {
+    const ui = readFileSync(new URL('../dist/ui.js', import.meta.url));
+    const sri = 'sha384-' + createHash('sha384').update(intact ? ui : Buffer.concat([ui, Buffer.from('\n')])).digest('base64');
+    const pinned = `<!doctype html><html><head><meta charset="utf-8"><title>Stub</title>
+<script>window.TESSER={api:"${api}",ws:"ws://localhost:8091/ws"}</script></head>
+<body><script src="https://pages.example/v1.2.3/ui.js" integrity="${sri}" crossorigin="anonymous"
+data-fallback="The interface could not be loaded" onerror="document.body.innerHTML=this.dataset.fallback"></script></body></html>`;
+    await page.route('**/pinned', (r) => r.fulfill({ contentType: 'text/html', body: pinned }));
+    await page.route('https://pages.example/v1.2.3/**', (r) => {
+      const file = new URL(`../dist/${new URL(r.request().url()).pathname.slice('/v1.2.3/'.length)}`, import.meta.url);
+      r.fulfill({ contentType: 'text/javascript', headers: { 'Access-Control-Allow-Origin': '*' }, body: readFileSync(file) });
+    });
+    await page.goto('/pinned#/lamp');
+    if (intact) await expect(page.locator('.row', { has: page.locator('label span:text-is("Power")') }).getByRole('meter')).toBeVisible();
+    else await expect(page.locator('body')).toHaveText('The interface could not be loaded');
   });
 }

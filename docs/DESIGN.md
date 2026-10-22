@@ -501,13 +501,15 @@ The web app shows the host's own tree and the `/peers` card of links. Every othe
 A Wi-Fi node without the bundle serves a page that loads `ui.js` from elsewhere:
 
 ```cpp
-web.serveStub(http.handle(), "https://cdn.jsdelivr.net/npm/tesserui@1.0.0/dist/ui.js");
+// A version on the launcher's site, with its hash from versions.json:
+web.integrity("sha384-...").serveStub(http.handle(), "https://leokeba.github.io/TesserUI/v0.1.20/ui.js");
 // or from a UI host on the network: "http://192.168.1.10/ui.js"
 ```
 
 - **Same origin:** the page's origin is the node, so API and WebSocket requests are same-origin. There's no CORS setup, and no mixed content: an HTTP page may load an HTTPS script.
 - **Offline fallback:** if the script doesn't load (no internet), the stub shows a one-line explanation and links to the raw API.
-- **Pinning:** the CDN URL pins an exact version, so the bundle stays compatible with the node's TesserUI version.
+- **Pinning:** the launcher's site keeps every released version of the bundle at `v<version>/` (`ui.js` and its `ui/` chunk), beside the latest at its root, which changes with every push to `main`. A stub pins one, so the bundle stays compatible with the node, and `web.integrity()` adds its Subresource Integrity hash to the `<script>`: the browser fetches it with CORS (Pages sends `Access-Control-Allow-Origin: *`) and refuses a file that differs, as it does one that fails to load (the explanation below shows). Each version's hash is in the site's `versions.json` (`{"latest": "0.1.20", "versions": {"0.1.20": "sha384-...", ...}}`). The hash covers `ui.js`, which names its chunk by the chunk's content hash, a name, not a check: the chunk itself isn't verified. A UI host's `/ui.js` changes with its firmware and sends no CORS headers: no integrity there. An npm package on a CDN would pin the same way, once published.
+  - **How the site keeps them:** a Pages deployment replaces the whole site, so CI attaches each release's folder to the release (`tesserui-web-<version>.tar.gz`) and reads every release's back when it builds the site (`web/scripts/site.mjs`), stamping the version just released into the bundles it publishes. A release that failed, or that a newer push superseded, gets no folder.
 - **Chunks:** `ui.js` loads its chunk from beside itself (§9.4), so wherever it comes from must serve `ui/` too, with CORS, since `import()` fetches across origins in CORS mode where `<script src>` doesn't: a CDN's copy of the package, Pages, and a UI host's `WebUi` do.
 
 ### 9.7 Launcher (GitHub Pages)
@@ -741,7 +743,7 @@ TesserUI/
 ```
 
 - **C++ library:** depends on TesserAPI. `LvglUi` is compiled only when LVGL is in the build (`__has_include(<lvgl.h>)` on Arduino and PlatformIO; component detection on ESP-IDF, as TesserAPI does for NowTP). `WebUi` is compiled only on ESP with `esp_http_server`.
-- **Versions:** the npm package and the C++ library share version numbers. The bundle reports its version, and a node may require a minimum one with `web.minVersion()`: a bundle older than that shows a warning banner.
+- **Versions:** the npm package and the C++ library share version numbers (`library.json`'s, which CI's release numbering reads; npm, PlatformIO, Arduino and ESP-IDF each read their own manifest, and C++ needs a literal, so `web/scripts/version.mjs X.Y.Z` writes it into `package.json` (both), `library.properties`, `idf_component.yml` and `version.h`, and a test fails when they differ; the bridge reads its `package.json`). Each push to `main` that passes is a release, numbered by CI (TesserKIT's `firmware.yml`): the last tag's patch raised, or the committed version when that is higher. So the committed version is the floor of the next release, raised by a commit for a minor or major one. The bundle reports its version: the release's in the copies CI publishes on the launcher's site (§9.6, stamped by `web/scripts/site.mjs`), the committed one in a bundle built from the repository (the C++ header, the npm module). A node may require a minimum with `web.minVersion()`: a bundle older than that shows a warning banner. Since a self-hosted bundle says its commit's floor, not its patch release, a node requires a minor version (`"0.2.0"`), unless it only ever loads a pinned stub version.
 
 ## 13. Follow-ups wanted in TesserAPI
 

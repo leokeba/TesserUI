@@ -19,8 +19,10 @@ namespace tesserui {
 //   tesserui::WebUi web;
 //   web.serve(http.handle());      // GET /, /ui.js and /ui/* on the same server
 //
-// Stub, with the bundle loaded from elsewhere:
-//   web.serveStub(http.handle(), "https://cdn.jsdelivr.net/npm/tesserui@0.1.0/dist/ui.js");
+// Stub, with the bundle loaded from elsewhere: a version on the launcher's
+// site, checked against its hash (both from its versions.json, DESIGN.md §9.6):
+//   web.integrity("sha384-...")
+//      .serveStub(http.handle(), "https://leokeba.github.io/TesserUI/v0.1.20/ui.js");
 //
 // Options, all before serve() (strings must outlive the WebUi):
 //   web.basePath("/ui/")                         // the UI at /ui/ and /ui/ui.js, leaving / to the app
@@ -46,6 +48,14 @@ public:
     // the page.
     WebUi& minVersion(const char* version) {
         pageOptions_.minVersion = version;
+        return *this;
+    }
+    // A stub's bundle, pinned to a version: its Subresource Integrity hash
+    // ("sha384-..."). The browser then fetches it with CORS, and refuses it
+    // (the stub's explanation shows) if it differs. Not for a UI host's
+    // /ui.js, which changes with its firmware and sends no CORS headers.
+    WebUi& integrity(const char* sri) {
+        pageOptions_.integrity = sri;
         return *this;
     }
     // Where the page is served: "/" (default) or a path ending with "/", the
@@ -92,7 +102,8 @@ public:
     // base path and `wsPath` its WebSocket path, or null without one.
     esp_err_t serve(httpd_handle_t server, const char* apiPath = "/api", const char* wsPath = "/ws");
     // Registers GET <base> and the assets: a page that loads the bundle from
-    // `scriptUrl` (a CDN pinned to a version, or a UI host's /ui.js), and
+    // `scriptUrl` (a version on the launcher's site or a CDN, see
+    // integrity(), or a UI host's /ui.js), and
     // explains itself with a link to the raw API when that fails.
     esp_err_t serveStub(httpd_handle_t server, const char* scriptUrl, const char* apiPath = "/api",
                         const char* wsPath = "/ws");

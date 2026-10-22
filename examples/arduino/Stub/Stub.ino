@@ -44,8 +44,10 @@ void setup() {
     http.begin(80, "/api");
     // tesser-stub.local, and listed by the launcher's bridge (DESIGN.md §9.7).
     http.advertise("tesser-stub", "tesser-stub");
-    // Pinned to this library's version: ".../tesserui@0.1.0/dist/ui.js".
-    web.serveStub(http.handle(), "https://cdn.jsdelivr.net/npm/tesserui@" TESSERUI_VERSION "/dist/ui.js");
+    // Pinned to this library's version on the launcher's site: ".../v0.1.20/ui.js".
+    // With its hash from https://leokeba.github.io/TesserUI/versions.json, the
+    // browser refuses a file that differs: web.integrity("sha384-...").
+    web.serveStub(http.handle(), "https://leokeba.github.io/TesserUI/v" TESSERUI_VERSION "/ui.js");
     api.startTask();
 }
 

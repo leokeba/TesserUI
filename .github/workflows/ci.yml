@@ -185,11 +185,14 @@ jobs:
           npx playwright install --with-deps chromium
           pnpm e2e
       # The launcher on GitHub Pages (DESIGN.md §9.7): the bundle that just
-      # passed and the flasher, from main only. The pages job adds the
-      # firmware.
+      # passed and the flasher, from main only, built again with a
+      # placeholder for the version the release takes, which the pages job
+      # stamps in (scripts/site.mjs) with the firmware and the versions.
       - name: Pages site
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-        run: mkdir -p _site/ui && cp pages/index.html dist/ui.js dist/launcher.js _site/ && cp dist/ui/*.js _site/ui/ && cp -R dist/flash _site/flash
+        run: |
+          TESSERUI_VERSION=0.0.0-site pnpm build
+          mkdir -p _site/ui && cp pages/index.html dist/ui.js dist/launcher.js _site/ && cp dist/ui/*.js _site/ui/ && cp -R dist/flash _site/flash
       - uses: actions/upload-artifact@v4
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         with:
@@ -238,14 +241,16 @@ jobs:
       tesserui-ref: ${{ github.sha }}
 
   # The site, with the latest three releases' images copied in: a page can't
-  # read release assets from GitHub (no CORS). Deployed even when a release
-  # failed, with the releases there are.
+  # read release assets from GitHub (no CORS). And every released version of
+  # the bundle at v<version>/, for stub pages pinned to one (DESIGN.md §9.6):
+  # this release's is attached to it, the earlier ones read back from theirs.
+  # Deployed even when a release failed, with the releases there are.
   pages:
     needs: [web, firmware]
     if: ${{ !cancelled() && needs.web.result == 'success' && github.ref == 'refs/heads/main' && github.event_name == 'push' }}
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
       pages: write
       id-token: write
     environment:
@@ -264,6 +269,20 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: node web/scripts/firmware.mjs "$GITHUB_REPOSITORY" _site/firmware --releases 3
+      # Only a release of this very commit gets a folder: one that failed, or
+      # that a newer push superseded, leaves the bundle saying package.json's
+      # version.
+      - name: The bundle's versions
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.firmware.outputs.version }}
+        run: |
+          git fetch -q --tags
+          if [ -z "$VERSION" ] || [ "$(git rev-parse -q --verify "v$VERSION^{commit}")" != "$GITHUB_SHA" ] || ! gh release view "v$VERSION" > /dev/null; then
+            VERSION=
+          fi
+          node web/scripts/site.mjs _site --repo "$GITHUB_REPOSITORY" ${VERSION:+--version "$VERSION" --pack "tesserui-web-$VERSION.tar.gz"}
+          if [ -n "$VERSION" ]; then gh release upload "v$VERSION" "tesserui-web-$VERSION.tar.gz" --clobber; fi
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site

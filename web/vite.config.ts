@@ -21,7 +21,9 @@ export default defineConfig(({ mode }) => ({
     mode === 'production' && classicEntry(),
     (mode === 'lib' || mode === 'launcher') && staticWidgets(),
   ],
-  define: { __VERSION__: JSON.stringify(pkg.version) },
+  // CI stamps the version it releases into the launcher's site's copy
+  // (scripts/site.mjs); the repository's builds say package.json's.
+  define: { __VERSION__: JSON.stringify(process.env.TESSERUI_VERSION || pkg.version) },
   build: {
     target: 'es2022',
     outDir: mode === 'flash' ? 'dist/flash' : 'dist',

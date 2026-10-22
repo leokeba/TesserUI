@@ -1,6 +1,6 @@
 {
   "name": "tesserui-bridge",
-  "version": "0.1.0",
+  "version": "0.1.20",
   "description": "Finds TesserAPI nodes on the network (mDNS) and serial ports, and serves them to TesserUI's launcher from localhost",
   "license": "MIT",
   "author": "Leo Baque",

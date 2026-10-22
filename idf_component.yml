@@ -1,4 +1,4 @@
-version: "0.1.0"
+version: "0.1.20"
 description: "User interfaces for TesserAPI nodes, rendered from their schema: self-hosted web UI, stub pages and views"
 url: "https://github.com/leokeba/TesserUI"
 license: "MIT"

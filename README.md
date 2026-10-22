@@ -9,7 +9,7 @@ User interfaces for [TesserAPI](https://github.com/leokeba/TesserAPI) nodes, ren
 
 > **Status: early development.** The web renderer is complete enough for real devices: self-hosted, UI hosts over ESP-NOW, stub pages, the launcher (USB, Bluetooth, network), views, charts, forms, files, notifications, custom elements and embedding. The LVGL touchscreen renderer has a first version with the basic widgets (switches, sliders, numbers, choices, text, buttons, readouts), tested on a 320×240 ESP32 board. The API will change before 1.0; the specification is [docs/DESIGN.md](docs/DESIGN.md).
 >
-> The npm packages (`tesserui`, `tesserui-bridge`) are not published yet. Until they are, run the bridge from this repository (`node bridge/bridge.mjs`) or download it for macOS (below), and point stub pages at the launcher's copy of the bundle (`https://leokeba.github.io/TesserUI/ui.js`) or at a UI host.
+> The npm packages (`tesserui`, `tesserui-bridge`) are not published yet. Until they are, run the bridge from this repository (`node bridge/bridge.mjs`) or download it for macOS (below), and point stub pages at a version of the bundle on the launcher's site (`https://leokeba.github.io/TesserUI/v<version>/ui.js`, its integrity hash in [versions.json](https://leokeba.github.io/TesserUI/versions.json); `/ui.js` is the latest, which changes with every push) or at a UI host.
 
 ## At a glance
 
@@ -91,7 +91,7 @@ The full vocabulary is in [DESIGN.md §5](docs/DESIGN.md#5-hints-tier-1).
 |---|---|---|
 | Self-hosted | The node (~66 KB of flash) | `web.serve(http.handle())` |
 | UI host | One ESP with spare flash, also a NowTP gateway | `nowApi.mountPeers(api.object("peers"))`: every nearby node gets a page at `#/peers/<name>`, forwarded over ESP-NOW |
-| Stub | A CDN or the UI host | `web.serveStub(http.handle(), "https://cdn.jsdelivr.net/npm/tesserui@0.1.0/dist/ui.js")`: a 300-byte page |
+| Stub | The launcher's site, a CDN or the UI host | `web.integrity("sha384-…").serveStub(http.handle(), "https://leokeba.github.io/TesserUI/v0.1.20/ui.js")`: a 300-byte page, pinned to a version |
 | Launcher | GitHub Pages | Pick a node: USB (Web Serial), Bluetooth (Web Bluetooth), or its address on the network; or install firmware |
 | Touchscreen | n/a (LVGL 9) | `tesserui::LvglUi ui(client, display); ui.begin("/");` with a `tesser::LocalClient` for the node on the chip, then `ui.loop()` and `lv_timer_handler()` in the UI task |
 
