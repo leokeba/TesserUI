@@ -11,6 +11,8 @@ import { targetOf } from './firmware';
 // ROM at 460800 from the start fails on an ESP32 devkit.
 const BAUD = 460800;
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 export interface Board {
   loader: ESPLoader;
   transport: Transport;
@@ -48,10 +50,18 @@ export async function write(board: Board, image: Uint8Array, eraseAll: boolean, 
   });
 }
 
-// Starts the new firmware, and lets go of the port.
+// Starts the new firmware, and lets go of the port: esptool's hard reset,
+// EN pulled low through RTS with GPIO 0 high. esptool-js 0.7's
+// after('hard_reset') only lets go of RTS, which resets nothing: devkits
+// started the firmware only because closing the port moved the lines.
 export async function restart(board: Board) {
+  const t = board.transport;
   try {
-    await board.loader.after('hard_reset');
+    await t.setDTR(false);
+    await t.setRTS(true);
+    await sleep(100);
+    // the chip's own USB may leave with the reset
+    await t.setRTS(false).catch(() => {});
   } finally {
     await release(board.transport);
   }
@@ -64,8 +74,6 @@ export async function release(transport: Transport) {
     // unplugged, or the chip's own USB went away with the reset
   }
 }
-
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 // A chip's own USB (Espressif's vendor id: the C3's and S3's USB serial)
 // leaves with the reset and comes back as another port, which this page may
