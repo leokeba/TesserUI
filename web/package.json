@@ -1,6 +1,6 @@
 {
   "name": "tesserui",
-  "version": "0.1.20",
+  "version": "0.2.1",
   "description": "User interfaces for TesserAPI nodes, rendered from their schema",
   "license": "MIT",
   "author": "Leo Baque",
