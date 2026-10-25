@@ -414,7 +414,11 @@ export class Session {
   // (an update, a reboot), is read again, as on the first connection; so is
   // a node that restarted.
   private async resume() {
-    const same = this.loaded && (await this.identify()) === this.identity && !this.restarting;
+    const changed = this.loaded && (await this.identify()) !== this.identity;
+    // The node's own page, back with new firmware: the node may serve
+    // another bundle than the one running, which only a reload runs.
+    if (changed && !this.config.launcher && this.config.routing !== 'memory' && new URL(this.apiUrl(), location.href).origin === location.origin) return location.reload();
+    const same = this.loaded && !changed && !this.restarting;
     this.restarting = false;
     if (same) return this.subs.renew();
     this.forget();

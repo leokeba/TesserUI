@@ -31,8 +31,11 @@ describe('snapshots replace what they cover (DESIGN §7.3)', () => {
 describe.each([1, 2])('reconnection, protocol %i (DESIGN §7.5)', (protocol) => {
   afterEach(() => vi.unstubAllGlobals());
 
-  function node() {
-    vi.stubGlobal('location', new URL('http://node.local/'));
+  // own: the node's own page (its API on the page's origin); else a UI
+  // embedded in another page.
+  function node(own = false) {
+    const reload = vi.fn();
+    vi.stubGlobal('location', Object.assign(new URL(own ? 'http://node.local/' : 'http://elsewhere.local/'), { reload }));
     const saved = new Map<string, string>();
     vi.stubGlobal('localStorage', {
       getItem: (k: string) => saved.get(k) ?? null,
@@ -54,9 +57,9 @@ describe.each([1, 2])('reconnection, protocol %i (DESIGN §7.5)', (protocol) => 
       if (r.op === 'get' || r.op === 'sub') return { status: 'ok', body: dev.values };
       return { status: 'ok', body: null };
     };
-    const s = new Session({ api: '/api', ws: '/ws', transport: 'ws' });
+    const s = new Session({ api: 'http://node.local/api', ws: '/ws', transport: 'ws' });
     (s as unknown as { use(c: FakeClient): void }).use(client);
-    return { s, client, dev, saved };
+    return { s, client, dev, saved, reload };
   }
   const settle = async () => {
     for (let i = 0; i < 10; i++) await tick();
@@ -150,6 +153,25 @@ describe.each([1, 2])('reconnection, protocol %i (DESIGN §7.5)', (protocol) => 
     expect(s.store.values).toEqual({ lamp: false, old: 4 });
     s.close();
     vi.useRealTimers();
+  });
+
+  it("reloads the node's own page after a new firmware, which may bring another bundle", async () => {
+    const { client, dev, reload } = node(true);
+    client.state('open');
+    await settle();
+    client.state('down');
+    dev.hash = 'bbbb0002';
+    client.state('open');
+    await settle();
+    expect(reload).toHaveBeenCalledOnce();
+    // The same firmware back (a restart): no reload.
+    const again = node(true);
+    again.client.state('open');
+    await settle();
+    again.client.state('down');
+    again.client.state('open');
+    await settle();
+    expect(again.reload).not.toHaveBeenCalled();
   });
 
   it('reads everything again after a new firmware (another hash)', async () => {
