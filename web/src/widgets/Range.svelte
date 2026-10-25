@@ -1,14 +1,16 @@
 <script lang="ts">
   import { formatValue } from '../model/format';
   import { useSession } from '../shared.svelte';
-  import { asNumber, detent, fixed, parseNumber, type WidgetProps } from './types';
+  import { asNumber, bounds, detent, fixed, onStep, parseNumber, type WidgetProps } from './types';
   let { leaf, value, set, disabled, id }: WidgetProps = $props();
   const session = useSession();
   const n = $derived(asNumber(value));
+  const b = $derived(bounds(leaf, value));
   // Pointer drags snap to 0 (the thumb too); arrow keys move freely.
   let dragging = false;
   function input(el: HTMLInputElement) {
-    const v = Number(el.value);
+    // Off the step (the device's value was), the slider moved freely.
+    const v = onStep(Number(el.value), leaf);
     const snapped = dragging ? detent(v, leaf) : v;
     if (snapped !== v) el.value = String(snapped);
     set(snapped, true);
@@ -21,7 +23,7 @@
     type="range"
     min={leaf.min}
     max={leaf.max}
-    step={leaf.step ?? 'any'}
+    step={b.step}
     value={Number.isNaN(n) ? leaf.min : n}
     {disabled}
     aria-valuetext={formatValue(value, leaf)}
@@ -33,9 +35,9 @@
   <input
     class="entry"
     type="number"
-    min={leaf.min}
-    max={leaf.max}
-    step={leaf.step ?? 'any'}
+    min={b.min}
+    max={b.max}
+    step={b.step}
     value={fixed(value, leaf.precision)}
     {disabled}
     aria-label={session.t('{label} value', { label: leaf.label })}

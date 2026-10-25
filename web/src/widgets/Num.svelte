@@ -1,10 +1,11 @@
 <script lang="ts">
   import { useSession } from '../shared.svelte';
-  import { asNumber, fixed, parseNumber, type WidgetProps } from './types';
+  import { asNumber, bounds, fixed, parseNumber, type WidgetProps } from './types';
   let { leaf, value, set, disabled, id }: WidgetProps = $props();
 
   const session = useSession();
   const step = $derived(leaf.step ?? 1);
+  const b = $derived(bounds(leaf, value));
   function bump(d: number) {
     const n = asNumber(value);
     const next = (Number.isNaN(n) ? (leaf.min ?? 0) : n) + d * step;
@@ -19,9 +20,9 @@
   <input
     {id}
     type="number"
-    min={leaf.min}
-    max={leaf.max}
-    step={leaf.step ?? (leaf.type === 'integer' ? 1 : 'any')}
+    min={b.min}
+    max={b.max}
+    step={b.step}
     placeholder={leaf.placeholder}
     value={fixed(value, leaf.widget === 'stepper' ? leaf.precision : undefined)}
     {disabled}
