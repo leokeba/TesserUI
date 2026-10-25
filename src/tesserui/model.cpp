@@ -618,6 +618,21 @@ struct Builder {
             (item.advanced ? sec.advancedItems : sec.items).push_back(std::move(item));
         }
         inherited = above;
+        // One "Advanced" per card: its sub-sections' advanced items join the
+        // card's, under their sub-section's title. Tabs and forms keep theirs.
+        if (level == 1 && !sec.tabs) {
+            for (Item& sub : sec.items) {
+                if (sub.kind != ItemKind::Section || sub.form || sub.advancedItems.empty()) continue;
+                std::vector<Item> advanced, items;
+                advanced.swap(sub.advancedItems);
+                items.swap(sub.items);
+                Item group = sub;
+                sub.items.swap(items);
+                group.items = std::move(advanced);
+                group.collapsed = false;
+                sec.advancedItems.push_back(std::move(group));
+            }
+        }
         if (sec.form) {
             Item* submit = nullptr;
             for (Item& i : sec.items) {

@@ -532,6 +532,15 @@ function section(name: string, path: string, s: Schema, level: number, parent: s
     (item.advanced ? sec.advancedItems : sec.items).push(item);
   }
   inherited = above;
+  // One "Advanced" per card: its sub-sections' advanced items join the
+  // card's, under their sub-section's title. Tabs and forms keep theirs.
+  if (level === 1 && !sec.tabs) {
+    for (const sub of sec.items) {
+      if (sub.kind !== 'section' || sub.form || !sub.advancedItems.length) continue;
+      sec.advancedItems.push({ ...sub, items: sub.advancedItems, advancedItems: [], collapsed: false });
+      sub.advancedItems = [];
+    }
+  }
   // An action suggesting a sibling list's elements is drawn by the list.
   const all = [...sec.items, ...sec.advancedItems];
   for (const l of all) if (l.kind === 'leaf' && l.suggest) for (const a of all) if (a.path === l.suggest && a.kind === 'leaf' && a.schema.type === 'action') a.suggests = l.path;

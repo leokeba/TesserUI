@@ -13,8 +13,10 @@ function find(path: string): Item {
   let found: Item | undefined;
   const walk = (items: Item[]) => {
     for (const i of items) {
+      // The deepest; a card's "Advanced" repeats its sub-sections' paths:
+      // the sub-sections win.
       if (i.path === path) found = i;
-      if (i.kind === 'section') walk([...i.items, ...i.advancedItems]);
+      if (i.kind === 'section') walk([...i.advancedItems, ...i.items]);
     }
   };
   walk(page.cards);
@@ -85,7 +87,9 @@ describe('demo: widgets', () => {
   it('lays out sections (DESIGN §6.1)', () => {
     expect(page.columns).toBe(3);
     expect(page.cards[0]).toMatchObject({ label: '', items: [{ name: 'uptime' }, { name: 'online' }, { name: 'info', kind: 'link' }, { name: 'sky', kind: 'leaf', widget: 'x-sun-dial', script: '/ext/sun-dial.js' }, { name: 'sequence', kind: 'leaf', widget: 'x-keyframes' }, { name: 'blob' }, { name: '_ui', hidden: true }] });
-    expect(sec('/config/network')).toMatchObject({ level: 2, collapsed: true });
+    expect(sec('/config/network')).toMatchObject({ level: 2, collapsed: true, advancedItems: [] });
+    // One "Advanced" per card: the card's, then its sub-sections' (W2).
+    expect(sec('/config').advancedItems).toMatchObject([{ name: 'retries' }, { kind: 'section', label: 'Network', collapsed: false, items: [{ name: 'mtu' }] }]);
     // Depth 3 from the root: the 4th level is fetched on opening.
     expect(sec('/config/network/deep')).toMatchObject({ level: 3, lazy: false });
     expect(sec('/config/network/deep/deeper')).toMatchObject({ level: 4 });

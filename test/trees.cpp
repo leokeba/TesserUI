@@ -277,8 +277,11 @@ Demo::Demo()
     config.value("threshold", threshold).ui("enabledWhen", "enabled=true");
     config.value("token", token).ui("hidden");
     config.value("readonlyLevel", readonlyLevel).ui("readonly");
+    // The card's advanced values and its sub-section's share one "Advanced".
+    config.value("retries", retries).ui("advanced");
     auto& network = config.object("network").ui("collapsed");
     network.value("dhcp", dhcp);
+    network.value("mtu", mtu).ui("advanced");
     network.value("ip", ip).ui("visibleWhen", "dhcp=false");
     network.value("staticWarning", [] { return std::string("Make sure no other device on the network uses this address."); })
         .label("Static address")

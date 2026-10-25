@@ -171,6 +171,8 @@ struct Demo {
     std::string token = "abc123";
     int readonlyLevel = 7;
     bool dhcp = false;
+    int retries = 3;
+    int mtu = 1500;
     std::string ip = "192.168.1.50";
     int leaf = 42;
     // offset, channels, schedule
