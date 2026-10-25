@@ -43,6 +43,7 @@ export function formatValue(v: unknown, f: NumberFormat): string {
   if (v === null) return 'null';
   const label = f.labels?.[String(v)];
   if (label !== undefined) return label;
+  if (f.format === 'datetime' || (typeof v === 'string' && ISO.test(v))) return datetime(v, f.unit);
   if (f.format) return printf(f.format, v);
   let text: string;
   if (typeof v === 'number' && Number.isInteger(v) && (f.unit === 'B' || f.unit === 's')) {
@@ -58,6 +59,17 @@ export function formatValue(v: unknown, f: NumberFormat): string {
     text = stringify(v);
   }
   return f.unit ? `${text} ${f.unit}` : text;
+}
+
+// An instant (ui.format "datetime"): an epoch in seconds (milliseconds with
+// unit "ms") or an ISO 8601 string, which a string readout is taken for
+// anyway, as the browser's short local date and time; 0 or "" is none.
+const ISO = /^\d{4}-\d\d-\d\dT\d\d:\d\d/;
+export function datetime(v: unknown, unit?: string): string {
+  const n = typeof v === 'bigint' ? Number(v) : v;
+  if (!n) return '—';
+  const d = new Date(typeof n === 'number' ? (unit === 'ms' ? n : n * 1000) : String(n));
+  return Number.isNaN(d.getTime()) ? String(v) : d.toLocaleString([], { dateStyle: 'short', timeStyle: 'short' });
 }
 
 // A chart's vertical axis (DESIGN.md §7.7): the values' extent, at least ten

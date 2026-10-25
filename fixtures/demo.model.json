@@ -3764,6 +3764,32 @@
        "widget": "readout",
        "type": "string",
        "editable": false
+      },
+      {
+       "name": "built",
+       "path": "/info/firmware/built",
+       "label": "Built",
+       "advanced": false,
+       "hidden": false,
+       "kind": "leaf",
+       "widget": "readout",
+       "type": "integer",
+       "editable": false,
+       "step": 1,
+       "precision": 0,
+       "format": "datetime"
+      },
+      {
+       "name": "released",
+       "path": "/info/firmware/released",
+       "label": "Released",
+       "advanced": false,
+       "hidden": false,
+       "kind": "leaf",
+       "widget": "readout",
+       "type": "string",
+       "editable": false,
+       "format": "datetime"
       }
      ],
      "advancedItems": [],

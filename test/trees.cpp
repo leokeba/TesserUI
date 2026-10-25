@@ -317,6 +317,9 @@ Demo::Demo()
     netStatus.value("rssi", [] { return -52; }).unit("dBm");
     auto& fw = info.object("firmware").label("Firmware").ui("icon", "download").ui("group", "Maintenance").ui("summary", "version");
     fw.value("version", "1.2.0");
+    // Instants (ui.format "datetime"): epoch seconds, and an ISO 8601 string.
+    fw.value("built", [] { return 1792687319; }).ui("format", "datetime");
+    fw.value("released", "2026-10-20T09:30:00Z").ui("format", "datetime");
     info.object("about").label("About").value("vendor", "TesserUI");
     auto& mqtt = info.object("mqtt").label("MQTT").ui("icon", "link").ui("group", "Connections").ui("summary", "port");
     mqtt.value("broker", "mqtt.local");

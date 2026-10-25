@@ -238,6 +238,8 @@ int decimalsOf(double step);
 // they are and numbers with up to 3 decimals; bytes and seconds scaled, the
 // unit after. Absent: an en dash.
 std::string formatValue(JsonVariantConst v, const Item& leaf);
+// An instant (ui.format "datetime"): local "YYYY-MM-DD HH:MM", or "—" for none.
+std::string formatDatetime(JsonVariantConst v, const std::string& unit);
 std::string formatNumber(double v, const Item& leaf);
 // 1536 -> "1.5 KB", 2031616 -> "1.94 MB".
 std::string formatBytes(int64_t n);

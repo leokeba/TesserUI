@@ -30,6 +30,16 @@ describe('formatting', () => {
     expect(formatValue(undefined, { type: 'number' })).toBe('–');
     expect(formatValue(18446744073709551615n, { type: 'integer' })).toBe('18446744073709551615');
   });
+  it('shows instants as local dates and times (ui.format "datetime")', () => {
+    const local = (ms: number) => new Date(ms).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' });
+    expect(formatValue(1792687319, { type: 'integer', format: 'datetime' })).toBe(local(1792687319000));
+    expect(formatValue(1792687319000, { type: 'integer', format: 'datetime', unit: 'ms' })).toBe(local(1792687319000));
+    expect(formatValue(0, { type: 'integer', format: 'datetime' })).toBe('—');
+    expect(formatValue('', { type: 'string', format: 'datetime' })).toBe('—');
+    // An ISO 8601 string is taken for one without the hint.
+    expect(formatValue('2026-10-25T15:24:54+01:00', { type: 'string' })).toBe(local(Date.parse('2026-10-25T15:24:54+01:00')));
+    expect(buildLeaf('t', '/t', { type: 'string', ui: { format: 'datetime' } }, '/').format).toBe('datetime');
+  });
   it('labels some values of a number (ui.labels "-1=none")', () => {
     const pin = buildLeaf('pin', '/pin', { type: 'integer', writable: true, ui: { labels: '-1=none, 0 = off' } }, '/');
     expect(pin.labels).toEqual({ '-1': 'none', '0': 'off' });

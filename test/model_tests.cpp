@@ -308,6 +308,14 @@ TEST(model_format) {
     CHECK_EQ(formatDuration(59), "59 s");
     CHECK_EQ(formatDuration(90061), "1 d 1 h");
     CHECK_EQ(formatBytes(2031616), "1.94 MB");
+    JsonDocument t;
+    deserializeJson(t, R"({"zero":0,"empty":"","iso":"2026-10-20T09:30:00Z","epoch":1792687319})");
+    Item instant;
+    instant.format = "datetime";
+    CHECK_EQ(formatValue(t["zero"], instant), "\xE2\x80\x94");
+    CHECK_EQ(formatValue(t["empty"], instant), "\xE2\x80\x94");
+    CHECK_EQ(formatValue(t["iso"], instant), "2026-10-20 09:30");
+    CHECK_EQ(formatValue(t["epoch"], instant).size(), size_t(16));
 }
 
 TEST(model_printf) {

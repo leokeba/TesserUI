@@ -145,7 +145,7 @@ m.object("pid").ui("advanced");
 | `perNode` | flag | value, object | A value of the node's own (its hostname, a static address, an access point's name), which apply to all (§6.6) leaves out; on an object, everything below it. |
 | `filename`, `accept` | string | file | The download's file name; the upload's file chooser filter (`".bin"`). |
 | `precision` | number | number | Decimals shown. |
-| `format` | string | readout | `"%.1f"`-style formatting, printf subset: `%d %i %u %f %.Nf %e %g %s %%`. |
+| `format` | string | readout | `"%.1f"`-style formatting, printf subset: `%d %i %u %f %.Nf %e %g %s %%`. `"datetime"`: an instant, an integer of epoch seconds (milliseconds with `unit` `"ms"`) or an ISO 8601 string, shown as the browser's short local date and time (the LCD's `YYYY-MM-DD HH:MM`), "—" for 0 or an empty string; a read-only string that is already ISO 8601 is shown so without it (web). |
 | `placeholder` | string | text, number | Input placeholder. |
 | `confirm` | string | action, writable value | Asks this question before the call or write. |
 | `style` | string | action, read-only value | Actions: `primary`, `danger` or `quiet`. A read-only value: `warning` shows it as a warning callout, its label and value on a tinted background, usually with `visibleWhen` (TesserKIT's "no admin account" notice). |

@@ -409,6 +409,8 @@ function choices(leaf: Leaf, s: Schema, parent: string) {
 }
 
 function number(leaf: Leaf, s: Schema) {
+  // An instant as a string (ISO 8601): ui.format "datetime".
+  if (leaf.type === 'string' && uiStr(s, 'format') === 'datetime') leaf.format = 'datetime';
   if (!isNumeric(leaf.type)) return;
   leaf.step = s.step ?? (leaf.type === 'integer' ? 1 : undefined);
   leaf.precision = uiNum(s, 'precision') ?? decimalsOf(s.step) ?? (leaf.type === 'integer' ? 0 : undefined);

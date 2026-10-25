@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 namespace tesserui {
 namespace model {
@@ -283,6 +284,9 @@ struct Builder {
     }
 
     void number(Item& leaf, JsonObjectConst s) {
+        // An instant as a string (ISO 8601): ui.format "datetime".
+        const char* instant = uiStr(s, "format");
+        if (leaf.type == NodeType::String && instant && strcmp(instant, "datetime") == 0) leaf.format = instant;
         if (!isNumeric(leaf.type)) return;
         JsonVariantConst step = s["step"];
         if (step.is<double>()) {
@@ -1328,9 +1332,33 @@ std::string formatNumber(double v, const Item& leaf) {
     return leaf.unit.empty() ? text : text + " " + leaf.unit;
 }
 
+// An instant (ui.format "datetime"): an epoch in seconds (milliseconds with
+// unit "ms") as the local "YYYY-MM-DD HH:MM", an ISO 8601 string as its date
+// and minutes; 0 or "" is none (—).
+std::string formatDatetime(JsonVariantConst v, const std::string& unit) {
+    if (v.is<const char*>()) {
+        std::string s = v.as<const char*>();
+        if (s.empty()) return "\xE2\x80\x94";
+        if (s.size() >= 16 && s[10] == 'T') {
+            s[10] = ' ';
+            s.resize(16);
+        }
+        return s;
+    }
+    double n = v.as<double>();
+    if (n == 0) return "\xE2\x80\x94";
+    time_t t = static_cast<time_t>(unit == "ms" ? n / 1000 : n);
+    struct tm local;
+    localtime_r(&t, &local);
+    char buf[24];
+    strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M", &local);
+    return buf;
+}
+
 std::string formatValue(JsonVariantConst v, const Item& leaf) {
     if (v.isUnbound()) return "\xE2\x80\x93";  // –
     if (v.isNull()) return "null";
+    if (leaf.format == "datetime") return formatDatetime(v, leaf.unit);
     if (!leaf.format.empty()) return printfValue(leaf.format, v);
     bool integer = v.is<int64_t>() || v.is<uint64_t>();
     if (integer && (leaf.unit == "B" || leaf.unit == "s")) {
