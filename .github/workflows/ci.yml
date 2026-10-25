@@ -281,7 +281,9 @@ jobs:
           VERSION: ${{ needs.firmware.outputs.version }}
         run: |
           git fetch -q --tags
-          tagged=$(git rev-parse -q --verify "v$VERSION^{commit}")
+          # No tag yet (a superseded release never made it): no version,
+          # rather than ending the step (bash -e).
+          tagged=$(git rev-parse -q --verify "v$VERSION^{commit}" || true)
           if [ -z "$VERSION" ] || { [ "$tagged" != "$GITHUB_SHA" ] && [ "$(git rev-parse -q --verify "$tagged^")" != "$GITHUB_SHA" ]; } || ! gh release view "v$VERSION" > /dev/null; then
             VERSION=
           fi
