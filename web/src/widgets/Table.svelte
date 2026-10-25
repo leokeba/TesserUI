@@ -267,14 +267,17 @@
 
 <div class="table">
   <table>
-    <thead>
-      <tr>
-        {#if !leaf.key}<th scope="col">#</th>{/if}
-        {#each cols as c (c.path)}<th scope="col">{c.label}</th>{/each}
-        {#if leaf.reorder}<th><span class="sr">{t('Order')}</span></th>{/if}
-        {#if resizable}<th><span class="sr">{t('Remove')}</span></th>{/if}
-      </tr>
-    </thead>
+    <!-- No headings over "Empty". -->
+    {#if rows.length}
+      <thead>
+        <tr>
+          {#if !leaf.key}<th scope="col">#</th>{/if}
+          {#each cols as c (c.path)}<th scope="col">{c.label}</th>{/each}
+          {#if leaf.reorder}<th><span class="sr">{t('Order')}</span></th>{/if}
+          {#if resizable}<th><span class="sr">{t('Remove')}</span></th>{/if}
+        </tr>
+      </thead>
+    {/if}
     <tbody>
       {#each rows as row, i (i)}
         <tr>
