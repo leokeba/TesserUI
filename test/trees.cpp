@@ -306,7 +306,21 @@ Demo::Demo()
     auto& info = api.object("info").ui("page").label("Device info");
     info.value("version", "1.2.0");
     info.value("build", "2026-10-10 a1b2c3d");
-    info.action("restart", [] {}).ui("confirm", "Restart the device?").ui("style", "danger");
+    // Node-wide: also in the header's node menu (ui.placement).
+    info.action("restart", [] {}).ui("confirm", "Restart the device?").ui("style", "danger").ui("placement", "node");
+    // Its objects are sub-entries: the page is their index, each row with its
+    // summary, gathered by ui.group there and in the menu.
+    auto& net = info.object("network").label("Network").ui("icon", "wifi").ui("group", "Connections").ui("summary", "status/state");
+    net.value("ssid", "heliostat-net");
+    auto& netStatus = net.object("status");
+    netStatus.value("state", "connected");
+    netStatus.value("rssi", [] { return -52; }).unit("dBm");
+    auto& fw = info.object("firmware").label("Firmware").ui("icon", "download").ui("group", "Maintenance").ui("summary", "version");
+    fw.value("version", "1.2.0");
+    info.object("about").label("About").value("vendor", "TesserUI");
+    auto& mqtt = info.object("mqtt").label("MQTT").ui("icon", "link").ui("group", "Connections").ui("summary", "port");
+    mqtt.value("broker", "mqtt.local");
+    mqtt.value("port", [] { return 1883; });
 
     // Hints with no tier 0 equivalent: every explicit widget, a color as an
     // integer, confirm on a value, a string button value, a description,

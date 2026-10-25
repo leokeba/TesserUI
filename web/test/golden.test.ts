@@ -31,7 +31,8 @@ describe('golden models', () => {
       // on this node (the start page shows its own values only).
       const menu = buildMenu(f.schema, '/', (f.views?.pages as ViewPage[]) ?? null);
       const pages: Record<string, unknown> = {};
-      for (const e of menu.flatMap((e): MenuEntry[] => [e, ...(e.children ?? [])])) {
+      const all = (es: MenuEntry[]): MenuEntry[] => es.flatMap((e) => [e, ...all(e.children ?? [])]);
+      for (const e of all(menu)) {
         const path = e.href?.slice(1);
         const s = path?.startsWith('/') ? schemaAt(f.schema, path) : undefined;
         if (path && s?.type === 'object') pages[path] = buildPage(s, path, '/', undefined, undefined, path === '/');

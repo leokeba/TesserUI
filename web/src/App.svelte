@@ -128,7 +128,9 @@
     const s = menuOn && session.loaded && (views || top !== '/') ? session.pageSchema(home) : null;
     return s ? buildMenu(s, home, views ?? null, t) : null;
   });
-  const flat = $derived(menu?.flatMap((e) => [e, ...(e.children ?? [])]).filter((e) => e.href) ?? []);
+  const all = (es: MenuEntry[]): MenuEntry[] => es.flatMap((e) => [e, ...all(e.children ?? [])]);
+  const inside = (e: MenuEntry, x?: MenuEntry): boolean => !!e.children?.some((c) => c === x || inside(c, x));
+  const flat = $derived(menu ? all(menu).filter((e) => e.href) : []);
   // The entry shown: the deepest one the route is in.
   const current = $derived.by(() => {
     const at = route.view !== null ? viewHref(route.path, route.view) : `#${route.path}`;
@@ -290,14 +292,7 @@
   {#if menu}
     <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
     <nav class="side" class:open={drawer} aria-label={t('Menu')} onclick={() => (drawer = false)}>
-      {#each menu as e, i (i)}
-        {#if i && menu[i - 1].href?.startsWith('#/v/') && !e.href?.startsWith('#/v/')}<hr />{/if}
-        {#if e.href}{@render entry(e)}{:else}<p class="group">{e.label}</p>{/if}
-        <!-- Sub-entries show under a group, or once their page is open. -->
-        {#if e.children && (!e.href || current === e || e.children.includes(current!))}
-          <div class="sub">{#each e.children as c, j (j)}{@render entry(c)}{/each}</div>
-        {/if}
-      {/each}
+      {@render list(menu, 0)}
       {#if nodes.length && !around}
         <hr />
         <label class="pref">
@@ -325,6 +320,21 @@
     {/if}
   </main>
   </div>
+
+  <!-- Entries, a group's under its heading; sub-entries show once their
+       entry's page, or one of theirs, is open. -->
+  {#snippet list(es: MenuEntry[], depth: number)}
+    {#each es as e, i (i)}
+      {#if !depth && i && es[i - 1].href?.startsWith('#/v/') && !e.href?.startsWith('#/v/')}<hr />{/if}
+      {#if e.href}
+        {@render entry(e)}
+        {#if e.children && (current === e || inside(e, current))}<div class="sub">{@render list(e.children, depth + 1)}</div>{/if}
+      {:else}
+        <p class="group">{e.label}</p>
+        <div class="sub">{@render list(e.children!, depth + 1)}</div>
+      {/if}
+    {/each}
+  {/snippet}
 
   {#snippet entry(e: MenuEntry)}
     <a href={e.href} aria-current={current === e ? 'page' : undefined}>
@@ -736,6 +746,12 @@
   .sub a {
     padding-left: 38px;
     min-height: 34px;
+  }
+  .sub .sub a {
+    padding-left: 56px;
+  }
+  .sub .group {
+    margin-left: 38px;
   }
   .side hr {
     border: 0;

@@ -2112,7 +2112,38 @@
   },
   {
    "label": "Device info",
-   "href": "#/info"
+   "href": "#/info",
+   "children": [
+    {
+     "label": "Connections",
+     "children": [
+      {
+       "label": "Network",
+       "href": "#/info/network",
+       "icon": "wifi"
+      },
+      {
+       "label": "MQTT",
+       "href": "#/info/mqtt",
+       "icon": "link"
+      }
+     ]
+    },
+    {
+     "label": "Maintenance",
+     "children": [
+      {
+       "label": "Firmware",
+       "href": "#/info/firmware",
+       "icon": "download"
+      }
+     ]
+    },
+    {
+     "label": "About",
+     "href": "#/info/about"
+    }
+   ]
   },
   {
    "label": "Widget overrides",
@@ -3461,6 +3492,176 @@
      "inline": false,
      "collapsed": false,
      "form": false
+    },
+    {
+     "name": "network",
+     "path": "/info/network",
+     "label": "Network",
+     "advanced": false,
+     "hidden": false,
+     "icon": "wifi",
+     "kind": "section",
+     "level": 1,
+     "items": [
+      {
+       "name": "ssid",
+       "path": "/info/network/ssid",
+       "label": "Ssid",
+       "advanced": false,
+       "hidden": false,
+       "kind": "leaf",
+       "widget": "readout",
+       "type": "string",
+       "editable": false
+      },
+      {
+       "name": "status",
+       "path": "/info/network/status",
+       "label": "Status",
+       "advanced": false,
+       "hidden": false,
+       "kind": "section",
+       "level": 2,
+       "items": [
+        {
+         "name": "state",
+         "path": "/info/network/status/state",
+         "label": "State",
+         "advanced": false,
+         "hidden": false,
+         "kind": "leaf",
+         "widget": "readout",
+         "type": "string",
+         "editable": false
+        },
+        {
+         "name": "rssi",
+         "path": "/info/network/status/rssi",
+         "label": "Rssi",
+         "advanced": false,
+         "hidden": false,
+         "kind": "leaf",
+         "widget": "readout",
+         "type": "integer",
+         "editable": false,
+         "unit": "dBm",
+         "step": 1,
+         "precision": 0
+        }
+       ],
+       "advancedItems": [],
+       "lazy": false,
+       "tabs": false,
+       "inline": false,
+       "collapsed": false,
+       "form": false
+      }
+     ],
+     "advancedItems": [],
+     "lazy": false,
+     "tabs": false,
+     "inline": false,
+     "collapsed": false,
+     "form": false
+    },
+    {
+     "name": "firmware",
+     "path": "/info/firmware",
+     "label": "Firmware",
+     "advanced": false,
+     "hidden": false,
+     "icon": "download",
+     "kind": "section",
+     "level": 1,
+     "items": [
+      {
+       "name": "version",
+       "path": "/info/firmware/version",
+       "label": "Version",
+       "advanced": false,
+       "hidden": false,
+       "kind": "leaf",
+       "widget": "readout",
+       "type": "string",
+       "editable": false
+      }
+     ],
+     "advancedItems": [],
+     "lazy": false,
+     "tabs": false,
+     "inline": false,
+     "collapsed": false,
+     "form": false
+    },
+    {
+     "name": "about",
+     "path": "/info/about",
+     "label": "About",
+     "advanced": false,
+     "hidden": false,
+     "kind": "section",
+     "level": 1,
+     "items": [
+      {
+       "name": "vendor",
+       "path": "/info/about/vendor",
+       "label": "Vendor",
+       "advanced": false,
+       "hidden": false,
+       "kind": "leaf",
+       "widget": "readout",
+       "type": "string",
+       "editable": false
+      }
+     ],
+     "advancedItems": [],
+     "lazy": false,
+     "tabs": false,
+     "inline": false,
+     "collapsed": false,
+     "form": false
+    },
+    {
+     "name": "mqtt",
+     "path": "/info/mqtt",
+     "label": "MQTT",
+     "advanced": false,
+     "hidden": false,
+     "icon": "link",
+     "kind": "section",
+     "level": 1,
+     "items": [
+      {
+       "name": "broker",
+       "path": "/info/mqtt/broker",
+       "label": "Broker",
+       "advanced": false,
+       "hidden": false,
+       "kind": "leaf",
+       "widget": "readout",
+       "type": "string",
+       "editable": false
+      },
+      {
+       "name": "port",
+       "path": "/info/mqtt/port",
+       "label": "Port",
+       "advanced": false,
+       "hidden": false,
+       "kind": "leaf",
+       "widget": "readout",
+       "type": "integer",
+       "editable": false,
+       "step": 1,
+       "precision": 0
+      }
+     ],
+     "advancedItems": [],
+     "lazy": false,
+     "tabs": false,
+     "inline": false,
+     "collapsed": false,
+     "form": false
     }
    ],
    "actions": [
@@ -3480,6 +3681,209 @@
      "submit": false
     }
    ],
+   "columns": 3,
+   "depth": 3
+  },
+  "/info/network": {
+   "path": "/info/network",
+   "label": "Network",
+   "cards": [
+    {
+     "name": "",
+     "path": "/info/network",
+     "label": "",
+     "advanced": false,
+     "hidden": false,
+     "kind": "section",
+     "level": 1,
+     "items": [
+      {
+       "name": "ssid",
+       "path": "/info/network/ssid",
+       "label": "Ssid",
+       "advanced": false,
+       "hidden": false,
+       "kind": "leaf",
+       "widget": "readout",
+       "type": "string",
+       "editable": false
+      }
+     ],
+     "advancedItems": [],
+     "lazy": false,
+     "tabs": false,
+     "inline": false,
+     "collapsed": false,
+     "form": false
+    },
+    {
+     "name": "status",
+     "path": "/info/network/status",
+     "label": "Status",
+     "advanced": false,
+     "hidden": false,
+     "kind": "section",
+     "level": 1,
+     "items": [
+      {
+       "name": "state",
+       "path": "/info/network/status/state",
+       "label": "State",
+       "advanced": false,
+       "hidden": false,
+       "kind": "leaf",
+       "widget": "readout",
+       "type": "string",
+       "editable": false
+      },
+      {
+       "name": "rssi",
+       "path": "/info/network/status/rssi",
+       "label": "Rssi",
+       "advanced": false,
+       "hidden": false,
+       "kind": "leaf",
+       "widget": "readout",
+       "type": "integer",
+       "editable": false,
+       "unit": "dBm",
+       "step": 1,
+       "precision": 0
+      }
+     ],
+     "advancedItems": [],
+     "lazy": false,
+     "tabs": false,
+     "inline": false,
+     "collapsed": false,
+     "form": false
+    }
+   ],
+   "actions": [],
+   "columns": 3,
+   "depth": 2
+  },
+  "/info/mqtt": {
+   "path": "/info/mqtt",
+   "label": "MQTT",
+   "cards": [
+    {
+     "name": "",
+     "path": "/info/mqtt",
+     "label": "",
+     "advanced": false,
+     "hidden": false,
+     "kind": "section",
+     "level": 1,
+     "items": [
+      {
+       "name": "broker",
+       "path": "/info/mqtt/broker",
+       "label": "Broker",
+       "advanced": false,
+       "hidden": false,
+       "kind": "leaf",
+       "widget": "readout",
+       "type": "string",
+       "editable": false
+      },
+      {
+       "name": "port",
+       "path": "/info/mqtt/port",
+       "label": "Port",
+       "advanced": false,
+       "hidden": false,
+       "kind": "leaf",
+       "widget": "readout",
+       "type": "integer",
+       "editable": false,
+       "step": 1,
+       "precision": 0
+      }
+     ],
+     "advancedItems": [],
+     "lazy": false,
+     "tabs": false,
+     "inline": false,
+     "collapsed": false,
+     "form": false
+    }
+   ],
+   "actions": [],
+   "columns": 3,
+   "depth": 1
+  },
+  "/info/firmware": {
+   "path": "/info/firmware",
+   "label": "Firmware",
+   "cards": [
+    {
+     "name": "",
+     "path": "/info/firmware",
+     "label": "",
+     "advanced": false,
+     "hidden": false,
+     "kind": "section",
+     "level": 1,
+     "items": [
+      {
+       "name": "version",
+       "path": "/info/firmware/version",
+       "label": "Version",
+       "advanced": false,
+       "hidden": false,
+       "kind": "leaf",
+       "widget": "readout",
+       "type": "string",
+       "editable": false
+      }
+     ],
+     "advancedItems": [],
+     "lazy": false,
+     "tabs": false,
+     "inline": false,
+     "collapsed": false,
+     "form": false
+    }
+   ],
+   "actions": [],
+   "columns": 3,
+   "depth": 1
+  },
+  "/info/about": {
+   "path": "/info/about",
+   "label": "About",
+   "cards": [
+    {
+     "name": "",
+     "path": "/info/about",
+     "label": "",
+     "advanced": false,
+     "hidden": false,
+     "kind": "section",
+     "level": 1,
+     "items": [
+      {
+       "name": "vendor",
+       "path": "/info/about/vendor",
+       "label": "Vendor",
+       "advanced": false,
+       "hidden": false,
+       "kind": "leaf",
+       "widget": "readout",
+       "type": "string",
+       "editable": false
+      }
+     ],
+     "advancedItems": [],
+     "lazy": false,
+     "tabs": false,
+     "inline": false,
+     "collapsed": false,
+     "form": false
+    }
+   ],
+   "actions": [],
    "columns": 3,
    "depth": 1
   },

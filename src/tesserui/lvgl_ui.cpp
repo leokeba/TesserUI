@@ -838,17 +838,23 @@ void LvglUi::drawMenu(const std::vector<model::MenuEntry>& menu, const std::stri
         focusable(b);
         bound_.push_back(std::move(bound));
     };
-    for (const model::MenuEntry& top : menu) {
-        if (top.path.empty()) {
-            // A ui.group heading.
-            lv_obj_t* h = label(content_, top.label, false);
-            lv_obj_set_style_text_opa(h, LV_OPA_70, 0);
-            for (const model::MenuEntry& c : top.children) entry(content_, c, false);
-            continue;
+    // Entries, each followed by its sub-entries; a ui.group heading by the
+    // entries it gathers.
+    std::function<void(const std::vector<model::MenuEntry>&, bool)> draw;
+    draw = [&](const std::vector<model::MenuEntry>& list, bool sub) {
+        for (const model::MenuEntry& e : list) {
+            if (e.path.empty()) {
+                lv_obj_t* h = label(content_, e.label, false);
+                lv_obj_set_style_text_opa(h, LV_OPA_70, 0);
+                if (sub) lv_obj_set_style_pad_left(h, 24, 0);
+                draw(e.children, sub);
+                continue;
+            }
+            entry(content_, e, sub);
+            draw(e.children, true);
         }
-        entry(content_, top, false);
-        for (const model::MenuEntry& c : top.children) entry(content_, c, true);
-    }
+    };
+    draw(menu, false);
     if (menu.empty()) message("Nothing to show here.", false);
     focusFirst();
 }

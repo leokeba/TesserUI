@@ -680,6 +680,24 @@ Access accessOf(JsonObjectConst s) {
     return s["access"].is<const char*>() ? parseAccess(s["access"].as<const char*>()) : Access::None;
 }
 
+// ui.group gathers entries under a heading, where the first of them would be.
+void gather(std::vector<MenuEntry>& out, MenuEntry e, const char* group) {
+    if (!nonEmpty(group)) {
+        out.push_back(std::move(e));
+        return;
+    }
+    for (MenuEntry& h : out) {
+        if (h.path.empty() && h.label == group) {
+            h.children.push_back(std::move(e));
+            return;
+        }
+    }
+    MenuEntry heading;
+    heading.label = group;
+    heading.children.push_back(std::move(e));
+    out.push_back(std::move(heading));
+}
+
 MenuEntry entry(std::string_view name, std::string_view path, JsonObjectConst s, bool sub, Access above) {
     MenuEntry e;
     e.access = above;
@@ -693,7 +711,8 @@ MenuEntry entry(std::string_view name, std::string_view path, JsonObjectConst s,
         e.online = !(s["online"].is<bool>() && !s["online"].as<bool>());
     }
     // An object that is a page of its own (/sys) or holds remote nodes
-    // (/peers) lists its objects, lists and nodes, one level deep.
+    // (/peers) lists its objects, lists and nodes, one level deep, gathered
+    // by ui.group too.
     if (sub) return e;
     bool anyRemote = false, any = false;
     for (JsonPairConst kv : s["children"].as<JsonObjectConst>()) {
@@ -707,7 +726,8 @@ MenuEntry entry(std::string_view name, std::string_view path, JsonObjectConst s,
         for (JsonPairConst kv : s["children"].as<JsonObjectConst>()) {
             JsonObjectConst c = kv.value();
             if (isEntry(c) || (typeOf(c) == NodeType::List && shown(c))) {
-                e.children.push_back(entry(kv.key().c_str(), joinPath(path, kv.key().c_str()), c, true, higher(above, accessOf(s))));
+                gather(e.children, entry(kv.key().c_str(), joinPath(path, kv.key().c_str()), c, true, higher(above, accessOf(s))),
+                       uiStr(c, "group"));
             }
         }
     }
@@ -1038,32 +1058,9 @@ std::vector<MenuEntry> buildMenu(JsonObjectConst s, std::string_view home) {
         status.access = accessOf(s);
         out.push_back(std::move(status));
     }
-    // ui.group gathers entries under a heading, where its first one would be.
-    std::vector<std::pair<std::string, size_t>> groups;
     for (JsonPairConst kv : s["children"].as<JsonObjectConst>()) {
         JsonObjectConst c = kv.value();
-        if (!isEntry(c)) continue;
-        MenuEntry e = entry(kv.key().c_str(), joinPath(home, kv.key().c_str()), c, false, accessOf(s));
-        const char* group = uiStr(c, "group");
-        if (!nonEmpty(group)) {
-            out.push_back(std::move(e));
-            continue;
-        }
-        size_t at = out.size();
-        bool found = false;
-        for (auto& g : groups) {
-            if (g.first == group) {
-                at = g.second;
-                found = true;
-            }
-        }
-        if (!found) {
-            MenuEntry heading;
-            heading.label = group;
-            out.push_back(std::move(heading));
-            groups.emplace_back(group, at);
-        }
-        out[at].children.push_back(std::move(e));
+        if (isEntry(c)) gather(out, entry(kv.key().c_str(), joinPath(home, kv.key().c_str()), c, false, accessOf(s)), uiStr(c, "group"));
     }
     return out;
 }

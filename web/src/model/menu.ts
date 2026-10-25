@@ -29,12 +29,21 @@ function entry(name: string, path: string, s: Schema, sub: boolean): MenuEntry {
   if (s.type === 'remote') e.online = s.online !== false;
   // An object that is a page of its own (/sys) or holds remote nodes
   // (/peers) lists its objects, lists and nodes as sub-entries, one level
-  // deep.
+  // deep, gathered by ui.group too.
   const kids = Object.entries(s.children ?? {}).filter(([, c]) => isEntry(c) || (c.type === 'list' && shown(c)));
   if (!sub && kids.length && (s.ui?.page === true || kids.some(([, c]) => c.type === 'remote'))) {
-    e.children = kids.map(([n, c]) => entry(n, joinPath(path, n), c, true));
+    e.children = [];
+    for (const [n, c] of kids) gather(e.children, entry(n, joinPath(path, n), c, true), str(c, 'group'));
   }
   return e;
+}
+
+// ui.group gathers entries under a heading, where the first of them would be.
+function gather(out: MenuEntry[], e: MenuEntry, group: string | undefined) {
+  const g = group && out.find((h) => !h.href && h.label === group);
+  if (!group) out.push(e);
+  else if (g) g.children!.push(e);
+  else out.push({ label: group, children: [e] });
 }
 
 // Values, lists and actions directly under the page, shown on its overview.
@@ -49,22 +58,6 @@ export const viewHref = (node: string, id: string) => (node === '/' ? `#/v/${id}
 export function buildMenu(s: Schema, home: string, views: ViewPage[] | null, t: (text: string) => string = (x) => x): MenuEntry[] {
   const out: MenuEntry[] = (views ?? []).map((v) => (v.icon ? { label: v.label, icon: v.icon, href: viewHref(home, v.id) } : { label: v.label, href: viewHref(home, v.id) }));
   if (hasOwnItems(s)) out.push({ label: t('Status'), icon: 'home', href: `#${home}` });
-  // ui.group gathers entries under a heading, where its first one would be.
-  const groups = new Map<string, MenuEntry>();
-  for (const [name, c] of Object.entries(s.children ?? {})) {
-    if (!isEntry(c)) continue;
-    const e = entry(name, joinPath(home, name), c, false);
-    const group = str(c, 'group');
-    if (!group) {
-      out.push(e);
-      continue;
-    }
-    let g = groups.get(group);
-    if (!g) {
-      groups.set(group, (g = { label: group, children: [] }));
-      out.push(g);
-    }
-    g.children!.push(e);
-  }
+  for (const [name, c] of Object.entries(s.children ?? {})) if (isEntry(c)) gather(out, entry(name, joinPath(home, name), c, false), str(c, 'group'));
   return out;
 }
