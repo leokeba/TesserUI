@@ -160,6 +160,7 @@ m.object("pid").ui("advanced");
 | `readonly` | flag | value | Shown as a readout even though writable. |
 | `card` | flag | object | Its own card even when nested (§6.1). |
 | `page` | flag | object | Its own page or route instead of inline (§6); with sub-entries, their index (§6.3). |
+| `placement` | string | action | `"node"`: also in the header's node menu, on every page (§6.7). Web only; the LCD *(later)*. |
 | `summary` | string | object | A value below it, relative to it (`"status/state"`; a leading `/` from the node's root), shown under its label on the row that opens it (an index's, §6.3), formatted as its readout would be (labels, `unit`, `format`), booleans as On or Off. The page with the row watches it through its own subscription. Web only; the LCD *(later)*. |
 | `tabs` | flag | object | Child objects as tabs. |
 | `inline` | flag | object | Children on one row (a compact group, such as x/y/z). |
@@ -256,6 +257,14 @@ Setting up many nodes alike (a field of heliostats, the lamps of a show) means m
 
 - **When some node is offline or refused,** one `warn` toast says so, at the path's labels: "Lamp › Brightness: Applied to 1 of 3 other nodes. kitchen-lamp: offline". It comes once a burst of writes, such as a drag, has been quiet for half a second. Absent nodes only show on their tabs: nodes that differ are expected.
 - **The switch** is the header's button beside the tabs (at the end of their row on a phone, §6.2), solid while on. It starts off on each load, since a change sent to every node by mistake costs more than a click, and turning it off clears the marks.
+
+### 6.7 Node actions (web)
+
+Some actions concern the whole node, wherever the user is: restarting it, making it blink to find it. `ui.placement: "node"` on an action lists it also in the **node menu**, a `⋮` button at the end of the header (on a phone, its first row) that opens the shown node's node-wide actions, each a button as on its own page (`ui.confirm`, `ui.style`, its conditions and access level). It stays where it is too (`/sys/restart` beside `/sys`'s title).
+
+- **Where they're found:** in the shown node's schema as read so far, its root at `depth` 3 (§7.2): an action at most three levels below the root (`/sys/board/identify`) is always found; a deeper one only once its page has been read. Not in other nodes' trees.
+- **Conditions:** every page follows their `visibleWhen` and `enabledWhen` paths, as it does its own items'.
+- **Closing:** tapping outside, or moving to another page or node.
 
 ## 7. Data and reactivity
 

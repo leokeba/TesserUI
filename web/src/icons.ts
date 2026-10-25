@@ -7,6 +7,7 @@ export const ICONS: Record<string, string> = {
   play: 'M7 5l12 7-12 7z',
   pause: 'M8 5v14M16 5v14',
   menu: 'M4 6h16M4 12h16M4 18h16',
+  more: 'M11 5a1 1 0 1 0 2 0 1 1 0 1 0-2 0M11 12a1 1 0 1 0 2 0 1 1 0 1 0-2 0M11 19a1 1 0 1 0 2 0 1 1 0 1 0-2 0',
   layers: 'M12 3l9 5-9 5-9-5zM3 13l9 5 9-5',
   broadcast: 'M12 12h.01M8.5 15.5a5 5 0 0 1 0-7M15.5 8.5a5 5 0 0 1 0 7M5.6 18.4a9 9 0 0 1 0-12.8M18.4 5.6a9 9 0 0 1 0 12.8',
   home: 'M3 11l9-8 9 8M5 9.5V20h5v-6h4v6h5V9.5',

@@ -6,7 +6,7 @@ import { HttpClient } from '../client/http';
 import { isObject, parse, stringify } from '../client/json';
 import { errorText, lowMemory, reason, type Client, type ConnState, type Notification, type Reply, type Request } from '../client/types';
 import type { Firmware } from '../flash/firmware';
-import { toastKind, visiblePaths, type Item, type Leaf, type Page, type Section } from '../model/model';
+import { nodeActions, toastKind, visiblePaths, type Item, type Leaf, type Page, type Section } from '../model/model';
 import { isCut, isUnder, joinPath, mergeSchema, parentPath, rank, remoteOf, schemaAt, segments, type Level, type Schema } from '../model/schema';
 import { relocate, type ViewPage } from '../model/views';
 import { Store } from './store.svelte';
@@ -734,7 +734,17 @@ export class Session {
   // What the screen shows: subscriptions follow (DESIGN.md §7.3). `specs`
   // are the main ones (the page, or a view's groups); conditions outside
   // them and the stub of the peer being shown are added.
+  // Node-wide actions (ui.placement "node"), for the header's node menu.
+  nodeActions(root: string): Leaf[] {
+    void this.schemaVersion;
+    const s = this.pageSchema(root);
+    return s ? nodeActions(s, root) : [];
+  }
+
   show(items: Item[], specs: SubSpec[], at: string) {
+    // The header's node menu is shown on every page: its actions'
+    // conditions are followed too.
+    items = [...items, ...this.nodeActions(this.nodeRoot(at))];
     const store = this.store;
     store.visible = visiblePaths({ cards: items.filter((i): i is Section => i.kind === 'section') });
     for (const i of items) store.visible.add(i.path);

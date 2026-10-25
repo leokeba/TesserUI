@@ -19,6 +19,7 @@
   import Connect from './Connect.svelte';
   import { compareVersions, provideSession } from './shared.svelte';
   import Icon from './Icon.svelte';
+  import Item from './Item.svelte';
   import { humanize } from './model/format';
   import { buildMenu, viewHref, type MenuEntry } from './model/menu';
   import { isUnder } from './model/schema';
@@ -143,6 +144,13 @@
     return best;
   });
   let drawer = $state(false);
+  // The node menu (DESIGN.md §6.7): the shown node's node-wide actions.
+  const acts = $derived(session.loaded ? session.nodeActions(home) : []);
+  let actsOpen = $state(false);
+  $effect(() => {
+    void [route, home];
+    actsOpen = false;
+  });
   // The tabs scroll sideways when they overflow (a narrow screen's second
   // row, §6.2): the current one is brought into view, centred, without
   // scrolling the page as scrollIntoView() would. An edge with more tabs
@@ -278,6 +286,14 @@
         <button type="button" class="quiet" onclick={() => session.signOut()}><Icon name="lock" /> <span class="lab">{t('Sign out')}</span></button>
       {:else if session.login}
         <button type="button" class="quiet" onclick={() => (session.needToken = true)}><Icon name="lock" /> <span class="lab">{t('Sign in')}</span></button>
+      {/if}
+      {#if acts.length}
+        <button type="button" class="quiet more" aria-label={t('Node actions')} title={t('Node actions')} aria-expanded={actsOpen} onclick={() => (actsOpen = !actsOpen)}><Icon name="more" /></button>
+        {#if actsOpen}
+          <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+          <div class="veil" onclick={() => (actsOpen = false)}></div>
+          <div class="acts">{#each acts as a (a.path)}<Item item={a} />{/each}</div>
+        {/if}
       {/if}
     </header>
   {/if}
@@ -652,6 +668,26 @@
   .tabs a[aria-current] {
     background: var(--surface-2);
     color: var(--text);
+  }
+  .veil {
+    position: fixed;
+    inset: 0;
+  }
+  .acts {
+    position: absolute;
+    top: calc(100% + 4px);
+    right: 8px;
+    display: grid;
+    gap: 8px;
+    min-width: 180px;
+    padding: 10px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: 0 10px 30px #0003;
+  }
+  .acts :global(button) {
+    width: 100%;
   }
   .state {
     margin-left: auto;

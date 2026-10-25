@@ -639,3 +639,23 @@ test('index: a page of links to its sub-entries, grouped', async ({ page }) => {
   await page.locator('.back').click();
   await expect(page).toHaveURL(/#\/info$/);
 });
+
+// DESIGN.md §6.7: a node-wide action is in the header's node menu on every
+// page, with its confirmation.
+test('node menu: node-wide actions from any page', async ({ page }) => {
+  await open(page, '#/lamp');
+  const more = page.getByRole('button', { name: 'Node actions' });
+  await more.click();
+  const restart = page.locator('.acts').getByRole('button', { name: 'Restart' });
+  await expect(restart).toBeVisible();
+  let asked = '';
+  page.once('dialog', (d) => ((asked = d.message()), d.dismiss()));
+  await restart.click();
+  expect(asked).toBe('Restart the device?');
+  // Tapping outside closes it, and so does another page.
+  await page.mouse.click(600, 400);
+  await expect(page.locator('.acts')).toHaveCount(0);
+  await more.click();
+  await page.evaluate(() => (location.hash = '#/motor'));
+  await expect(page.locator('.acts')).toHaveCount(0);
+});

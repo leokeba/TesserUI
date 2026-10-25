@@ -654,6 +654,22 @@ export function buildPage(s: Schema, path: string, root = '/', t: (text: string)
   return page;
 }
 
+// The node-wide actions (ui.placement "node") of the node at `root`, whose
+// schema is `s`: anywhere in its tree read so far, not in other nodes'
+// (DESIGN.md §6.7).
+export function nodeActions(s: Schema, root: string): Leaf[] {
+  const out: Leaf[] = [];
+  const walk = (o: Schema, path: string, above?: Level) => {
+    for (const [name, c] of Object.entries(o.children ?? {})) {
+      const p = joinPath(path, name);
+      if (c.type === 'action' && ui(c, 'placement') === 'node') out.push(buildLeaf(name, p, c, path, root, above));
+      else if (c.type === 'object') walk(c, p, higher(above, c.access));
+    }
+  };
+  walk(s, root, s.access);
+  return out;
+}
+
 // A subtree rendered as one section at `level` (a view's node item).
 export function buildSection(path: string, s: Schema, level: number, root = '/', above?: Level): Section {
   nodeRoot = root;
