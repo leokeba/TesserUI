@@ -66,8 +66,8 @@ Without any hint, each schema node maps to one semantic widget. The table is nor
 
 | Schema | Widget | Notes |
 |---|---|---|
-| `boolean`, writable | `toggle` | |
-| `boolean`, read-only | `led` | On/off indicator. |
+| `boolean`, writable | `toggle` | Neither on nor off (not drawn, disabled) until its first value arrives, on the web. |
+| `boolean`, read-only | `led` | On/off indicator; not drawn until its first value arrives, on the web. |
 | `integer`/`number`, writable, with `min` and `max` (an integer's at most 1000 steps) | `slider` | With the value shown, and a numeric entry on the web. A value the device holds off the step or the range (249 for a step of 5) shows as it is in both, not flagged invalid; dragging writes values on the step again. |
 | `integer`/`number`, writable, no range, or an integer's of more than 1000 steps | `number` | Numeric entry; `step` from the schema, else 1 for integers. An integer of so many values is an identifier (a DMX universe, 0 to 32767), not an amount; decimal numbers keep their slider. |
 | `integer`/`number`, read-only | `readout` | Formatted with `unit` and `precision`. |

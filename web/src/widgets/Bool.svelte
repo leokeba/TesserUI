@@ -3,20 +3,26 @@
   let { leaf, value, set, disabled, id }: WidgetProps = $props();
 </script>
 
+<!-- Before its first value, neither on nor off: an "off" there would be a
+     guess. -->
 {#if leaf.widget === 'led'}
-  <span class="led" class:on={value === true} role="img" aria-label={value === true ? 'On' : 'Off'}></span>
+  <span class="led" class:on={value === true} class:unknown={value === undefined} role="img" aria-label={value === true ? 'On' : 'Off'}></span>
 {:else}
   <input
     {id}
     type="checkbox"
     role={leaf.widget === 'toggle' ? 'switch' : undefined}
     checked={value === true}
-    {disabled}
+    class:unknown={value === undefined}
+    disabled={disabled || value === undefined}
     onchange={(e) => set(e.currentTarget.checked)}
   />
 {/if}
 
 <style>
+  .unknown {
+    visibility: hidden;
+  }
   .led {
     width: 14px;
     height: 14px;
