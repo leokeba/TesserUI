@@ -27,6 +27,7 @@ export interface NumberFormat {
   precision?: number;
   format?: string;
   unit?: string;
+  labels?: Record<string, string>;
 }
 
 // The decimal separator of the browser's language, which native number
@@ -34,11 +35,14 @@ export interface NumberFormat {
 const DECIMAL = typeof document === 'undefined' ? '.' : (1.5).toLocaleString().charAt(1);
 const decimal = (text: string) => (DECIMAL === '.' ? text : text.replace('.', DECIMAL));
 
-// The number as text: printf-style `format`, else `precision` decimals, else
-// integers as they are and numbers with up to 3 decimals.
+// The number as text: its label (ui.labels), else printf-style `format`, else
+// `precision` decimals, else integers as they are and numbers with up to 3
+// decimals.
 export function formatValue(v: unknown, f: NumberFormat): string {
   if (v === undefined) return '–';
   if (v === null) return 'null';
+  const label = f.labels?.[String(v)];
+  if (label !== undefined) return label;
   if (f.format) return printf(f.format, v);
   let text: string;
   if (typeof v === 'number' && Number.isInteger(v) && (f.unit === 'B' || f.unit === 's')) {

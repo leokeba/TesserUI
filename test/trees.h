@@ -191,6 +191,8 @@ struct Demo {
     Color choice = Color::Green;
     std::string line = "hello";
     int display = 99;
+    int universe = 1;
+    int pin = -1;
     uint32_t hue = 0x3366ff;
     bool armed = false;
     int conditional = 5;

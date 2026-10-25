@@ -151,8 +151,9 @@ void write(JsonArray a, const std::vector<MenuEntry>& entries) {
 
 // Fields of the web model this one doesn't keep: help text (hidden on small
 // screens, section 4), widgets it doesn't draw yet, access levels, a list's
-// suggestions (ui.suggest, web only: its action stays a button here).
-const char* const kDropped[] = {"description", "script", "readable", "contentType", "lines", "schemaHash", "files", "suggest", "suggests"};
+// suggestions (ui.suggest, web only: its action stays a button here),
+// numbers' value labels (ui.labels "-1=none", later here).
+const char* const kDropped[] = {"description", "script", "readable", "contentType", "lines", "schemaHash", "files", "suggest", "suggests", "labels"};
 
 void project(JsonVariant v) {
     if (v.is<JsonObject>()) {

@@ -1379,6 +1379,39 @@
       "precision": 0
      },
      {
+      "name": "universe",
+      "path": "/widgets/universe",
+      "label": "Universe",
+      "advanced": false,
+      "hidden": false,
+      "kind": "leaf",
+      "widget": "number",
+      "type": "integer",
+      "editable": true,
+      "min": 0,
+      "max": 32767,
+      "step": 1,
+      "precision": 0
+     },
+     {
+      "name": "pin",
+      "path": "/widgets/pin",
+      "label": "Pin",
+      "advanced": false,
+      "hidden": false,
+      "kind": "leaf",
+      "widget": "number",
+      "type": "integer",
+      "editable": true,
+      "min": -1,
+      "max": 48,
+      "step": 1,
+      "precision": 0,
+      "labels": {
+       "-1": "none"
+      }
+     },
+     {
       "name": "armed",
       "path": "/widgets/armed",
       "label": "Armed",
@@ -3565,6 +3598,39 @@
        "max": 16777215,
        "step": 1,
        "precision": 0
+      },
+      {
+       "name": "universe",
+       "path": "/widgets/universe",
+       "label": "Universe",
+       "advanced": false,
+       "hidden": false,
+       "kind": "leaf",
+       "widget": "number",
+       "type": "integer",
+       "editable": true,
+       "min": 0,
+       "max": 32767,
+       "step": 1,
+       "precision": 0
+      },
+      {
+       "name": "pin",
+       "path": "/widgets/pin",
+       "label": "Pin",
+       "advanced": false,
+       "hidden": false,
+       "kind": "leaf",
+       "widget": "number",
+       "type": "integer",
+       "editable": true,
+       "min": -1,
+       "max": 48,
+       "step": 1,
+       "precision": 0,
+       "labels": {
+        "-1": "none"
+       }
       },
       {
        "name": "armed",

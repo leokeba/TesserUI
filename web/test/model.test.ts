@@ -12,6 +12,10 @@ describe('widget inference (DESIGN §4)', () => {
     expect(leaf({ type: 'boolean', writable: true }).widget).toBe('toggle');
     expect(leaf({ type: 'boolean' }).widget).toBe('led');
     expect(leaf({ type: 'integer', writable: true, min: 0, max: 255 }).widget).toBe('slider');
+    // An integer of more than 1000 values is an identifier: a number box.
+    expect(leaf({ type: 'integer', writable: true, min: 0, max: 32767 }).widget).toBe('number');
+    expect(leaf({ type: 'integer', writable: true, min: 0, max: 32000, step: 100 }).widget).toBe('slider');
+    expect(leaf({ type: 'number', writable: true, min: 0, max: 360, step: 0.1 }).widget).toBe('slider');
     expect(leaf({ type: 'number', writable: true }).widget).toBe('number');
     expect(leaf({ type: 'number' }).widget).toBe('readout');
     expect(leaf({ type: 'string', writable: true, enum: ['off', 'auto', 'manual'] }).widget).toBe('segmented');

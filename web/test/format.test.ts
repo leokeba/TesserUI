@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { buildLeaf } from '../src/model/model';
 import { chartRange, decimalsOf, formatValue, humanize, printf } from '../src/model/format';
 import { holds, parseConditions, resolvePath } from '../src/model/conditions';
 import { parse, stringify } from '../src/client/json';
@@ -28,6 +29,13 @@ describe('formatting', () => {
     expect(formatValue(2, { type: 'number' })).toBe('2');
     expect(formatValue(undefined, { type: 'number' })).toBe('–');
     expect(formatValue(18446744073709551615n, { type: 'integer' })).toBe('18446744073709551615');
+  });
+  it('labels some values of a number (ui.labels "-1=none")', () => {
+    const pin = buildLeaf('pin', '/pin', { type: 'integer', writable: true, ui: { labels: '-1=none, 0 = off' } }, '/');
+    expect(pin.labels).toEqual({ '-1': 'none', '0': 'off' });
+    expect(formatValue(-1, pin)).toBe('none');
+    expect(formatValue(0, pin)).toBe('off');
+    expect(formatValue(5, pin)).toBe('5');
   });
   it('implements the printf subset', () => {
     expect(printf('%.0f hPa', 1013.4)).toBe('1013 hPa');

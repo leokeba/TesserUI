@@ -82,6 +82,8 @@ export interface Leaf extends Base {
   unit?: string;
   precision?: number;
   format?: string;
+  // Numbers: labels for some values (ui.labels "-1=none,0=off").
+  labels?: Record<string, string>;
   placeholder?: string;
   maxLength?: number;
   options?: Option[];
@@ -185,7 +187,7 @@ export function inferWidget(s: Schema, type: string, editable: boolean): Widget 
     case 'integer':
     case 'number':
       if (!editable) return 'readout';
-      return hasRange ? 'slider' : 'number';
+      return hasRange && fewSteps(s, type) ? 'slider' : 'number';
     case 'string':
       if (!editable) return 'readout';
       if (uiStr(s, 'options') && !s.enum) return 'select';
@@ -198,6 +200,10 @@ export function inferWidget(s: Schema, type: string, editable: boolean): Widget 
       return 'readout';
   }
 }
+
+// An integer's range has at most 1000 steps: an amount a slider fits, not a
+// DMX universe. Decimal numbers are amounts.
+const fewSteps = (s: Schema, type: string) => type !== 'integer' || (s.max! - s.min!) / (s.step || 1) <= 1000;
 
 function fits(w: string, s: Schema, type: string, editable: boolean, hasRange: boolean): boolean {
   switch (w) {
@@ -406,6 +412,8 @@ function number(leaf: Leaf, s: Schema) {
   leaf.precision = uiNum(s, 'precision') ?? decimalsOf(s.step) ?? (leaf.type === 'integer' ? 0 : undefined);
   const format = uiStr(s, 'format');
   if (format) leaf.format = format;
+  const labels = uiStr(s, 'labels');
+  if (labels?.includes('=')) leaf.labels = Object.fromEntries(labels.split(',').map((p) => [p.slice(0, p.indexOf('=')).trim(), p.slice(p.indexOf('=') + 1).trim()]));
 }
 
 function action(leaf: Leaf, s: Schema, parent: string): Leaf {

@@ -33,7 +33,7 @@
   {#if leaf.widget === 'stepper'}
     <button type="button" {disabled} aria-label={session.t('Increase {label}', { label: leaf.label })} onclick={() => bump(1)}>+</button>
   {/if}
-  {#if leaf.unit}<span class="unit">{leaf.unit}</span>{/if}
+  {#if leaf.labels?.[String(value)] ?? leaf.unit}<span class="unit">{leaf.labels?.[String(value)] ?? leaf.unit}</span>{/if}
 </div>
 
 <style>

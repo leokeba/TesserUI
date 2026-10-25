@@ -122,6 +122,9 @@ struct Infer {
     NodeType type = NodeType::Unknown;
     bool editable = false;
     bool hasRange = false;
+    // An integer's range has at most 1000 steps: an amount a slider fits,
+    // not a DMX universe. Decimal numbers are amounts.
+    bool fewSteps = true;
     bool hasEnum = false;
     bool optionsHint = false;  // a non-empty ui.options
     const char* hint = nullptr;
@@ -177,7 +180,7 @@ Widget inferWidget(const Infer& in) {
         case NodeType::Integer:
         case NodeType::Number:
             if (!in.editable) return Widget::Readout;
-            return in.hasRange ? Widget::Slider : Widget::Number;
+            return in.hasRange && in.fewSteps ? Widget::Slider : Widget::Number;
         case NodeType::String: {
             if (!in.editable) return Widget::Readout;
             if (in.optionsHint && !in.hasEnum) return Widget::Select;
@@ -308,6 +311,10 @@ struct Builder {
         in.type = type;
         in.editable = editable;
         in.hasRange = s["min"].is<double>() && s["max"].is<double>();
+        double step = s["step"].is<double>() ? s["step"].as<double>() : 1;
+        if (in.hasRange && type == NodeType::Integer && step > 0) {
+            in.fewSteps = (s["max"].as<double>() - s["min"].as<double>()) / step <= 1000;
+        }
         in.hasEnum = !s["enum"].isNull();
         in.optionsHint = nonEmpty(uiStr(s, "options"));
         in.hint = uiStr(s, "widget");

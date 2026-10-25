@@ -68,8 +68,8 @@ Without any hint, each schema node maps to one semantic widget. The table is nor
 |---|---|---|
 | `boolean`, writable | `toggle` | |
 | `boolean`, read-only | `led` | On/off indicator. |
-| `integer`/`number`, writable, with `min` and `max` | `slider` | With the value shown, and a numeric entry on the web. |
-| `integer`/`number`, writable, no range | `number` | Numeric entry; `step` from the schema, else 1 for integers. |
+| `integer`/`number`, writable, with `min` and `max` (an integer's at most 1000 steps) | `slider` | With the value shown, and a numeric entry on the web. |
+| `integer`/`number`, writable, no range, or an integer's of more than 1000 steps | `number` | Numeric entry; `step` from the schema, else 1 for integers. An integer of so many values is an identifier (a DMX universe, 0 to 32767), not an amount; decimal numbers keep their slider. |
 | `integer`/`number`, read-only | `readout` | Formatted with `unit` and `precision`. |
 | `string` with `enum`, writable | `segmented` if ≤ 4 options and each label ≤ 10 characters, else `select` | Display labels from `ui.labels` (§5.2), else the names. |
 | `string` with `ui.options`, writable | `select` | The current keys of the keyed list `ui.options` names, or the children of the object it names (the nodes under `/peers`, an offline one marked), after the fixed choices of `ui.optionsExtra` (§5.2). Updated as the list changes. |
@@ -134,7 +134,7 @@ m.object("pid").ui("advanced");
 
 | Key | Type | Applies to | Meaning |
 |---|---|---|---|
-| `labels` | string | enum, flags | Display labels in enum order, comma-separated: `"Off,Automatic,Manual"`; for `flags`, one per bit. |
+| `labels` | string | enum, flags, numbers | Display labels in enum order, comma-separated: `"Off,Automatic,Manual"`; for `flags`, one per bit. For an `integer` or `number`, labels for some values, `value=label` pairs: `"-1=none,0=off"`: a readout (a table's cell, a slider's value) shows the label for that value, a numeric entry shows it beside the field (web; the LCD *(later)*). |
 | `group` | string | top-level object | The menu heading it's listed under (§6.3): `"Connections"`. |
 | `options` | string | writable string, string action argument | The path of a keyed list (TesserAPI §4.4), relative or absolute as a condition's (§5.3): the value is one of its keys; or of an object: the value is one of its children's names, labelled from a remote node's own schema when it was read, `(offline)` after an offline one (a node to choose among those under `/peers`), chosen in a `select` (`radio` and `segmented` fit too). The renderer subscribes to the list even when it isn't shown. The device still validates the value. A list whose rows hold such a field opens element by element instead of being a table. |
 | `optionsExtra` | string | with `options` | Fixed choices listed before the keys, comma-separated: `"Sun"`. |

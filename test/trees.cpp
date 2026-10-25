@@ -319,6 +319,10 @@ Demo::Demo()
     widgets.value("line", line).ui("widget", "text").doc("A description, shown as help text.");
     widgets.value("display", display).ui("widget", "readout");
     widgets.value("hue", hue).range(0, 0xffffff).ui("widget", "color");
+    // A range of more than 1000 steps isn't an amount: a number box. A value
+    // with a label for -1.
+    widgets.value("universe", universe).range(0, 32767);
+    widgets.value("pin", pin).range(-1, 48).ui("widget", "number").ui("labels", "-1=none");
     widgets.value("armed", armed).ui("confirm", "Really change it?");
     widgets.value("conditional", conditional).ui("visibleWhen", "/config/enabled=true&../config/mode!=auto");
     // A choice among a keyed list's current keys, and a fixed one.
