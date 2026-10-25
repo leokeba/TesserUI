@@ -28,7 +28,8 @@
     const css = getComputedStyle(c);
     g.clearRect(0, 0, w, h);
     if (!points.length) return;
-    const [lo, hi] = chartRange(points.map((p) => p[1]), leaf);
+    const values = points.map((p) => p[1]);
+    const [lo, hi] = chartRange(values, leaf);
     const pad = 6 * devicePixelRatio;
     const x = array ? (i: number) => (i / Math.max(1, array.length - 1)) * w : (t: number) => w - ((now - t) / span) * w;
     const y = (v: number) => pad + (1 - (v - lo) / (hi - lo)) * (h - 2 * pad);
@@ -54,6 +55,9 @@
       g.arc(w - 3 * devicePixelRatio, last, 3 * devicePixelRatio, 0, 7);
       g.fill();
     }
+    // The axis's ends, once the values span half of it: a nearly flat line's
+    // axis is widened around it, and its ends would mean nothing.
+    if (Math.max(...values) - Math.min(...values) < (hi - lo) / 2) return;
     g.fillStyle = css.getPropertyValue('--muted');
     g.font = `${11 * devicePixelRatio}px system-ui`;
     // Bytes keep their unit: it scales them (KB, MB).
@@ -83,5 +87,10 @@
     height: 96px;
     background: var(--surface-2);
     border-radius: 6px;
+  }
+  @media (max-width: 640px) {
+    canvas {
+      height: 64px;
+    }
   }
 </style>
