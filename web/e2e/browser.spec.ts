@@ -30,6 +30,16 @@ test('browses, uploads, edits, moves and deletes files, the folder in the route'
   await expect(page.locator('.editor strong')).toHaveText('readme.txt');
   await page.reload();
   await expect(text).toHaveValue('Edited.\n');
+  // Another file straight from this one: an editor of its own, its unsaved
+  // text kept for when it comes back.
+  await text.fill('Edited twice.\n');
+  await page.evaluate(() => (location.hash = '#/files/~/settings.json'));
+  await expect(text).toHaveValue('{"lamp": true, "level": 3}\n');
+  await expect(page.getByRole('button', { name: 'Format' })).toBeVisible();
+  await page.goBack();
+  await expect(text).toHaveValue('Edited twice.\n');
+  await expect(page.locator('.editor strong')).toHaveText('readme.txt •');
+  await page.getByRole('button', { name: 'Revert' }).click();
   await page.getByRole('button', { name: 'Close', exact: true }).click();
   await expect(page).toHaveURL(/#\/files\/~\/$/);
 
@@ -52,7 +62,8 @@ test('browses, uploads, edits, moves and deletes files, the folder in the route'
   await expect(rows(page).filter({ hasText: 'note.txt' })).toHaveCount(0);
   await page.locator('.files .list').getByRole('link', { name: 'img' }).click();
   await expect(page).toHaveURL(/#\/files\/~\/img$/);
-  await expect(page.locator('.files .crumbs a')).toHaveText(['Files', 'img']);
+  await expect(page.locator('.files .crumbs a')).toHaveText(['', 'img']);
+  await expect(page.locator('.files .crumbs a').first()).toHaveAccessibleName('Files');
   await expect(rows(page)).toHaveText([/^note\.txt/]);
   await page.getByRole('button', { name: 'Actions of note.txt' }).click();
   await page.getByRole('button', { name: 'Delete' }).click();
@@ -68,4 +79,31 @@ test('a file node of text opens in the editor', async ({ page }) => {
   await expect(page.locator('.editor textarea')).toHaveValue(/^\{/);
   await page.getByRole('button', { name: 'Close', exact: true }).click();
   await expect(page.locator('.editor')).toHaveCount(0);
+});
+
+// DESIGN.md §4.2: a save checks the device's copy didn't change since it
+// was read; declined, Revert loads it. Its own saves are no conflict.
+test('the editor asks before overwriting a file another client changed', async ({ page }) => {
+  let overwrite = false;
+  page.on('dialog', (d) => (overwrite ? d.accept() : d.dismiss()));
+  await open(page, '#/files/~/logs/boot.log');
+  const text = page.locator('.editor textarea');
+  await expect(text).toHaveValue('I (0) boot: started\n');
+  await text.fill('mine\n');
+  await page.getByRole('button', { name: 'Save' }).click();
+  await expect(page.locator('.editor strong')).toHaveText('boot.log');
+  await text.fill('mine again\n');
+  await page.getByRole('button', { name: 'Save' }).click();
+  await expect(page.locator('.editor strong')).toHaveText('boot.log');
+  // Another client writes it.
+  await page.evaluate(() => fetch('http://localhost:8091/api/files/file?filename=/logs/boot.log', { method: 'PUT', body: 'theirs, longer\n' }));
+  await text.fill('mine, a third time\n');
+  await page.getByRole('button', { name: 'Save' }).click();
+  await expect(page.locator('.editor .error')).toHaveText(/Not saved/);
+  await page.getByRole('button', { name: 'Revert' }).click();
+  await expect(text).toHaveValue('theirs, longer\n');
+  overwrite = true;
+  await text.fill('mine at last\n');
+  await page.getByRole('button', { name: 'Save' }).click();
+  await expect(page.locator('.editor strong')).toHaveText('boot.log');
 });

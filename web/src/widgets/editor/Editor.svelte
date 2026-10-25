@@ -38,6 +38,8 @@
   let wrap = $state(false);
   let busy = $state(true);
   let error = $state('');
+  // The device's copy changed and wasn't overwritten: Revert loads it.
+  let stale = $state(false);
   let area: HTMLTextAreaElement | undefined = $state();
   let gutter: HTMLElement | undefined = $state();
   // svelte-ignore state_referenced_locally
@@ -76,8 +78,8 @@
     // Last save wins, unless the device's copy changed since it was read.
     const now = made && check ? await check() : undefined;
     if (now && seen && (now.size !== seen.size || now.modified !== seen.modified) && !confirm(t('The file changed on the device. Overwrite it?'))) {
-      if (confirm(t('Load its new content?'))) (seen = now), (drafts.delete(key), load());
-      return;
+      seen = now;
+      return void ((stale = true), (error = t('Not saved: the file changed on the device. Revert loads its copy.')));
     }
     busy = true;
     const r = await transfer(session, path, new File([text], name), () => {}, filename);
@@ -85,6 +87,7 @@
     if (r.status !== 'ok') return void (error = errorText(r, t));
     saved = text;
     made = true;
+    stale = false;
     seen = check && (await check());
   }
 
@@ -120,7 +123,7 @@
         save();
       }
     }}>{t('Format')}</button>{/if}
-    <button type="button" disabled={busy || !dirty} onclick={() => (text = saved)}>{t('Revert')}</button>
+    <button type="button" disabled={busy || (!dirty && !stale)} onclick={() => (stale ? ((stale = false), load()) : (text = saved))}>{t('Revert')}</button>
     <button type="button" class="primary" disabled={busy || (!dirty && made)} onclick={save}>{t('Save')}</button>
     <button type="button" class="quiet" aria-label={t('Close')} title={t('Close')} onclick={() => (!dirty || confirm(t('Discard your changes?'))) && ((text = saved), close())}><Icon name="x" /></button>
   </div>

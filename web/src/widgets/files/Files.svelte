@@ -141,7 +141,7 @@
 
 <div class="files">
   <nav class="crumbs" aria-label={t('Folders')}>
-    {#each ancestors(dir) as a (a)}<a href={href(a)} aria-current={a === dir ? 'page' : undefined}>{a === '/' ? leaf.schema.label || '/' : nameOf(a)}</a>{/each}
+    {#each ancestors(dir) as a (a)}<a href={href(a)} aria-current={a === dir ? 'page' : undefined} aria-label={a === '/' ? leaf.schema.label || '/' : undefined}>{#if a === '/'}<Icon name="home" />{:else}{nameOf(a)}{/if}</a>{/each}
   </nav>
   <div class="bar">
     <input id="{leaf.path}-up" class="sr" type="file" multiple {disabled} onchange={(e) => (upload(e.currentTarget.files), (e.currentTarget.value = ''))} />
@@ -149,7 +149,7 @@
     <button type="button" {disabled} onclick={() => create(true)}><Icon name="plus" /> {t('New folder')}</button>
     <button type="button" {disabled} onclick={() => create(false)}><Icon name="edit" /> {t('New file')}</button>
     <button type="button" class="quiet" aria-label={t('Refresh')} title={t('Refresh')} onclick={() => list(dir)}><Icon name="refresh" /></button>
-    {#if total}<meter min="0" max={total} value={used} title="{bytes(used ?? 0)} / {bytes(total)}"></meter>{/if}
+    {#if total}<meter min="0" max={total} value={used} title={t('{used} of {total}', { used: bytes(used ?? 0), total: bytes(total) })} aria-label={t('{used} of {total}', { used: bytes(used ?? 0), total: bytes(total) })}></meter>{/if}
   </div>
   {#each progress as [name, f] (name)}<div class="prog"><span>{name}</span><progress value={f}></progress></div>{/each}
   <div class="main">
@@ -159,8 +159,9 @@
     </nav>
     {#if file && (isText(file.name) || fresh)}
       {@const E = editor()}
-      {#if E}
-        {@const p = join(dir, file.name)}
+      {@const p = join(dir, file.name)}
+      <!-- An editor per file: one file's state never reaches another's. -->
+      {#if E}{#key p}
         <E
           path={node('file')}
           filename={p}
@@ -170,7 +171,7 @@
           check={async () => ((await list(dir)) ? kids[dir].find((e) => e.name === file?.name) : undefined)}
           close={() => ((fresh = false), go(dir))}
         />
-      {/if}
+      {/key}{/if}
     {:else}
       <div class="list" role="list" ondragover={over} ondrop={drop}>
         {#each kids[dir] ?? [] as e (e.name)}
