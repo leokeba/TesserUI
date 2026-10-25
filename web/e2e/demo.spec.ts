@@ -601,3 +601,23 @@ test('a widget whose chunk fails to load shows as a readout', async ({ page }) =
   await expect(row(page, 'Power').locator('output')).toHaveText('36 W');
   await expect(row(page, 'Power').getByRole('meter')).toHaveCount(0);
 });
+
+// DESIGN.md §6.3: an entry's sub-entries fold and unfold with its chevron,
+// on a phone without closing the drawer; ui.group gathers them.
+test('menu: sub-entries unfold in place, grouped', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await open(page, '#/lamp');
+  const menu = page.locator('nav.side');
+  await page.getByRole('button', { name: 'Menu' }).click();
+  await expect(menu.getByRole('link', { name: 'Network' })).toHaveCount(0);
+  const fold = menu.getByRole('button', { name: 'Sections of Device info' });
+  await expect(fold).toHaveAttribute('aria-expanded', 'false');
+  await fold.click();
+  await expect(menu).toBeInViewport();
+  await expect(fold).toHaveAttribute('aria-expanded', 'true');
+  await expect(menu.locator('.group', { hasText: 'Connections' })).toBeVisible();
+  await expect(menu.getByRole('link', { name: 'MQTT' })).toBeVisible();
+  await menu.getByRole('link', { name: 'Network' }).click();
+  await expect(page).toHaveURL(/#\/info\/network$/);
+  await expect(menu).not.toBeInViewport();
+});

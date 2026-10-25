@@ -131,6 +131,10 @@
   const all = (es: MenuEntry[]): MenuEntry[] => es.flatMap((e) => [e, ...all(e.children ?? [])]);
   const inside = (e: MenuEntry, x?: MenuEntry): boolean => !!e.children?.some((c) => c === x || inside(c, x));
   const flat = $derived(menu ? all(menu).filter((e) => e.href) : []);
+  // An entry's sub-entries fold and unfold with its chevron; they start
+  // unfolded while its page, or one of theirs, is open.
+  const unfolded: Record<string, boolean> = $state({});
+  const opened = (e: MenuEntry) => unfolded[e.href!] ?? (current === e || inside(e, current));
   // The entry shown: the deepest one the route is in.
   const current = $derived.by(() => {
     const at = route.view !== null ? viewHref(route.path, route.view) : `#${route.path}`;
@@ -291,7 +295,7 @@
   <div class="body">
   {#if menu}
     <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
-    <nav class="side" class:open={drawer} aria-label={t('Menu')} onclick={() => (drawer = false)}>
+    <nav class="side" class:open={drawer} aria-label={t('Menu')} onclick={(e) => (e.target as Element).closest('a') && (drawer = false)}>
       {@render list(menu, 0)}
       {#if nodes.length && !around}
         <hr />
@@ -321,14 +325,14 @@
   </main>
   </div>
 
-  <!-- Entries, a group's under its heading; sub-entries show once their
-       entry's page, or one of theirs, is open. -->
+  <!-- Entries, a group's under its heading; sub-entries under their entry
+       while it is unfolded. -->
   {#snippet list(es: MenuEntry[], depth: number)}
     {#each es as e, i (i)}
       {#if !depth && i && es[i - 1].href?.startsWith('#/v/') && !e.href?.startsWith('#/v/')}<hr />{/if}
       {#if e.href}
         {@render entry(e)}
-        {#if e.children && (current === e || inside(e, current))}<div class="sub">{@render list(e.children, depth + 1)}</div>{/if}
+        {#if e.children && opened(e)}<div class="sub">{@render list(e.children, depth + 1)}</div>{/if}
       {:else}
         <p class="group">{e.label}</p>
         <div class="sub">{@render list(e.children!, depth + 1)}</div>
@@ -337,10 +341,15 @@
   {/snippet}
 
   {#snippet entry(e: MenuEntry)}
-    <a href={e.href} aria-current={current === e ? 'page' : undefined}>
-      <span class="ic">{#if e.icon}<Icon name={e.icon} />{/if}</span>{e.label}
-      {#if e.online === false}<i class="off" title={t('Offline')}></i>{/if}
-    </a>
+    <div class="ent">
+      <a href={e.href} aria-current={current === e ? 'page' : undefined}>
+        <span class="ic">{#if e.icon}<Icon name={e.icon} />{/if}</span>{e.label}
+        {#if e.online === false}<i class="off" title={t('Offline')}></i>{/if}
+      </a>
+      {#if e.children}
+        <button type="button" class="quiet" class:up={opened(e)} aria-expanded={opened(e)} aria-label={t('Sections of {label}', { label: e.label })} onclick={() => (unfolded[e.href!] = !opened(e))}><Icon name="down" /></button>
+      {/if}
+    </div>
   {/snippet}
 
   {#if session.needToken}
@@ -698,6 +707,21 @@
   }
   .side a:hover {
     background: var(--surface-2);
+  }
+  .ent {
+    display: flex;
+  }
+  .ent a {
+    flex: 1;
+    min-width: 0;
+  }
+  .ent button {
+    min-height: 0;
+    padding: 0 10px;
+    color: var(--muted);
+  }
+  .ent .up :global(svg) {
+    transform: rotate(180deg);
   }
   .side a[aria-current] {
     background: color-mix(in srgb, var(--accent) 14%, transparent);
