@@ -34,6 +34,11 @@
   let tab = $state(0);
   const tabs = $derived(sec.tabs ? sec.items.filter((i): i is Section => i.kind === 'section' && !i.hidden) : []);
   const plain = $derived(sec.tabs ? sec.items.filter((i) => i.kind !== 'section') : sec.items);
+  // A page's untitled first card whose rows are all hidden by their
+  // conditions (an action shown only with an LED) would be an empty frame.
+  const empty = $derived(
+    sec.level === 1 && !sec.label && !sec.advancedItems.length && !tabs.length && !error && plain.every((i) => i.hidden || (!!i.visibleWhen && !holds(i.visibleWhen, get))),
+  );
 
   // Forms (ui.form): rows edit a local draft; submit sends one patch with
   // the edited values and the submit action (DESIGN.md §7.4).
@@ -139,7 +144,7 @@
   {/if}
 {/snippet}
 
-{#if visible}
+{#if visible && !empty}
   <fieldset class="sec l{Math.min(sec.level, 3)}" class:card={sec.level === 1} disabled={!enabled}>
     {#if foldable}
       <details bind:open>
