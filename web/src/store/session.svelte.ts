@@ -96,6 +96,8 @@ export class Session {
   // says so until it answers again (DESIGN.md §6.7).
   restarting = $state(false);
   private watching = 0;
+  // Who hears every event, hidden ones too (a files widget, its `changed`).
+  heard = new Set<(n: Notification) => void>();
   needToken = $state(false);
   // This client's access level, when the node says (a `whoami` action); null
   // while unknown: nothing is disabled for it then.
@@ -613,6 +615,7 @@ export class Session {
   // §7.8). One from elsewhere (the events subscription) may need its schema
   // read first.
   private async event(n: Notification) {
+    for (const f of this.heard) f(n);
     let s = this.schemaAt(n.path);
     if (s?.ui?.hidden !== true && this.subs.covers(n.path)) this.store.notify(n);
     if (!s && (await this.ensure(parentPath(n.path), 1))) s = this.schemaAt(n.path);

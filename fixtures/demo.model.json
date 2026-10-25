@@ -72,6 +72,18 @@
       "script": "/ext/keyframes.js"
      },
      {
+      "name": "files",
+      "path": "/files",
+      "label": "Files",
+      "advanced": false,
+      "hidden": false,
+      "icon": "folder",
+      "kind": "leaf",
+      "widget": "files",
+      "type": "object",
+      "editable": false
+     },
+     {
       "name": "blob",
       "path": "/blob",
       "label": "Blob",
@@ -2060,7 +2072,7 @@
   "actions": [],
   "columns": 3,
   "depth": null,
-  "keys": "uptime,online,lamp,motor,sensors,settings,config,offset,channels,schedule,networks,widgets,sky,sequence,tables,system,account,blob,peers,_ui"
+  "keys": "uptime,online,lamp,motor,sensors,settings,config,offset,channels,schedule,networks,widgets,sky,sequence,tables,system,files,account,blob,peers,_ui"
  },
  "menu": [
   {
@@ -2164,6 +2176,11 @@
   {
    "label": "System",
    "href": "#/system"
+  },
+  {
+   "label": "Files",
+   "href": "#/files",
+   "icon": "folder"
   },
   {
    "label": "Account",
@@ -4249,7 +4266,7 @@
     }
    ],
    "actions": [],
-   "columns": 3,
+   "columns": 1,
    "depth": null
   },
   "/sequence": {
@@ -4287,7 +4304,7 @@
     }
    ],
    "actions": [],
-   "columns": 3,
+   "columns": 1,
    "depth": null
   },
   "/tables": {
@@ -4678,6 +4695,44 @@
    "actions": [],
    "columns": 3,
    "depth": 4
+  },
+  "/files": {
+   "path": "/files",
+   "label": "Files",
+   "cards": [
+    {
+     "name": "",
+     "path": "/files",
+     "label": "",
+     "advanced": false,
+     "hidden": false,
+     "kind": "section",
+     "level": 1,
+     "items": [
+      {
+       "name": "files",
+       "path": "/files",
+       "label": "",
+       "advanced": false,
+       "hidden": false,
+       "icon": "folder",
+       "kind": "leaf",
+       "widget": "files",
+       "type": "object",
+       "editable": false
+      }
+     ],
+     "advancedItems": [],
+     "lazy": false,
+     "tabs": false,
+     "inline": false,
+     "collapsed": false,
+     "form": false
+    }
+   ],
+   "actions": [],
+   "columns": 1,
+   "depth": 1
   },
   "/account": {
    "path": "/account",

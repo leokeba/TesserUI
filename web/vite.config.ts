@@ -42,7 +42,19 @@ export default defineConfig(({ mode }) => ({
               output: {
                 minify: true,
                 chunkFileNames: 'ui/[name]-[hash].js',
-                codeSplitting: { groups: [{ name: 'core', tags: ['$initial'] }, { name: 'widgets' }] },
+                // The file browser and the editor are chunks of their own
+                // (DESIGN.md §4.1, §4.2): pages without files never load
+                // them, and their budgets are their own. The widgets' group
+                // comes first, so what they share (Svelte's helpers) stays
+                // in it rather than the widgets loading a browser's chunk.
+                codeSplitting: {
+                  groups: [
+                    { name: 'core', tags: ['$initial'] },
+                    { name: 'widgets', test: (id: string) => !/\/widgets\/(files|editor)\//.test(id) },
+                    { name: 'files', test: /\/widgets\/files\// },
+                    { name: 'editor', test: /\/widgets\/editor\// },
+                  ],
+                },
               },
             },
     lib:

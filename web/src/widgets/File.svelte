@@ -3,13 +3,12 @@
   // a PUT's raw body, with progress; in envelopes on a client with no HTTP
   // (serial, Bluetooth), and below a remote node over a WebSocket. Compact (a list's line): icon buttons, a chosen
   // file uploads at once, and the outcome is a toast.
-  import { download, upload as send } from '../client/files';
-  import { fileUrl } from '../client/http';
-  import { parse, stringify } from '../client/json';
   import { errorText } from '../client/types';
   import Icon from '../Icon.svelte';
   import { bytes } from '../model/format';
   import { useSession } from '../shared.svelte';
+  import { editor } from './registry.svelte';
+  import { save, transfer as send } from './transfer';
   import type { WidgetProps } from './types';
   let { leaf, disabled, id, compact = false }: WidgetProps & { compact?: boolean } = $props();
   const session = useSession();
@@ -24,17 +23,6 @@
   const accept = $derived(
     leaf.schema.accept ?? hint('accept') ?? (leaf.contentType !== 'application/octet-stream' ? leaf.contentType : undefined),
   );
-  // Saves a download under the device's name (Content-Disposition, or the
-  // envelope's filename), else one from the hints or the node's name.
-  function save(blob: Blob, name = (blob as File).name) {
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = name || hint('filename') || leaf.name + (extensions[leaf.contentType ?? ''] ?? '.bin');
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-    done(true, '');
-  }
-
   function uploaded(text: string) {
     file = null;
     done(true, text && text !== 'null' && text.length < 300 ? `${t('Uploaded')}: ${text}` : t('Uploaded'));
@@ -47,56 +35,35 @@
     if (compact && text) session.store.toasts.show(`${leaf.label}: ${text}`, ok ? 'ok' : 'error');
   }
 
-  async function transfer(method: 'GET' | 'PUT', body?: File) {
+  // A download is saved under the device's name (Content-Disposition, or
+  // the envelope's filename), else one from the hints or the node's name.
+  async function transfer(body?: File) {
     progress = 0;
     message = '';
-    const client = session.fileClient(leaf.path);
-    if (client) {
-      const p = (f: number) => (progress = Math.round(f * 100));
-      const r = body ? await send(client, leaf.path, body, p) : await download(client, leaf.path, p);
-      if (r.status === 'unauthorized') session.store.onUnauthorized?.();
-      if (r.status !== 'ok') return done(false, errorText(r, t));
-      return body ? uploaded(stringify(r.body)) : save(r.body as File);
-    }
-    const x = new XMLHttpRequest();
-    x.open(method, fileUrl(session.apiUrl(), leaf.path, body?.name));
-    const token = session.token();
-    if (token) x.setRequestHeader('Authorization', `Bearer ${token}`);
-    if (method === 'GET') x.responseType = 'blob';
-    (method === 'PUT' ? x.upload : x).onprogress = (e) => {
-      if (e.lengthComputable) progress = Math.round((e.loaded / e.total) * 100);
-    };
-    x.onload = async () => {
-      const text = method === 'GET' ? await (x.response as Blob).text() : x.responseText;
-      if (x.status >= 300) {
-        let reply: unknown = null;
-        try {
-          reply = parse(text);
-        } catch {
-          // not an error body
-        }
-        if (x.status === 403) session.store.onUnauthorized?.();
-        return done(false, errorText({ status: `http_${x.status}`, body: reply }, t));
-      }
-      if (method === 'PUT') return uploaded(text);
-      save(x.response as Blob, /filename="?([^";]+)"?/.exec(x.getResponseHeader('Content-Disposition') ?? '')?.[1]);
-    };
-    x.onerror = () => done(false, t('Transfer failed'));
-    x.send(body ?? null);
+    const r = await send(session, leaf.path, body ?? null, (f) => (progress = Math.round(f * 100)));
+    if (r.status !== 'ok') return done(false, errorText(r, t));
+    if (body) return uploaded(r.body as string);
+    save(r.body as File, (r.body as File).name || hint('filename') || leaf.name + (extensions[leaf.contentType ?? ''] ?? '.bin'));
+    done(true, '');
   }
+
+  // Text the user may edit in place (DESIGN.md §4.2): a readable, writable
+  // node of text or JSON, or one with ui.widget "editor".
+  const text = $derived(leaf.readable && leaf.editable && (hint('widget') === 'editor' || /^text\/|json/.test(leaf.contentType ?? '')));
+  let editing = $state(false);
 
   function upload() {
     if (!file) return;
     if (leaf.maxSize && file.size > leaf.maxSize) return done(false, t('Too large: at most {n} bytes', { n: leaf.maxSize }));
     if (leaf.confirm && !confirm(leaf.confirm)) return;
-    transfer('PUT', file);
+    transfer(file);
   }
 </script>
 
 {#if compact}
   {#if progress !== null}<progress class="mini" max="100" value={progress}></progress>{/if}
   {#if leaf.readable}
-    <button type="button" class="quiet" disabled={disabled || progress !== null} aria-label="{t('Download')} {leaf.label}" title={t('Download')} onclick={() => transfer('GET')}><Icon name="download" /></button>
+    <button type="button" class="quiet" disabled={disabled || progress !== null} aria-label="{t('Download')} {leaf.label}" title={t('Download')} onclick={() => transfer()}><Icon name="download" /></button>
   {/if}
   {#if leaf.editable}
     <input
@@ -116,8 +83,14 @@
   {/if}
 {:else}
 <div class="file">
+  {#if editing}
+    {@const E = editor()}
+    {#if E}<E path={leaf.path} name={hint('filename') || leaf.name + (extensions[leaf.contentType ?? ''] ?? '.txt')} close={() => (editing = false)} />{/if}
+  {:else if text}
+    <button type="button" {disabled} onclick={() => (editing = true)}><Icon name="edit" /> {t('Edit')}</button>
+  {/if}
   {#if leaf.readable}
-    <button type="button" disabled={disabled || progress !== null} onclick={() => transfer('GET')}><Icon name="download" /> {t('Download')}</button>
+    <button type="button" disabled={disabled || progress !== null} onclick={() => transfer()}><Icon name="download" /> {t('Download')}</button>
   {/if}
   {#if leaf.editable}
     <!-- The input is hidden; its label is the button. -->

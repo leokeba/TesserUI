@@ -15,9 +15,9 @@
 </script>
 
 <script lang="ts">
-  import { untrack, type Snippet } from 'svelte';
+  import { setContext, untrack, type Snippet } from 'svelte';
   import Connect from './Connect.svelte';
-  import { compareVersions, provideSession } from './shared.svelte';
+  import { compareVersions, PLACE, provideSession } from './shared.svelte';
   import Icon from './Icon.svelte';
   import Item from './Item.svelte';
   import { humanize } from './model/format';
@@ -74,8 +74,16 @@
     const h = decodeURIComponent(hash.slice(1));
     const v = h.match(/^(?:\/v|(.*)\/_ui)\/([^/]+)$/);
     if (v && top === '/') return { view: v[2] as string | null, path: v[1] || '/' };
-    const path = h.replace(/\/+$/, '') || top;
-    return { view: null, path: isUnder(path, top) ? path : top };
+    // A files widget's place, after "~": the page is its object's.
+    const [, at, sub] = h.match(/^(.*?)\/~(\/.*)?$/) ?? [, h];
+    const path = at!.replace(/\/+$/, '') || top;
+    return { view: null, path: isUnder(path, top) ? path : top, sub: at === h ? undefined : sub || '/' };
+  });
+  setContext(PLACE, {
+    get sub() {
+      return route.sub;
+    },
+    go: (href: string) => (memory ? (hash = href) : (location.hash = href)),
   });
   // svelte-ignore state_referenced_locally
   const menuOn = (config.menu ?? full) && config.header !== false;

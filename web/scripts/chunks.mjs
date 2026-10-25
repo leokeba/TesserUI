@@ -205,7 +205,7 @@ export function staticWidgets() {
     transform(code, id) {
       if (!id.endsWith('/widgets/registry.svelte.ts')) return null;
       const imports = [];
-      const out = code.replace(/import\((['"])(\.\/\w+\.svelte)\1\)/g, (_, q, path) => {
+      const out = code.replace(/import\((['"])(\.\/[\w/]+\.svelte)\1\)/g, (_, q, path) => {
         imports.push(`import * as lazy${imports.length} from ${q}${path}${q};`);
         return `Promise.resolve(lazy${imports.length - 1})`;
       });

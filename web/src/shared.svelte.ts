@@ -29,6 +29,15 @@ export const reader = (store: { get(p: string): unknown }, draft?: Draft | null)
 // function, for keep-alives (DESIGN.md §7.4).
 export const SHOWN = Symbol('shown');
 
+// A files widget's place in its tree (DESIGN.md §4.1): the route's part
+// after a "~" segment (#/sys/files/~/www/index.html), and how to go
+// elsewhere.
+export interface Place {
+  readonly sub?: string;
+  go(href: string): void;
+}
+export const PLACE = Symbol('place');
+
 export function compareVersions(a: string, b: string): number {
   const pa = a.split('.').map(Number);
   const pb = b.split('.').map(Number);

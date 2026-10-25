@@ -27,7 +27,7 @@ TesserUI renders user interfaces for [TesserAPI](https://github.com/leokeba/Tess
 | Item | Decision |
 |---|---|
 | Device side | C++17 and TesserAPI's rules: no exceptions, no RTTI, ESP-IDF ≥ 5.1 and Arduino-ESP32 ≥ 3.0. |
-| Web bundle | ≤ 65 KB gzipped for `ui.js` (JS and CSS), what a page loads first, and ≤ 70 KB with the chunk of widgets it loads on demand (§9.4), what a node's flash holds: the old ceiling, what splitting costs, and a few KB; both measured in CI. Evergreen browsers only. (Raised from 40 KB once phases 1, 2 and 4 were in: they measured 40.2 KB with every saving taken. Raised from 50 KB for the navigation menu, §6.3, from 52 KB for the launcher and Bluetooth, §9.7, from 54 KB for notifications, §7.8, from 55.5 KB for file nodes in list elements, §4, from 56.5 KB for events over HTTP, §9.2, from 57 KB for files over serial and Bluetooth, §4, from 57.5 KB for the log widget, §4, from 58 KB for installing firmware from the launcher, §9.7.1 (its flasher is a script of its own, outside the budget), from 58.5 KB for moving rows and choosing a node, §5.2, from 59 KB for nodes as tabs, §6.5, from 59.5 KB for applying a change to every node, §6.6, and from 60 KB for checking a node's identity on every reconnection, §7.5, and easing the load on a node under stress, §7.3. 65 KB is the ceiling: beyond it, what only a launcher uses is a script of its own, as the flasher and the launcher's workspace are, §9.7.2. At 64.3 KB, the widgets few pages use moved to a chunk loaded on demand, §9.4: 54.1 KB for `ui.js`, 67.3 KB with the chunk, 2026-10-22.) |
+| Web bundle | ≤ 65 KB gzipped for `ui.js` (JS and CSS), what a page loads first, and ≤ 71 KB with the chunk of widgets it loads on demand (§9.4), what a node's flash holds; the file browser (§4.1) and the editor (§4.2) are chunks of their own, at most 6 and 4 KB (Leo's targets, 2026-10-25). The 71 KB came with the file browser: its route, the shared transfer code and Rolldown's helper chunk took the 70 KB's last 400 bytes: the old ceiling, what splitting costs, and a few KB; both measured in CI. Evergreen browsers only. (Raised from 40 KB once phases 1, 2 and 4 were in: they measured 40.2 KB with every saving taken. Raised from 50 KB for the navigation menu, §6.3, from 52 KB for the launcher and Bluetooth, §9.7, from 54 KB for notifications, §7.8, from 55.5 KB for file nodes in list elements, §4, from 56.5 KB for events over HTTP, §9.2, from 57 KB for files over serial and Bluetooth, §4, from 57.5 KB for the log widget, §4, from 58 KB for installing firmware from the launcher, §9.7.1 (its flasher is a script of its own, outside the budget), from 58.5 KB for moving rows and choosing a node, §5.2, from 59 KB for nodes as tabs, §6.5, from 59.5 KB for applying a change to every node, §6.6, and from 60 KB for checking a node's identity on every reconnection, §7.5, and easing the load on a node under stress, §7.3. 65 KB is the ceiling: beyond it, what only a launcher uses is a script of its own, as the flasher and the launcher's workspace are, §9.7.2. At 64.3 KB, the widgets few pages use moved to a chunk loaded on demand, §9.4: 54.1 KB for `ui.js`, 67.3 KB with the chunk, 2026-10-22.) |
 | Web stack | Svelte 5 + TypeScript + Vite, without a CSS framework or chart library. |
 | LCD stack | LVGL 9.x. Display and touch drivers are the application's: TesserUI receives an `lv_display_t*`. |
 | Smallest node | A NowTP-only node with no Wi-Fi and no UI assets: its tree and its hint literals are all it stores. |
@@ -97,6 +97,30 @@ Without any hint, each schema node maps to one semantic widget. The table is nor
 - **Units:** `unit` follows the value: "42 %", "12.5 °C". Integers in `B` and `s` are scaled: "178.4 KB", "1.94 MB", "6 min 39 s", "2 d 3 h".
 - **Precision:** `ui.precision` decimals, else as many as `step` has, else up to 3 significant decimals for `number`.
 
+### 4.1 Files (web)
+
+`ui.widget: "files"` on an object makes it a file browser (TesserKIT's `/sys/files`). The device keeps no current folder: everything is addressed by path, absolute, `/`-separated, without a trailing slash but the root's, so every browser goes its own way.
+
+- **The object's children,** by name: `total` and `used` (integers, bytes; optional: a usage bar); `list` (action, argument a folder's path; reply `{"path": "/www", "entries": [{"name": "index.html", "size": 31, "dir": false, "modified": 1792939213}], "truncated": false}`, `modified` in epoch seconds, 0 if unknown; `not_found` for a missing folder); `file` (a file node: `GET` and `PUT` with `?filename=<path>`, or that `filename` in the download and upload envelopes, TesserAPI 0457e7b; an upload replaces the file); `mkdir` (action, argument a path); `move` (action, argument `{"from", "to"}`: renames and moves); `delete` (action, argument a path; a folder with what it holds); `changed` (hidden event, payload the folder that changed, `""` for unknown).
+- **Where:** in the route, after a `~` segment: `#/sys/files/~/www/img` is that folder; a file's path is the file, opened over its folder. Back, forward, reload and links work. Outside a route (a view), the widget keeps its place itself.
+- **Drawn:** a breadcrumb (each folder a link), a toolbar (Upload, New folder, New file, Refresh, the usage bar), and the folder's entries, folders first then by name: an icon, the name, the size and the date ("—" when 0). A folder opens; a text file (by extension: txt, log, md, json, html, css, js, csv, xml, yaml, ini, conf, cfg, svg, sh, py) opens in the editor (§4.2), an image in a preview, anything else downloads. Each entry's `⋮` shows Edit and Download (files), Move or rename (its full path, edited), and Delete (asked first, a folder's contents named). On a wide screen (800 px), a tree of folders beside the entries, unfolded down to the one shown and lazily on demand. An empty folder says so.
+- **Uploads:** several files at once, into the folder shown, from the toolbar or dropped on the entries or on a folder of the tree; each with its progress; a name already there is asked before being replaced.
+- **Live:** `changed` (heard on the tree's events subscription, §7.3, hidden events included) lists again the folder it names when it is shown or in the tree, every one for `""`; so do this client's own actions.
+- **Errors** show under the widget, the folder staying shown.
+- **Size:** a chunk of its own, loaded when a page first draws the widget: at most 6 KB gzipped (§2). Web only: the LCD says so.
+
+### 4.2 Editor (web)
+
+A text file opens in a plain editor: a files widget's (§4.1), or a file node that is readable and writable and whose `contentType` is `text/*` or JSON, or with `ui.widget: "editor"` (an Edit button beside its download).
+
+- A monospace text area with line numbers (without wrapping), a wrap switch, Tab and Shift+Tab indenting the line or the selected lines by 2 spaces, Ctrl or Cmd+S saving. The browser's own find.
+- The file is downloaded whole, up to 128 KB (beyond that, download it); one with NUL bytes asks "Open as text anyway?". Save uploads it whole; Revert goes back to what was read; a bullet marks unsaved changes.
+- Unsaved text outlives leaving the editor (another folder, back): it is there again when the same file opens, until saved or closed. Close asks before discarding it, and so does leaving the page.
+- **Conflicts:** before saving a files widget's file, its folder is listed: if its size or date changed since it was read, the user chooses between overwriting it and loading the device's copy. Otherwise the last save wins: the device has no locking.
+- **JSON** (`.json`): Save refuses invalid JSON, giving the line; Format indents it.
+- A new file (the files widget's New file) starts empty and is created by its first save.
+- Full screen on a phone (below 640 px), in place of the entries elsewhere. A chunk of its own: at most 4 KB gzipped (§2).
+
 ## 5. Hints (tier 1)
 
 Hints are TesserAPI presentation metadata (TesserAPI §7.1). `label`, `unit` and `step` are first-class schema keys. Everything else lives under `ui`, and this section defines that vocabulary.
@@ -128,6 +152,8 @@ m.object("pid").ui("advanced");
 | `log` | event | Payloads as lines of a log, such as ESP-IDF's (TesserKIT's `/sys/log/line`): a string as it is, any other payload as JSON, in monospace, one line each without a time (the device's line has its own). The last `ui.lines` (default 100), oldest at the top, in a box of fixed height that scrolls; it stays at the end as lines arrive unless the user scrolled up. Lines too long for the box wrap, indented under their start. A line starting with ESP-IDF's `E (` is red, `W (` amber. A button below the box, on its right, clears it, on this screen only. On LCD, an `events` widget. |
 | `hold` | action with a boolean `arg` | Called with `true` on press, again every `ui.keepalive` ms while held (default 300), and `false` on release: jog buttons behind a dead-man timer (§7.4). |
 | `button` | action | Explicitly a button (e.g. a typed action whose argument comes from `ui.value`). |
+| `files` | object | A file browser over the object's actions and file node (§4.1), web only. |
+| `editor` | file | An Edit button that opens the file in the editor (§4.2), whatever its `contentType`. |
 | any name with a hyphen (`x-sun-dial`) | any node, objects included | A custom element (§9.8), web only. Other renderers use the tier 0 widget; on an object, its section. |
 
 ### 5.2 Other keys

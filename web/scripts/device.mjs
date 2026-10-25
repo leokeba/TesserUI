@@ -156,11 +156,12 @@ async function file(url, req, res, raw) {
   const end = (r, headers = { 'Content-Type': 'application/json' }, body = r.text) =>
     res.writeHead(STATUS[r.status] ?? 500, { ...cors, ...headers }).end(body);
   try {
+    const filename = url.searchParams.get('filename') ?? undefined;
     if (op === 'download') {
       const parts = [];
-      let r = await ask({ offset: 0 });
+      let r = await ask({ offset: 0, filename });
       const head = r.body;
-      for (let offset = 0; r.status === 'ok'; r = await ask({ offset })) {
+      for (let offset = 0; r.status === 'ok'; r = await ask({ offset, filename })) {
         parts.push(Buffer.from(r.body.data, 'base64'));
         offset += parts.at(-1).length;
         if (r.body.end) {
@@ -170,7 +171,6 @@ async function file(url, req, res, raw) {
       }
       return end(r);
     }
-    const filename = url.searchParams.get('filename') ?? undefined;
     let r = await ask({ size: raw.length, filename });
     const chunk = r.body?.chunk;
     // From the reply's received: a node short of memory may take only part

@@ -8,6 +8,8 @@
 
 #include <stdint.h>
 
+#include <map>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -112,6 +114,12 @@ struct Frame {
     double value = 0;
 };
 
+// The argument of a files widget's move action (docs/DESIGN.md section 4.1).
+struct Move {
+    std::string from;
+    std::string to;
+};
+
 // The argument of the login action.
 struct Credentials {
     std::string name;
@@ -158,6 +166,12 @@ struct Demo {
     tesser::EventNode* pressed = nullptr;
     tesser::EventNode* homed = nullptr;
     tesser::EventNode* log = nullptr;  // /system/log, ESP-IDF lines
+    // /files: a file system in memory behind the files widget's contract
+    // (docs/DESIGN.md section 4.1), by path: the files' content, the folders.
+    std::map<std::string, std::string> files;
+    std::set<std::string> folders;
+    tesser::EventNode* filesChanged = nullptr;
+    void fsChanged(const std::string& folder);
     int logLines = 0;
     // settings
     std::string ssid = "heliostat-net";

@@ -53,8 +53,9 @@ async function ask(client: Client, r: Request, once = false, timeoutMs = CHUNK_T
 
 // The body of a successful download is a File named by the device (empty
 // when it gives no name), of its content type. progress gets 0 to 1 when
-// the size is known.
-export async function download(client: Client, path: string, progress: (f: number) => void): Promise<Reply> {
+// the size is known. `filename`: which file of the node (a files widget's
+// path), in every chunk's envelope.
+export async function download(client: Client, path: string, progress: (f: number) => void, filename?: string): Promise<Reply> {
   const parts: Uint8Array<ArrayBuffer>[] = [];
   const sums = client.features?.includes('crc32');
   let offset = 0;
@@ -72,7 +73,7 @@ export async function download(client: Client, path: string, progress: (f: numbe
     return !sums || b.crc32 === crc32(bytes);
   };
   for (;;) {
-    const r = await ask(client, { op: 'download', path, offset, ...(sums && { crc32: true }) }, false, CHUNK_TIMEOUT_MS, intact);
+    const r = await ask(client, { op: 'download', path, offset, filename, ...(sums && { crc32: true }) }, false, CHUNK_TIMEOUT_MS, intact);
     if (r.status !== 'ok') return r;
     const b = r.body as Chunk;
     head ??= b;
@@ -84,13 +85,13 @@ export async function download(client: Client, path: string, progress: (f: numbe
 }
 
 // The reply is the upload's: that of the chunk completing the file.
-export async function upload(client: Client, path: string, file: File, progress: (f: number) => void): Promise<Reply> {
+export async function upload(client: Client, path: string, file: File, progress: (f: number) => void, filename = file.name): Promise<Reply> {
   const bytes = new Uint8Array(await file.arrayBuffer());
   const size = bytes.length;
   // Opened without data, to learn the device's chunk. Not asked again
   // unless the device didn't take it: an opening restarts the upload, and
   // the node's handler may take long (erasing a firmware partition).
-  let r = await ask(client, { op: 'upload', path, size, filename: file.name }, true, DEFERRED_TIMEOUT_MS);
+  let r = await ask(client, { op: 'upload', path, size, filename }, true, DEFERRED_TIMEOUT_MS);
   if (r.status !== 'ok' || !size) return r;
   const chunk = (r.body as { chunk: number }).chunk;
   const sums = client.features?.includes('crc32');

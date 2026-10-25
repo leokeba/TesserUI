@@ -86,7 +86,15 @@ export const WIDGETS: Record<string, Def> = {
   table,
   list: table,
   file: lazy(() => import('./File.svelte'), { layout: 'wide' }),
+  // A chunk of its own (vite.config.ts).
+  files: lazy(() => import('./files/Files.svelte'), { layout: 'wide' }),
 };
+
+// The editor (§4.2), a chunk of its own, for the widgets that open it: null
+// until it arrives. Loaded from here so the chunks never import one another
+// dynamically.
+const edit = lazy(() => import('./editor/Editor.svelte'));
+export const editor = () => (edit.component === none ? null : (edit.component as unknown as Component<Record<string, unknown>>));
 
 // Custom elements (§9.8): the element's host and its scripts' loader.
 const element = lazy(() => import('./Element.svelte'));

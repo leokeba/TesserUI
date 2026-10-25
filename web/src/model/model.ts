@@ -36,6 +36,7 @@ export type Widget =
   | 'list'
   | 'file'
   | 'link'
+  | 'files'
   // A custom element (DESIGN.md §9.8): any name with a hyphen.
   | `${string}-${string}`;
 
@@ -43,6 +44,10 @@ export type Widget =
 // (the HTML rule).
 export const isElement = (w: unknown): w is `${string}-${string}` =>
   typeof w === 'string' && /^[a-z][a-z0-9._]*-[a-z0-9._-]*$/.test(w);
+
+// A file browser (ui.widget "files", DESIGN.md §4.1) takes its object
+// whole, as a custom element does.
+export const whole = (s: Schema) => isElement(s.ui?.widget) || (s.type === 'object' && s.ui?.widget === 'files');
 
 export interface Option {
   value: string;
@@ -300,8 +305,8 @@ export function buildLeaf(name: string, path: string, s: Schema, parent: string,
   if (s.maxLength) leaf.maxLength = s.maxLength;
 
   // A custom element takes any node, objects included, as it is.
-  if (isElement(s.ui?.widget)) {
-    leaf.widget = s.ui.widget;
+  if (whole(s)) {
+    leaf.widget = s.ui!.widget as Widget;
     leaf.editable = (!!s.writable || s.type === 'action') && ui(s, 'readonly') !== true;
     const script = uiStr(s, 'script');
     if (script) leaf.script = script;
@@ -521,7 +526,7 @@ function section(name: string, path: string, s: Schema, level: number, parent: s
   for (const [childName, c] of Object.entries(s.children ?? {})) {
     const childPath = joinPath(path, childName);
     let item: Item;
-    if (c.type === 'object' && isElement(c.ui?.widget) && ui(c, 'page') !== true) {
+    if (c.type === 'object' && whole(c) && ui(c, 'page') !== true) {
       item = buildLeaf(childName, childPath, c, path);
     } else if (c.type === 'remote' || (c.type === 'object' && ui(c, 'page') === true)) {
       item = link(childName, childPath, c, path);
@@ -568,7 +573,7 @@ export function buildPage(s: Schema, path: string, root = '/', t: (text: string)
   if (menu) s = { ...s, children: Object.fromEntries(Object.entries(s.children ?? {}).filter(([, c]) => !isEntry(c))) };
   // An object with ui.page and sub-entries (DESIGN.md §6.3): its page is their
   // index, a card of links after its own values.
-  const plain = !isElement(s.ui?.widget) && !ui(s, 'form') && !ui(s, 'tabs') && !ui(s, 'inline');
+  const plain = !whole(s) && !ui(s, 'form') && !ui(s, 'tabs') && !ui(s, 'inline');
   const index = !menu && s.type === 'object' && ui(s, 'page') === true && plain ? Object.entries(s.children ?? {}).filter(([, c]) => isSubEntry(c)) : [];
   if (index.length) s = { ...s, children: Object.fromEntries(Object.entries(s.children ?? {}).filter(([, c]) => !isSubEntry(c))) };
   nodeRoot = root;
@@ -584,10 +589,12 @@ export function buildPage(s: Schema, path: string, root = '/', t: (text: string)
   if (s.description) page.description = s.description;
   // A page drawn by a custom element, or a list's (a menu sub-entry): one
   // card, the element or the list, under the page's title.
-  if (isElement(s.ui?.widget) || s.type === 'list' || s.type === 'array') {
+  if (whole(s) || s.type === 'list' || s.type === 'array') {
     const leaf = buildLeaf(path.slice(path.lastIndexOf('/') + 1) || 'root', path, s, parentPath(path), root, above);
     leaf.label = '';
     leaf.description = undefined;
+    // One card, the page's width.
+    page.columns = 1;
     page.cards.push({ ...base('', path, {type: 'object'}, path), kind: 'section', level: 1, items: [leaf], advancedItems: [], lazy: false, tabs: false, inline: false, collapsed: false, form: false });
     return page;
   }

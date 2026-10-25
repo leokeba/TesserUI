@@ -2,14 +2,16 @@
 // and its chunks (zopfli, which any gzip decoder reads) and the C++ header
 // the node serves them from (src/tesserui/bundle/tesserui_bundle.h, DESIGN.md
 // §9.4), and enforces the budgets (§2): 65 KB for ui.js, what a page loads
-// first, 70 KB with every chunk, what a node's flash holds. `--check` only
-// measures.
+// first, 71 KB with the widgets' chunk, what a node's flash holds (70 until
+// the file browser, 2026-10-25); the file browser's and the editor's chunks
+// have budgets of their own, 6 and 4 KB. `--check` only measures.
 
 import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { gzipAsync } from '@gfx/zopfli';
 
 const BUDGET = 65 * 1024;
-const TOTAL = 70 * 1024;
+const TOTAL = 71 * 1024;
+const OWN = { files: 6 * 1024, editor: 4 * 1024 };
 const web = new URL('../', import.meta.url);
 const dist = new URL('dist/', web);
 const header = new URL('../src/tesserui/bundle/tesserui_bundle.h', web);
@@ -25,13 +27,17 @@ const chunks = await Promise.all(
     .sort()
     .map(async (name) => ({ name, gz: await zopfli(`ui/${name}`) })),
 );
-const total = gz.length + chunks.reduce((n, c) => n + c.gz.length, 0);
+const own = (c) => OWN[c.name.replace(/-.*/, '')];
+const shared = chunks.filter((c) => !own(c));
+const total = gz.length + shared.reduce((n, c) => n + c.gz.length, 0);
 console.log(`ui.js: ${js.length} bytes, ${gz.length} gzipped (budget ${BUDGET})`);
-console.log(`with ui/ (${chunks.length} chunk${chunks.length === 1 ? "" : "s"}): ${total} gzipped (budget ${TOTAL})`);
-for (const c of chunks) console.log(`  ui/${c.name}: ${c.gz.length}`);
-if (gz.length > BUDGET || total > TOTAL) {
+console.log(`with ${shared.map((c) => `ui/${c.name}`).join(', ')}: ${total} gzipped (budget ${TOTAL})`);
+for (const c of chunks) console.log(`  ui/${c.name}: ${c.gz.length}${own(c) ? ` (budget ${own(c)})` : ''}`);
+const over = chunks.filter((c) => own(c) && c.gz.length > own(c));
+if (gz.length > BUDGET || total > TOTAL || over.length) {
   if (gz.length > BUDGET) console.error(`ui.js over budget by ${gz.length - BUDGET} bytes`);
   if (total > TOTAL) console.error(`ui.js and its chunks over budget by ${total - TOTAL} bytes`);
+  for (const c of over) console.error(`ui/${c.name} over budget by ${c.gz.length - own(c)} bytes`);
   process.exit(1);
 }
 if (process.argv.includes('--check')) process.exit(0);

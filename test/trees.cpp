@@ -145,6 +145,52 @@ void describe(tesser::Object& o, Frame& f) {
     o.value("value", f.value).range(-90, 90).unit("°");
 }
 
+void describe(tesser::Object& o, Move& m) {
+    o.value("from", m.from);
+    o.value("to", m.to);
+}
+
+// The demo's files, through their file node (docs/DESIGN.md section 4.1).
+std::string parentOf(const std::string& p) {
+    size_t at = p.rfind('/');
+    return at == 0 ? "/" : p.substr(0, at);
+}
+
+class FileIn : public tesser::FileSink {
+public:
+    FileIn(Demo& d, std::string path) : demo_(d), path_(std::move(path)) {}
+    tesser::Check write(const uint8_t* data, size_t len) override {
+        text_.append(reinterpret_cast<const char*>(data), len);
+        return tesser::Check::ok();
+    }
+    tesser::Check finish(tesser::JsonWriter&) override {
+        demo_.files[path_] = text_;
+        demo_.fsChanged(parentOf(path_));
+        return tesser::Check::ok();
+    }
+
+private:
+    Demo& demo_;
+    std::string path_;
+    std::string text_;
+};
+
+class FileOut : public tesser::FileSource {
+public:
+    explicit FileOut(std::string text) : text_(std::move(text)) {}
+    int64_t size() const override { return static_cast<int64_t>(text_.size()); }
+    int read(uint8_t* buf, size_t cap) override {
+        size_t n = std::min(cap, text_.size() - at_);
+        memcpy(buf, text_.data() + at_, n);
+        at_ += n;
+        return static_cast<int>(n);
+    }
+
+private:
+    std::string text_;
+    size_t at_ = 0;
+};
+
 void describe(tesser::Object& o, Credentials& c) {
     o.value("name", c.name);
     o.value("password", c.password).secret();
@@ -445,6 +491,109 @@ Demo::Demo()
     log = &system.event("log").label("Log").ui("widget", "log").ui("lines", 200);
     // Public: a node requires its ancestors' levels, so sign-in can't live
     // below the admins' object.
+    // A file browser (ui.widget "files", docs/DESIGN.md section 4.1): the
+    // contract TesserKIT's /sys/files speaks, over files in memory. The
+    // device keeps no current folder: everything is addressed by path.
+    folders = {"/", "/logs", "/www"};
+    files = {{"/readme.txt", "The demo node's files.\n"},
+             {"/settings.json", "{\"lamp\": true, \"level\": 3}\n"},
+             {"/logs/boot.log", "I (0) boot: started\n"},
+             {"/www/index.html", "<h1>Hello</h1>\n"}};
+    auto& fs = api.object("files").label("Files").ui("icon", "folder").ui("widget", "files");
+    fs.value("total", [] { return 65536; }).unit("B");
+    fs.value("used", [this] {
+          size_t n = 0;
+          for (const auto& f : files) n += f.second.size();
+          return static_cast<int>(n);
+      }).unit("B");
+    fs.action("list", [this](std::string path, tesser::Call& call) {
+        if (!folders.count(path)) return call.fail(tesser::Status::NotFound, "no such folder");
+        call.replyWith([this, path](tesser::JsonWriter& w) {
+            auto entry = [&](const std::string& p, bool dir, size_t size) {
+                w.beginObject();
+                w.key("name");
+                w.string(p.substr(p.rfind('/') + 1));
+                w.key("size");
+                w.uinteger(size);
+                w.key("dir");
+                w.boolean(dir);
+                w.key("modified");
+                w.integer(dir ? 0 : 1792939213);
+                w.endObject();
+            };
+            w.beginObject();
+            w.key("path");
+            w.string(path);
+            w.key("entries");
+            w.beginArray();
+            for (const auto& d : folders) {
+                if (d != "/" && parentOf(d) == path) entry(d, true, 0);
+            }
+            for (const auto& f : files) {
+                if (parentOf(f.first) == path) entry(f.first, false, f.second.size());
+            }
+            w.endArray();
+            w.key("truncated");
+            w.boolean(false);
+            w.endObject();
+        });
+    });
+    fs.file("file")
+        .maxSize(16384)
+        .upload([this](tesser::FileRequest& r) -> std::unique_ptr<tesser::FileSink> {
+            if (r.filename.empty() || r.filename[0] != '/' || !folders.count(parentOf(r.filename)) || folders.count(r.filename)) {
+                r.refuse(tesser::Status::BadRequest, "?filename= must name a file in a folder");
+                return nullptr;
+            }
+            return std::unique_ptr<tesser::FileSink>(new FileIn(*this, r.filename));
+        })
+        .download([this](tesser::FileRequest& r) -> std::unique_ptr<tesser::FileSource> {
+            auto f = files.find(r.filename);
+            if (f == files.end()) {
+                r.refuse(tesser::Status::NotFound, "no such file");
+                return nullptr;
+            }
+            r.filename = f->first.substr(f->first.rfind('/') + 1);
+            return std::unique_ptr<tesser::FileSource>(new FileOut(f->second));
+        });
+    fs.action("mkdir", [this](std::string path) {
+        if (path.empty() || path[0] != '/' || !folders.count(parentOf(path))) return tesser::Status::NotFound;
+        if (folders.count(path) || files.count(path)) return tesser::Status::InvalidValue;
+        folders.insert(path);
+        fsChanged(parentOf(path));
+        return tesser::Status::Ok;
+    });
+    fs.action("move", [this](const Move& m) {
+        if (m.from == "/" || !folders.count(parentOf(m.to)) || folders.count(m.to) || files.count(m.to)) return tesser::Status::InvalidValue;
+        if (files.count(m.from)) {
+            files[m.to] = files[m.from];
+            files.erase(m.from);
+        } else if (folders.count(m.from)) {
+            // The folder and everything below it.
+            std::string below = m.from + "/";
+            std::set<std::string> dirs;
+            for (const auto& d : folders) dirs.insert(d == m.from ? m.to : d.rfind(below, 0) == 0 ? m.to + d.substr(m.from.size()) : d);
+            folders = dirs;
+            std::map<std::string, std::string> moved;
+            for (const auto& f : files) moved[f.first.rfind(below, 0) == 0 ? m.to + f.first.substr(m.from.size()) : f.first] = f.second;
+            files = moved;
+        } else {
+            return tesser::Status::NotFound;
+        }
+        fsChanged(parentOf(m.from));
+        fsChanged(parentOf(m.to));
+        return tesser::Status::Ok;
+    });
+    fs.action("delete", [this](std::string path) {
+        if (path == "/" || (!files.erase(path) && !folders.count(path))) return tesser::Status::NotFound;
+        std::string below = path + "/";
+        for (auto it = folders.begin(); it != folders.end();) it = *it == path || it->rfind(below, 0) == 0 ? folders.erase(it) : std::next(it);
+        for (auto it = files.begin(); it != files.end();) it = it->first.rfind(below, 0) == 0 ? files.erase(it) : std::next(it);
+        fsChanged(parentOf(path));
+        return tesser::Status::Ok;
+    });
+    filesChanged = &fs.event("changed").ui("hidden");
+
     auto& auth = api.object("account").label("Account");
     auth.action("login", [](const Credentials& c, tesser::Call& call) {
             if (c.name != "admin" || c.password != "admin") return call.fail(tesser::Status::Unauthorized, "wrong name or password");
@@ -586,3 +735,7 @@ void Demo::pump(uint32_t nowMs) {
 }
 
 }  // namespace trees
+
+void trees::Demo::fsChanged(const std::string& folder) {
+    if (filesChanged) filesChanged->emit(folder);
+}

@@ -587,12 +587,19 @@ test('widgets few pages use come from a chunk, loaded on demand', async ({ page 
   expect(chunks).toEqual([]);
   await page.goto('http://localhost:8091/#/lamp');
   await expect(row(page, 'Power').getByRole('meter')).toBeVisible();
-  expect(chunks).toEqual([{ path: expect.stringMatching(/^\/ui\/widgets-[\w-]+\.js$/), status: 200, cache: expect.stringContaining('immutable') }]);
+  // With Rolldown's helper, which the file browser's and the editor's
+  // chunks share.
+  const chunk = (name: string) => ({ path: expect.stringMatching(new RegExp(`^/ui/${name}-[\\w-]+\\.js$`)), status: 200, cache: expect.stringContaining('immutable') });
+  expect(chunks).toEqual([chunk('widgets'), chunk('rolldown-runtime')]);
   // The others are in it already.
   await page.locator('nav.side').getByRole('link', { name: 'Motor', exact: true }).click();
   await expect(row(page, 'Speed').getByRole('slider')).toBeVisible();
   await expect(row(page, 'Position').getByRole('img')).toBeVisible();
-  expect(chunks).toHaveLength(1);
+  expect(chunks).toHaveLength(2);
+  // The file browser comes from a chunk of its own.
+  await page.locator('nav.side').getByRole('link', { name: 'Files', exact: true }).click();
+  await expect(page.locator('.files .row').first()).toBeVisible();
+  expect(chunks.slice(2)).toEqual([chunk('files')]);
 });
 
 test('a widget whose chunk fails to load shows as a readout', async ({ page }) => {

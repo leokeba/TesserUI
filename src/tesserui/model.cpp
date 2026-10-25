@@ -73,6 +73,15 @@ bool isUpper(char c) { return c >= 'A' && c <= 'Z'; }
 bool isDigit(char c) { return c >= '0' && c <= '9'; }
 
 // Custom element names: lowercase, starting with a letter, with a hyphen.
+bool isElement(JsonVariantConst w);
+
+// A file browser (ui.widget "files", section 4.1) takes its object whole, as
+// a custom element does: web only here.
+bool whole(JsonObjectConst s) {
+    const char* w = s["ui"]["widget"];
+    return isElement(s["ui"]["widget"]) || (s["type"] == "object" && w && strcmp(w, "files") == 0);
+}
+
 bool isElement(JsonVariantConst w) {
     if (!w.is<const char*>()) return false;
     const char* s = w.as<const char*>();
@@ -441,7 +450,7 @@ struct Builder {
         bool writable = s["writable"].as<bool>();
 
         // A custom element takes any node, objects included, as it is.
-        if (isElement(ui(s, "widget"))) {
+        if (whole(s)) {
             leaf.widget = Widget::Element;
             leaf.element = uiStr(s, "widget");
             leaf.editable = (writable || leaf.schemaType == NodeType::Action) && !readonly;
@@ -615,7 +624,7 @@ struct Builder {
             std::string childPath = joinPath(path, kv.key().c_str());
             NodeType t = typeOf(c);
             Item item;
-            if (t == NodeType::Object && isElement(ui(c, "widget")) && !uiTrue(c, "page")) {
+            if (t == NodeType::Object && whole(c) && !uiTrue(c, "page")) {
                 item = leaf(kv.key().c_str(), childPath, c, path);
             } else if (t == NodeType::Remote || (t == NodeType::Object && uiTrue(c, "page"))) {
                 item = link(kv.key().c_str(), childPath, c, path);
@@ -945,7 +954,7 @@ Page buildPage(JsonObjectConst s, std::string_view path, std::string_view root, 
     // An object with ui.page and sub-entries (section 6.3): its page is their
     // index, a card of links after its own values.
     bool index = false;
-    if (!menu && t == NodeType::Object && uiTrue(s, "page") && !isElement(ui(s, "widget")) && !uiTrue(s, "form") &&
+    if (!menu && t == NodeType::Object && uiTrue(s, "page") && !whole(s) && !uiTrue(s, "form") &&
         !uiTrue(s, "tabs") && !uiTrue(s, "inline")) {
         for (JsonPairConst kv : s["children"].as<JsonObjectConst>()) index = index || isSubEntryNode(kv.value());
     }
@@ -954,7 +963,7 @@ Page buildPage(JsonObjectConst s, std::string_view path, std::string_view root, 
 
     // A page drawn by a custom element, or a list's: one card, under the
     // page's title.
-    if (isElement(ui(s, "widget")) || t == NodeType::List || t == NodeType::Array) {
+    if (whole(s) || t == NodeType::List || t == NodeType::Array) {
         Item leaf = b.leaf(last.empty() ? std::string_view("root") : last, path, s, parentPath(path));
         leaf.label.clear();
         Item card;

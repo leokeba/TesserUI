@@ -86,7 +86,7 @@ describe('demo: widgets', () => {
   });
   it('lays out sections (DESIGN §6.1)', () => {
     expect(page.columns).toBe(3);
-    expect(page.cards[0]).toMatchObject({ label: '', items: [{ name: 'uptime' }, { name: 'online' }, { name: 'info', kind: 'link' }, { name: 'sky', kind: 'leaf', widget: 'x-sun-dial', script: '/ext/sun-dial.js' }, { name: 'sequence', kind: 'leaf', widget: 'x-keyframes' }, { name: 'blob' }, { name: '_ui', hidden: true }] });
+    expect(page.cards[0]).toMatchObject({ label: '', items: [{ name: 'uptime' }, { name: 'online' }, { name: 'info', kind: 'link' }, { name: 'sky', kind: 'leaf', widget: 'x-sun-dial', script: '/ext/sun-dial.js' }, { name: 'sequence', kind: 'leaf', widget: 'x-keyframes' }, { name: 'files', kind: 'leaf', widget: 'files' }, { name: 'blob' }, { name: '_ui', hidden: true }] });
     expect(sec('/config/network')).toMatchObject({ level: 2, collapsed: true, advancedItems: [] });
     // One "Advanced" per card: the card's, then its sub-sections' (W2).
     expect(sec('/config').advancedItems).toMatchObject([{ name: 'retries' }, { kind: 'section', label: 'Network', collapsed: false, items: [{ name: 'mtu' }] }]);
