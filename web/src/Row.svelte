@@ -67,18 +67,22 @@
     else store.write(leaf.path, v);
   }
 
+  // A choice or text field whose options or placeholder are long: on a
+  // phone, its control goes below its label, full width.
+  const long = $derived(
+    ['select', 'text', 'password', 'timezone'].includes(leaf.widget) && Math.max(leaf.placeholder?.length ?? 0, ...(leaf.options ?? []).map((o) => o.label.length)) > 16,
+  );
   const widget = $derived(widgetOf(leaf));
   const Widget = $derived(widget.component);
   const layout = $derived(widget.layout);
 </script>
 
 {#if visible}
-  <div class="row {layout}" class:modified class:stale class:warning={leaf.style === 'warning'} title={stale ? session.t('Not up to date') : undefined}>
+  <div class="row {layout}" class:long class:modified class:stale class:warning={leaf.style === 'warning'} title={stale ? session.t('Not up to date') : undefined}>
     {#if layout !== 'bare' && leaf.label}
       <label for={leaf.editable ? id : undefined} title={leaf.description}>
         {#if leaf.icon || leaf.style === 'warning'}<Icon name={leaf.icon ?? 'alert'} />{/if}
-        <span>{leaf.label}</span>
-        {#if leaf.description}<span class="info" aria-hidden="true"><Icon name="info" /></span>{/if}
+        <span>{leaf.label}{#if leaf.description}<span class="info" aria-hidden="true"><Icon name="info" /></span>{/if}</span>
       </label>
     {/if}
     <div class="control" class:stop={stoppable}>
@@ -95,9 +99,11 @@
 {/if}
 
 <style>
+  /* The control takes what it needs, up to 60 %: a toggle or a short
+     readout leaves the rest to its label. */
   .row {
     display: grid;
-    grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+    grid-template-columns: minmax(0, 1fr) fit-content(60%);
     align-items: center;
     gap: 4px 12px;
     padding: 5px 0;
@@ -144,6 +150,7 @@
     overflow-wrap: anywhere;
   }
   .info {
+    margin-left: 4px;
     color: var(--muted);
     font-size: 0.85em;
   }
@@ -177,6 +184,16 @@
     height: 6px;
     border-radius: 50%;
     background: var(--warn);
+  }
+  @media (max-width: 640px) {
+    .row.long {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .long > .control > :global(*) {
+      flex: 1;
+      width: 100%;
+      max-width: none;
+    }
   }
   @container (max-width: 300px) {
     .row {
