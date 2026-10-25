@@ -135,7 +135,7 @@ m.object("pid").ui("advanced");
 | Key | Type | Applies to | Meaning |
 |---|---|---|---|
 | `labels` | string | enum, flags, numbers | Display labels in enum order, comma-separated: `"Off,Automatic,Manual"`; for `flags`, one per bit. For an `integer` or `number`, labels for some values, `value=label` pairs: `"-1=none,0=off"`: a readout (a table's cell, a slider's value) shows the label for that value, a numeric entry shows it beside the field (web; the LCD *(later)*). |
-| `group` | string | top-level object | The menu heading it's listed under (§6.3): `"Connections"`. |
+| `group` | string | top-level object, sub-entry | The menu heading it's listed under (§6.3): `"Connections"`; a sub-entry's also heads its rows on its parent's index. |
 | `options` | string | writable string, string action argument | The path of a keyed list (TesserAPI §4.4), relative or absolute as a condition's (§5.3): the value is one of its keys; or of an object: the value is one of its children's names, labelled from a remote node's own schema when it was read, `(offline)` after an offline one (a node to choose among those under `/peers`), chosen in a `select` (`radio` and `segmented` fit too). The renderer subscribes to the list even when it isn't shown. The device still validates the value. A list whose rows hold such a field opens element by element instead of being a table. |
 | `optionsExtra` | string | with `options` | Fixed choices listed before the keys, comma-separated: `"Sun"`. |
 | `optionsValue` | string | with `options` naming an object | The field of each child's schema the value is, instead of the child's name: `id`, a remote node's device id (its MAC, TesserAPI §14.1), which stays when names change or collide. A child without the field isn't a choice. A stored value no child has shows as itself, `(not found)`. |
@@ -159,7 +159,8 @@ m.object("pid").ui("advanced");
 | `hidden` | flag | any | Not shown. Its value is still read and usable in conditions. |
 | `readonly` | flag | value | Shown as a readout even though writable. |
 | `card` | flag | object | Its own card even when nested (§6.1). |
-| `page` | flag | object | Its own page or route instead of inline (§6). |
+| `page` | flag | object | Its own page or route instead of inline (§6); with sub-entries, their index (§6.3). |
+| `summary` | string | object | A value below it, relative to it (`"status/state"`; a leading `/` from the node's root), shown under its label on the row that opens it (an index's, §6.3), formatted as its readout would be (labels, `unit`, `format`), booleans as On or Off. The page with the row watches it through its own subscription. Web only; the LCD *(later)*. |
 | `tabs` | flag | object | Child objects as tabs. |
 | `inline` | flag | object | Children on one row (a compact group, such as x/y/z). |
 | `collapsed` | flag | object | Starts collapsed. |

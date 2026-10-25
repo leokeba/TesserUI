@@ -1,10 +1,23 @@
 <script lang="ts">
   // A remote node (a peer behind a UI host) or a sub-page.
   import Icon from '../Icon.svelte';
-  import type { LinkItem } from '../model/model';
+  import { formatValue } from '../model/format';
+  import { buildLeaf, type LinkItem } from '../model/model';
+  import { parentPath } from '../model/schema';
   import { useSession } from '../shared.svelte';
   let { link }: { link: LinkItem } = $props();
   const session = useSession();
+  // Its summary (ui.summary): the value as its own readout would show it.
+  const summary = $derived.by(() => {
+    const p = link.summary;
+    const v = p && session.store.get(p);
+    const s = p && session.schemaAt(p);
+    if (v === undefined || v === null || v === '') return '';
+    if (typeof v === 'boolean') return session.t(v ? 'On' : 'Off');
+    if (!s) return String(v);
+    const leaf = buildLeaf(p.slice(p.lastIndexOf('/') + 1), p, s, parentPath(p));
+    return leaf.options?.find((o) => o.value === v)?.label ?? formatValue(v, leaf);
+  });
 </script>
 
 <a class="link" href="#{link.path}" title={link.description}>
@@ -12,7 +25,8 @@
   <span class="name">
     {link.label}
     {#if link.remote && link.label !== link.name}<small>{link.name}</small>{/if}
-    {#if link.description}<small class="desc">{link.description}</small>{/if}
+    {#if summary}<small class="desc">{summary}</small>{/if}
+    {#if link.description && !summary}<small class="desc">{link.description}</small>{/if}
   </span>
   {#if link.remote}
     <span class="dot" class:off={!link.online}></span><span class="status">{session.t(link.online ? 'online' : 'offline')}</span>

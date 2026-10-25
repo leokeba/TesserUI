@@ -628,6 +628,9 @@ test('index: a page of links to its sub-entries, grouped', async ({ page }) => {
   await expect(row(page, 'Version')).toBeVisible();
   const index = main(page).locator('fieldset.card', { has: page.locator('.title', { hasText: 'Connections' }) });
   await expect(index.locator('a.link')).toHaveText([/Network/, /MQTT/, /Firmware/, /About/]);
+  // Each with its summary (ui.summary), read through the page's subscription.
+  await expect(index.getByRole('link', { name: /Network/ })).toContainText('connected');
+  await expect(index.getByRole('link', { name: /Firmware/ })).toContainText('1.2.0');
   // The sub-entries' own values are on their pages, not here.
   await expect(row(page, 'Ssid')).toHaveCount(0);
   await index.getByRole('link', { name: /Network/ }).click();

@@ -3520,7 +3520,8 @@
          "icon": "wifi",
          "kind": "link",
          "remote": false,
-         "online": true
+         "online": true,
+         "summary": "/info/network/status/state"
         },
         {
          "name": "mqtt",
@@ -3531,7 +3532,8 @@
          "icon": "link",
          "kind": "link",
          "remote": false,
-         "online": true
+         "online": true,
+         "summary": "/info/mqtt/port"
         }
        ],
        "advancedItems": [],
@@ -3559,7 +3561,8 @@
          "icon": "download",
          "kind": "link",
          "remote": false,
-         "online": true
+         "online": true,
+         "summary": "/info/firmware/version"
         }
        ],
        "advancedItems": [],

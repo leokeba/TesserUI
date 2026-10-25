@@ -151,6 +151,8 @@ export interface LinkItem extends Base {
   remote: boolean;
   online: boolean;
   schemaHash?: string;
+  // The value its row shows below its label (ui.summary), an absolute path.
+  summary?: string;
 }
 
 export type Item = Leaf | Section | LinkItem;
@@ -485,6 +487,8 @@ function fields(params: Schema, prefix: string): Leaf[] {
 
 function link(name: string, path: string, s: Schema, parent: string): LinkItem {
   const l: LinkItem = { ...base(name, path, s, parent), kind: 'link', remote: s.type === 'remote', online: s.online !== false };
+  const summary = uiStr(s, 'summary');
+  if (summary && s.type === 'object') l.summary = resolvePath(summary, path, nodeRoot);
   if (s.type === 'remote') {
     if (!s.label) l.label = name;
     if (s.schema) l.schemaHash = s.schema;

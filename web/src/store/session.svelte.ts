@@ -781,8 +781,17 @@ export class Session {
   }
 
   showPage(page: Page) {
-    const depth = Number.isFinite(page.depth) ? page.depth : undefined;
-    this.show(page.cards, [{ path: page.path, keys: page.keys, depth }], page.path);
+    let keys = page.keys;
+    let depth = Number.isFinite(page.depth) ? page.depth : undefined;
+    // Its links' summaries (ui.summary): the page's subscription reaches them.
+    const n = segments(page.path).length;
+    const sums: string[] = [];
+    walk(page.cards, (i) => i.kind === 'link' && i.summary && isUnder(i.summary, page.path) && sums.push(i.summary));
+    if (sums.length) {
+      if (keys !== undefined) keys = [...new Set([...keys.split(',').filter(Boolean), ...sums.map((p) => segments(p)[n])])].join(',');
+      if (depth !== undefined) depth = Math.max(depth, ...sums.map((p) => segments(p).length - n));
+    }
+    this.show(page.cards, [{ path: page.path, keys, depth }], page.path);
   }
 }
 
