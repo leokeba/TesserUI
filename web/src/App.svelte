@@ -292,7 +292,8 @@
         {#if actsOpen}
           <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
           <div class="veil" onclick={() => (actsOpen = false)}></div>
-          <div class="acts">{#each acts as a (a.path)}<Item item={a} />{/each}</div>
+          <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+          <div class="acts" onclick={(e) => (e.target as Element).closest('button') && (actsOpen = false)}>{#each acts as a (a.path)}<Item item={a} />{/each}</div>
         {/if}
       {/if}
     </header>
@@ -304,7 +305,10 @@
       {t('This node expects TesserUI {min} or later; this interface is {version}.', { min: config.minVersion!, version: __VERSION__ })}
     </p>
   {/if}
-  {#if session.loaded && session.state !== 'open'}
+  {#if session.restarting}
+    <div class="scrim"></div>
+    <p class="restarting card" role="alert"><Icon name="refresh" /> {t('Restarting… reconnecting')}</p>
+  {:else if session.loaded && session.state !== 'open'}
     <p class="banner warn" role="alert"><Icon name="alert" /> {t('The connection to the node is lost. Reconnecting…')}</p>
   {/if}
 
@@ -892,6 +896,17 @@
     z-index: 5;
     background: #0008;
     backdrop-filter: blur(2px);
+  }
+  .restarting {
+    position: fixed;
+    inset: 40% 16px auto;
+    z-index: 6;
+    margin: 0 auto;
+    max-width: 320px;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    justify-content: center;
   }
   dialog {
     border: 1px solid var(--border);

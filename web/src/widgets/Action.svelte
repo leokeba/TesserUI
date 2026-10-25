@@ -41,6 +41,8 @@
     }
     const r = await store.call(leaf.path, value, leaf.deferred ? DEFERRED_TIMEOUT_MS : undefined);
     busy = false;
+    // A restart: the node stops answering (DESIGN.md §6.7).
+    if (r.status === 'ok' || r.status === 'timeout' || r.status === 'disconnected') session.watchNode();
     // Deferred actions reply values their schema can't declare: show any.
     if (r.status === 'ok' && Array.isArray(r.body) && r.body.length && r.body.every(isObject)) rows = r.body;
     else if (r.status === 'ok' && r.body != null) result = formatValue(r.body, { type: leaf.returns ?? '' });

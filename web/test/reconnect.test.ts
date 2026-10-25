@@ -63,6 +63,40 @@ describe.each([1, 2])('reconnection, protocol %i (DESIGN §7.5)', (protocol) => 
   };
   const schemaReads = (c: FakeClient) => c.sent.filter((r) => r.view === 'schema' && r.depth !== 0).length;
 
+  it('says a node that stops answering after an action is restarting, and reads it again (DESIGN §6.7)', async () => {
+    const { s, client } = node();
+    client.state('open');
+    await settle();
+    const answer = client.answer!;
+    let down = false;
+    client.answer = (r) => (down ? { status: 'timeout', body: null } : answer(r));
+    let reopened = 0;
+    client.close = () => client.state('down');
+    client.connect = () => void reopened++;
+    vi.useFakeTimers();
+    // One that keeps answering isn't.
+    s.watchNode();
+    await vi.advanceTimersByTimeAsync(4000);
+    expect([s.restarting, reopened]).toEqual([false, 0]);
+    s.watchNode();
+    down = true;
+    await vi.advanceTimersByTimeAsync(1100);
+    // A WebSocket may never hear a restarted node close: opened again.
+    expect([s.restarting, reopened]).toEqual([true, 1]);
+    // Its values are read again (its schema too, unless its hash says it's
+    // the cached one).
+    s.store.values = { lamp: false };
+    down = false;
+    client.state('open');
+    for (let i = 0; i < 20; i++) await vi.advanceTimersByTimeAsync(50);
+    vi.useRealTimers();
+    expect(s.restarting).toBe(false);
+    expect(s.loaded).toBe(true);
+    s.subs.want([{ path: '/', depth: 1 }]);
+    await settle();
+    expect(s.store.values).toEqual({ lamp: true, old: 4 });
+  });
+
   it('renews the subscriptions when the node is the same', async () => {
     const { s, client } = node();
     client.state('open');

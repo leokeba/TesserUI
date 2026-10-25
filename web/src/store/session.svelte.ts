@@ -92,6 +92,10 @@ export class Session {
   // once read: [] when it has none.
   views: Record<string, ViewPage[]> = $state({});
   loaded = $state(false);
+  // The node stopped answering just after an action (a restart): the page
+  // says so until it answers again (DESIGN.md §6.7).
+  restarting = $state(false);
+  private watching = 0;
   needToken = $state(false);
   // This client's access level, when the node says (a `whoami` action); null
   // while unknown: nothing is disabled for it then.
@@ -371,7 +375,7 @@ export class Session {
       this.state = s;
       if (s !== 'open' || !wasDown) return;
       // The banner said it was lost.
-      if (this.loaded) this.store.toasts.show(this.t('Connected again'), 'ok');
+      if (this.loaded && !this.restarting) this.store.toasts.show(this.t('Connected again'), 'ok');
       // A line forgets its token when it reconnects.
       if (this.line()) this.relog().then(() => this.resume());
       else this.resume();
@@ -379,11 +383,40 @@ export class Session {
     client.connect();
   }
 
+  // After an action: a node that stops answering within a few seconds is
+  // taken to be restarting, until it answers again. A WebSocket to a node
+  // that restarted may never hear it close: it is opened again, and its
+  // reconnection reads the node again (resume()), as HTTP's does. A serial
+  // or Bluetooth line stays open: it is asked until the node answers.
+  async watchNode() {
+    const at = ++this.watching;
+    const answers = async () => {
+      const r = this.state === 'open' ? await this.client.request({ op: 'get', path: '/', view: 'info' }, 2500) : null;
+      return !!r && r.status !== 'timeout' && r.status !== 'disconnected';
+    };
+    const sleep = (ms: number) => new Promise((done) => setTimeout(done, ms));
+    for (const wait of [1000, 2500]) {
+      await sleep(wait);
+      if (at !== this.watching || this.restarting) return;
+      if (!(await answers()) && at === this.watching) break;
+      if (wait === 2500) return;
+    }
+    this.restarting = true;
+    if (this.kind === 'ws') return void (this.client.close(), this.client.connect());
+    while (this.line() && this.restarting && at === this.watching) {
+      await sleep(2000);
+      if (this.restarting && (await answers())) await this.relog().then(() => this.resume());
+    }
+  }
+
   // After a reconnection, or a long hide: the same node is subscribed
   // again. Another device at that address, or the same with new firmware
-  // (an update, a reboot), is read again, as on the first connection.
+  // (an update, a reboot), is read again, as on the first connection; so is
+  // a node that restarted.
   private async resume() {
-    if (this.loaded && (await this.identify()) === this.identity) return this.subs.renew();
+    const same = this.loaded && (await this.identify()) === this.identity && !this.restarting;
+    this.restarting = false;
+    if (same) return this.subs.renew();
     this.forget();
     this.subs.forget();
     this.store.values = {};
@@ -742,16 +775,15 @@ export class Session {
   }
 
   show(items: Item[], specs: SubSpec[], at: string) {
-    // The header's node menu is shown on every page: its actions'
-    // conditions are followed too.
-    items = [...items, ...this.nodeActions(this.nodeRoot(at))];
     const store = this.store;
     store.visible = visiblePaths({ cards: items.filter((i): i is Section => i.kind === 'section') });
     for (const i of items) store.visible.add(i.path);
     store.charts.clear();
     store.lines.clear();
-    // Paths followed though not shown: conditions', option lists'.
+    // Paths followed though not shown: conditions', option lists'; the
+    // header's node menu's too, on every page (its errors are toasts).
     const followed: string[] = [];
+    for (const a of this.nodeActions(this.nodeRoot(at))) for (const c of [...(a.visibleWhen ?? []), ...(a.enabledWhen ?? [])]) followed.push(c.path);
     const peers: string[] = [];
     walk(items, (i) => {
       for (const c of [...(i.visibleWhen ?? []), ...(i.enabledWhen ?? [])]) followed.push(c.path);

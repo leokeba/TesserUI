@@ -263,8 +263,9 @@ Setting up many nodes alike (a field of heliostats, the lamps of a show) means m
 Some actions concern the whole node, wherever the user is: restarting it, making it blink to find it. `ui.placement: "node"` on an action lists it also in the **node menu**, a `⋮` button at the end of the header (on a phone, its first row) that opens the shown node's node-wide actions, each a button as on its own page (`ui.confirm`, `ui.style`, its conditions and access level). It stays where it is too (`/sys/restart` beside `/sys`'s title).
 
 - **Where they're found:** in the shown node's schema as read so far, its root at `depth` 3 (§7.2): an action at most three levels below the root (`/sys/board/identify`) is always found; a deeper one only once its page has been read. Not in other nodes' trees.
-- **Conditions:** every page follows their `visibleWhen` and `enabledWhen` paths, as it does its own items'.
-- **Closing:** tapping outside, or moving to another page or node.
+- **Conditions:** every page follows their `visibleWhen` and `enabledWhen` paths, as it does its own items'. Their errors are toasts.
+- **Closing:** running one of them, tapping outside, or moving to another page or node.
+- **Restarting:** after any action button's reply (or its timeout), the node is asked for its `view=info` 1 s and 3.5 s later. One that doesn't answer is restarting: "Restarting… reconnecting" covers the page until it answers again, then it is read again as on a new connection (§7.5), without the "Connected again" toast. A WebSocket is opened again, since one to a node that restarted may never hear it close; over HTTP the next request finds it; a serial or Bluetooth line, which stays open, is asked every 2 s.
 
 ## 7. Data and reactivity
 
