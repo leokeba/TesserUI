@@ -33,7 +33,7 @@
     {/each}
   </div>
   {#if entries.length}
-    <button type="button" aria-label={session.t('Clear')} title={session.t('Clear')} onclick={() => (store.events[leaf.path] = [])}><Icon name="trash" /></button>
+    <button type="button" class="quiet" aria-label={session.t('Clear')} title={session.t('Clear')} onclick={() => (store.events[leaf.path] = [])}><Icon name="trash" /></button>
   {/if}
 </div>
 
@@ -41,7 +41,7 @@
   /* A flex item of the row's control: without min-width, a long line would
      widen it past the card instead of scrolling. */
   .log {
-    position: relative;
+    display: grid;
     min-width: 0;
   }
   .lines {
@@ -51,7 +51,13 @@
     border: 1px solid var(--border);
     border-radius: calc(var(--radius) - 4px);
     font: 0.8em/1.45 ui-monospace, Menlo, Consolas, monospace;
-    white-space: pre;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+  /* A long line wraps, indented under its start. */
+  .lines > div {
+    padding-left: 2ch;
+    text-indent: -2ch;
   }
   .E {
     color: var(--danger);
@@ -59,18 +65,9 @@
   .W {
     color: var(--warn);
   }
-  /* In the box's top right corner, its borders on the box's; see-through
-     until pointed at. */
+  /* Below the box, where it covers no line. */
   .log button {
-    position: absolute;
-    top: 0;
-    right: 0;
-    border-radius: 0 calc(var(--radius) - 4px);
-    background: color-mix(in srgb, var(--surface) 60%, transparent);
-    opacity: 0.6;
-  }
-  .log button:hover,
-  .log button:focus-visible {
-    opacity: 1;
+    justify-self: end;
+    color: var(--muted);
   }
 </style>
