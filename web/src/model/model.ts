@@ -3,7 +3,7 @@
 
 import { parseConditions, resolvePath, type Condition } from './conditions';
 import { decimalsOf, humanize } from './format';
-import { isEntry } from './menu';
+import { isEntry, isSubEntry } from './menu';
 import { higher, isUnder, joinPath, parentPath, type Hint, type Level, type Schema } from './schema';
 
 export type Widget =
@@ -560,6 +560,11 @@ function section(name: string, path: string, s: Schema, level: number, parent: s
 export function buildPage(s: Schema, path: string, root = '/', t: (text: string) => string = (x) => x, above?: Level, menu = false): Page {
   const all = s;
   if (menu) s = { ...s, children: Object.fromEntries(Object.entries(s.children ?? {}).filter(([, c]) => !isEntry(c))) };
+  // An object with ui.page and sub-entries (DESIGN.md §6.3): its page is their
+  // index, a card of links after its own values.
+  const plain = !isElement(s.ui?.widget) && !ui(s, 'form') && !ui(s, 'tabs') && !ui(s, 'inline');
+  const index = !menu && s.type === 'object' && ui(s, 'page') === true && plain ? Object.entries(s.children ?? {}).filter(([, c]) => isSubEntry(c)) : [];
+  if (index.length) s = { ...s, children: Object.fromEntries(Object.entries(s.children ?? {}).filter(([, c]) => !isSubEntry(c))) };
   nodeRoot = root;
   inherited = above;
   const page: Page = {
@@ -618,12 +623,26 @@ export function buildPage(s: Schema, path: string, root = '/', t: (text: string)
   if (!first.items.some((i) => !i.hidden) && first.advancedItems.length) {
     page.cards.push({ ...first, label: t('Advanced'), collapsed: true, items: first.advancedItems, advancedItems: [] });
   } else if ([...first.items, ...first.advancedItems].some((i) => !i.hidden)) page.cards.unshift(first);
+  if (index.length) {
+    // Gathered by ui.group: a sub-section per heading, where its first is.
+    const card: Section = { ...first, items: [], advancedItems: [] };
+    inherited = higher(above, s.access);
+    for (const [name, c] of index) {
+      const l = link(name, joinPath(path, name), c, path);
+      const group = uiStr(c, 'group');
+      const g = group && card.items.find((i): i is Section => i.kind === 'section' && i.label === group);
+      if (!group) card.items.push(l);
+      else if (g) g.items.push(l);
+      else card.items.push({ ...first, label: group, level: 2, items: [l], advancedItems: [] });
+    }
+    page.cards.splice(page.cards[0] === first ? 1 : 0, 0, card);
+  }
   if (nodes.items.length) page.cards.push(nodes);
 
   // Subscribe to everything shown except mirrored remote nodes, whose copies
   // would come along, and sub-pages, which subscribe themselves.
   const children = Object.entries(all.children ?? {});
-  const keep = children.filter(([, c]) => !(c.type === 'remote' && c.mirror) && !(c.type === 'object' && ui(c, 'page') === true) && !(menu && isEntry(c)));
+  const keep = children.filter(([, c]) => !(c.type === 'remote' && c.mirror) && !(c.type === 'object' && ui(c, 'page') === true) && !(menu && isEntry(c)) && !(index.length && isSubEntry(c)));
   const read = keep.filter(([, c]) => valued(c));
   if (read.length < children.filter(([, c]) => valued(c)).length) {
     page.keys = read.map(([n]) => n).join(',');

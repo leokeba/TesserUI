@@ -87,7 +87,7 @@
     <p class="muted">{t('Loading…')}</p>
   {:else}
     <div class="items" class:inline={sec.inline}>
-      {#each plain as item (item.path)}
+      {#each plain as item (item.path + item.label)}
         {#if !(item.kind === 'leaf' && item.submit && sec.form)}<Item {item} />{/if}
       {/each}
     </div>
@@ -176,6 +176,18 @@
     margin-top: 10px;
     padding-top: 10px;
     border-top: 1px solid var(--border);
+  }
+  /* A sub-section opening a card needs no rule above it; a row after one
+     does (an index's ungrouped link after a group, §6.3). */
+  .items > :global(.l2:first-child) {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: 0;
+  }
+  .items > :global(.l2 + .link) {
+    margin-top: 10px;
+    border-top: 1px solid var(--border);
+    border-radius: 0;
   }
   .l1 > .title,
   .l1 > details > summary .title {

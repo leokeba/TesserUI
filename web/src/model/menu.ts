@@ -21,6 +21,8 @@ const str = (s: Schema, key: string) => (typeof s.ui?.[key] === 'string' ? (s.ui
 const shown = (s: Schema) => s.ui?.hidden !== true;
 // What becomes an entry rather than a card: objects and remote nodes.
 export const isEntry = (s: Schema) => (s.type === 'object' || s.type === 'remote') && shown(s);
+// A sub-entry, of an entry that has them: an object, a list, a remote node.
+export const isSubEntry = (s: Schema) => isEntry(s) || (s.type === 'list' && shown(s));
 
 function entry(name: string, path: string, s: Schema, sub: boolean): MenuEntry {
   const e: MenuEntry = { label: s.label ?? (s.type === 'remote' ? (s.tree?.label ?? name) : humanize(name)), href: `#${path}` };
@@ -30,7 +32,7 @@ function entry(name: string, path: string, s: Schema, sub: boolean): MenuEntry {
   // An object that is a page of its own (/sys) or holds remote nodes
   // (/peers) lists its objects, lists and nodes as sub-entries, one level
   // deep, gathered by ui.group too.
-  const kids = Object.entries(s.children ?? {}).filter(([, c]) => isEntry(c) || (c.type === 'list' && shown(c)));
+  const kids = Object.entries(s.children ?? {}).filter(([, c]) => isSubEntry(c));
   if (!sub && kids.length && (s.ui?.page === true || kids.some(([, c]) => c.type === 'remote'))) {
     e.children = [];
     for (const [n, c] of kids) gather(e.children, entry(n, joinPath(path, n), c, true), str(c, 'group'));

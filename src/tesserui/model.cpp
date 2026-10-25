@@ -249,6 +249,17 @@ bool tableCell(Widget w) {
 }
 
 // The state of one build: the node's root, for absolute condition paths.
+bool isEntryNode(JsonObjectConst s);
+bool isSubEntryNode(JsonObjectConst s);
+
+// The children a page leaves out: its menu entries (the start page), or its
+// sub-entries (an index, section 6.3).
+enum class Skip : uint8_t { None, Entries, SubEntries };
+
+bool skipped(Skip k, JsonObjectConst c) {
+    return (k == Skip::Entries && isEntryNode(c)) || (k == Skip::SubEntries && isSubEntryNode(c));
+}
+
 struct Builder {
     std::string root = "/";
     Access inherited = Access::None;  // what the ancestors of what is built require
@@ -579,9 +590,9 @@ struct Builder {
         return l;
     }
 
-    // `skipEntries`: leave out the children that are menu entries.
+    // `skip`: the children it leaves out.
     Item section(std::string_view name, std::string_view path, JsonObjectConst s, uint8_t level, std::string_view parent,
-                 std::vector<Item>& promoted, bool skipEntries = false) {
+                 std::vector<Item>& promoted, Skip skip = Skip::None) {
         Item sec;
         base(sec, name, path, s, parent);
         sec.kind = ItemKind::Section;
@@ -596,7 +607,7 @@ struct Builder {
         if (s["access"].is<const char*>()) inherited = higher(inherited, parseAccess(s["access"].as<const char*>()));
         for (JsonPairConst kv : s["children"].as<JsonObjectConst>()) {
             JsonObjectConst c = kv.value();
-            if (skipEntries && isEntry(c)) continue;
+            if (skipped(skip, c)) continue;
             std::string childPath = joinPath(path, kv.key().c_str());
             NodeType t = typeOf(c);
             Item item;
@@ -650,18 +661,16 @@ struct Builder {
     }
 };
 
-bool isEntryNode(JsonObjectConst s);
-
 // Object levels below `s` that its schema expands (-1: unlimited, for a
-// custom element). `skipEntries`: without the children that are menu entries.
-int depthOf(JsonObjectConst s, bool skipEntries = false) {
+// custom element). `skip`: the children it leaves out.
+int depthOf(JsonObjectConst s, Skip skip = Skip::None) {
     NodeType t = typeOf(s);
     if (t == NodeType::Object && isElement(ui(s, "widget"))) return -1;
     if ((t == NodeType::List || t == NodeType::Array) && !s["items"].isNull()) return depthOf(s["items"]);
     if (t != NodeType::Object || s["children"].isNull()) return 0;
     int d = 0;
     for (JsonPairConst kv : s["children"].as<JsonObjectConst>()) {
-        if (skipEntries && isEntryNode(kv.value())) continue;
+        if (skipped(skip, kv.value())) continue;
         int c = depthOf(kv.value());
         if (c < 0) return -1;
         if (c > d) d = c;
@@ -675,6 +684,9 @@ bool isEntryNode(JsonObjectConst s) {
     NodeType t = typeOf(s);
     return (t == NodeType::Object || t == NodeType::Remote) && shown(s);
 }
+
+// A sub-entry, of an entry that has them: an object, a list, a remote node.
+bool isSubEntryNode(JsonObjectConst s) { return isEntryNode(s) || (typeOf(s) == NodeType::List && shown(s)); }
 
 Access accessOf(JsonObjectConst s) {
     return s["access"].is<const char*>() ? parseAccess(s["access"].as<const char*>()) : Access::None;
@@ -717,7 +729,7 @@ MenuEntry entry(std::string_view name, std::string_view path, JsonObjectConst s,
     bool anyRemote = false, any = false;
     for (JsonPairConst kv : s["children"].as<JsonObjectConst>()) {
         JsonObjectConst c = kv.value();
-        if (isEntry(c) || (typeOf(c) == NodeType::List && shown(c))) {
+        if (isSubEntryNode(c)) {
             any = true;
             if (typeOf(c) == NodeType::Remote) anyRemote = true;
         }
@@ -725,7 +737,7 @@ MenuEntry entry(std::string_view name, std::string_view path, JsonObjectConst s,
     if (any && (uiTrue(s, "page") || anyRemote)) {
         for (JsonPairConst kv : s["children"].as<JsonObjectConst>()) {
             JsonObjectConst c = kv.value();
-            if (isEntry(c) || (typeOf(c) == NodeType::List && shown(c))) {
+            if (isSubEntryNode(c)) {
                 gather(e.children, entry(kv.key().c_str(), joinPath(path, kv.key().c_str()), c, true, higher(above, accessOf(s))),
                        uiStr(c, "group"));
             }
@@ -925,9 +937,17 @@ Page buildPage(JsonObjectConst s, std::string_view path, std::string_view root, 
     } else {
         page.label = root == path ? std::string(last) : humanize(last);
     }
-    page.depth = depthOf(s, menu);
-
     NodeType t = typeOf(s);
+    // An object with ui.page and sub-entries (section 6.3): its page is their
+    // index, a card of links after its own values.
+    bool index = false;
+    if (!menu && t == NodeType::Object && uiTrue(s, "page") && !isElement(ui(s, "widget")) && !uiTrue(s, "form") &&
+        !uiTrue(s, "tabs") && !uiTrue(s, "inline")) {
+        for (JsonPairConst kv : s["children"].as<JsonObjectConst>()) index = index || isSubEntryNode(kv.value());
+    }
+    Skip skip = menu ? Skip::Entries : index ? Skip::SubEntries : Skip::None;
+    page.depth = depthOf(s, skip);
+
     // A page drawn by a custom element, or a list's: one card, under the
     // page's title.
     if (isElement(ui(s, "widget")) || t == NodeType::List || t == NodeType::Array) {
@@ -955,7 +975,7 @@ Page buildPage(JsonObjectConst s, std::string_view path, std::string_view root, 
     // Values directly under the page form a first, untitled card; each child
     // object is a card (advanced ones start collapsed); remote nodes get a
     // card of their own.
-    Item top = b.section("", path, s, 0, path, promoted, menu);
+    Item top = b.section("", path, s, 0, path, promoted, skip);
     top.tabs = top.inlined = top.form = false;
     Item first;
     first.kind = ItemKind::Section;
@@ -969,8 +989,10 @@ Page buildPage(JsonObjectConst s, std::string_view path, std::string_view root, 
     first.enabledWhen = top.enabledWhen;
     first.lazy = top.lazy;
     first.collapsed = top.collapsed;
+    Item blank = first;
     Item nodes = first;
     nodes.label = "Nodes";
+    bool firstIn = false;
 
     std::vector<Item> all;
     for (Item& i : top.items) all.push_back(std::move(i));
@@ -1021,6 +1043,36 @@ Page buildPage(JsonObjectConst s, std::string_view path, std::string_view root, 
         page.cards.push_back(std::move(adv));
     } else if (anyShown(first.items) || anyShown(first.advancedItems)) {
         page.cards.insert(page.cards.begin(), std::move(first));
+        firstIn = true;
+    }
+    if (index) {
+        // Gathered by ui.group: a sub-section per heading, where its first is.
+        Item card = blank;
+        Access saved = b.inherited;
+        if (s["access"].is<const char*>()) b.inherited = higher(b.inherited, parseAccess(s["access"].as<const char*>()));
+        for (JsonPairConst kv : s["children"].as<JsonObjectConst>()) {
+            JsonObjectConst c = kv.value();
+            if (!isSubEntryNode(c)) continue;
+            Item l = b.link(kv.key().c_str(), joinPath(path, kv.key().c_str()), c, path);
+            const char* group = uiStr(c, "group");
+            Item* g = nullptr;
+            for (Item& i : card.items) {
+                if (nonEmpty(group) && i.kind == ItemKind::Section && i.label == group) g = &i;
+            }
+            if (!nonEmpty(group)) {
+                card.items.push_back(std::move(l));
+            } else if (g) {
+                g->items.push_back(std::move(l));
+            } else {
+                Item heading = blank;
+                heading.label = group;
+                heading.level = 2;
+                heading.items.push_back(std::move(l));
+                card.items.push_back(std::move(heading));
+            }
+        }
+        b.inherited = saved;
+        page.cards.insert(page.cards.begin() + (firstIn ? 1 : 0), std::move(card));
     }
     if (!nodes.items.empty()) page.cards.push_back(std::move(nodes));
 
@@ -1035,7 +1087,7 @@ Page buildPage(JsonObjectConst s, std::string_view path, std::string_view root, 
         NodeType ct = typeOf(c);
         if (ct == NodeType::Remote && c["mirror"].as<bool>()) continue;
         if (ct == NodeType::Object && uiTrue(c, "page")) continue;
-        if (menu && isEntry(c)) continue;
+        if (skipped(skip, c)) continue;
         read.push_back(kv.key().c_str());
     }
     if (read.size() < valuedChildren) {

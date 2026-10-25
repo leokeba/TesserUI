@@ -621,3 +621,18 @@ test('menu: sub-entries unfold in place, grouped', async ({ page }) => {
   await expect(page).toHaveURL(/#\/info\/network$/);
   await expect(menu).not.toBeInViewport();
 });
+
+// DESIGN.md §6.3: an object with ui.page and sub-entries is their index.
+test('index: a page of links to its sub-entries, grouped', async ({ page }) => {
+  await open(page, '#/info');
+  await expect(row(page, 'Version')).toBeVisible();
+  const index = main(page).locator('fieldset.card', { has: page.locator('.title', { hasText: 'Connections' }) });
+  await expect(index.locator('a.link')).toHaveText([/Network/, /MQTT/, /Firmware/, /About/]);
+  // The sub-entries' own values are on their pages, not here.
+  await expect(row(page, 'Ssid')).toHaveCount(0);
+  await index.getByRole('link', { name: /Network/ }).click();
+  await expect(page).toHaveURL(/#\/info\/network$/);
+  await expect(row(page, 'Ssid')).toBeVisible();
+  await page.locator('.back').click();
+  await expect(page).toHaveURL(/#\/info$/);
+});

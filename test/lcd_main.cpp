@@ -10,6 +10,7 @@
 #include <string.h>
 
 #include <algorithm>
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -82,12 +83,15 @@ int main(int argc, char** argv) {
             tesser::Query q;
             q.view = tesser::View::Schema;
             q.depth = 2;
-            reader.get("/", [&](tesser::Status, JsonVariantConst body) {
-                for (const auto& e : tesserui::model::buildMenu(body, "/")) {
-                    if (!e.path.empty()) paths.push_back(e.path);
-                    for (const auto& c : e.children) paths.push_back(c.path);
-                }
-            }, q);
+            // Headings (ui.group) have no path: their entries do.
+            std::function<void(const std::vector<tesserui::model::MenuEntry>&)> walk =
+                [&](const std::vector<tesserui::model::MenuEntry>& entries) {
+                    for (const auto& e : entries) {
+                        if (!e.path.empty()) paths.push_back(e.path);
+                        walk(e.children);
+                    }
+                };
+            reader.get("/", [&](tesser::Status, JsonVariantConst body) { walk(tesserui::model::buildMenu(body, "/")); }, q);
             reader.process();
         }
         int failed = 0;
