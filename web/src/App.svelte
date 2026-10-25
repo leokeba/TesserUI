@@ -137,6 +137,18 @@
     return best;
   });
   let drawer = $state(false);
+  // The tabs scroll sideways when they overflow (a narrow screen's second
+  // row, §6.2): the current one is brought into view, centred, without
+  // scrolling the page as scrollIntoView() would.
+  let strip: HTMLElement | undefined = $state();
+  $effect(() => {
+    void [home, route];
+    const a = strip?.querySelector('[aria-current]');
+    if (!strip || !a) return;
+    const n = strip.getBoundingClientRect();
+    const r = a.getBoundingClientRect();
+    if (r.left < n.left || r.right > n.right) strip.scrollLeft += r.left - n.left - (n.width - r.width) / 2;
+  });
   // Pages come in menu order: an empty route opens the first one, and so
   // does the start page when it has nothing of its own.
   const first = $derived(flat[0]?.href ?? (views?.length ? viewHref(home, views[0].id) : undefined));
@@ -201,7 +213,10 @@
         <button type="button" class="quiet burger" aria-label={t('Menu')} aria-expanded={drawer} onclick={() => (drawer = !drawer)}><Icon name="menu" /></button>
       {/if}
       {#if tabs}
-        <nav class="tabs" aria-label={t('Nodes')}>
+        <!-- On a narrow screen, the shown node's label, and the tabs below. -->
+        <span class="node">{tabs.find((n) => n.path === home)?.label}</span>
+        <div class="bar">
+        <nav class="tabs" aria-label={t('Nodes')} bind:this={strip}>
           {#each tabs as n (n.key)}
             {@const a = n.mark}
             <a
@@ -215,36 +230,35 @@
               {#if a && a.state !== 'offline'}<span class="mark {a.state}" title={a.text ?? t(a.state === 'done' ? 'Applied' : 'Absent')}><Icon name={{ done: 'check', absent: 'minus', refused: 'x' }[a.state]} /></span>{/if}
             </a>
           {/each}
-          {#if add}<button type="button" class="quiet" title={t('Another node')} aria-label={t('Another node')} onclick={add}><Icon name="plus" /></button>{/if}
         </nav>
+        {#if add}<button type="button" class="quiet" title={t('Another node')} aria-label={t('Another node')} onclick={add}><Icon name="plus" /></button>{/if}
         <!-- Apply to all (DESIGN.md §6.6): highlighted while on. -->
         <button type="button" class="quiet all" aria-pressed={session.all} title={t('Apply to all')} aria-label={t('Apply to all')} onclick={() => ((session.all = !session.all), (session.applied = {}))}><Icon name="broadcast" /></button>
+        </div>
       {:else}
         <a class="brand" href={first ?? `#${top}`}>{deviceLabel}</a>
       {/if}
       {#if views?.length && !menu}
-        <nav class="tabs" aria-label={t('Pages')}>
+        <nav class="tabs bar" aria-label={t('Pages')} bind:this={strip}>
           {#each views as v (v.id)}
             <a href="#/v/{v.id}" aria-current={route.view === v.id ? 'page' : undefined}>{v.label}</a>
           {/each}
           <a href="#/" aria-current={route.view === null ? 'page' : undefined}>{t('Device')}</a>
         </nav>
       {/if}
-      {#if nodes.length && !around}
-        <button type="button" class="quiet" aria-pressed={tabsOn} title={t('Nodes as tabs')} aria-label={t('Nodes as tabs')} onclick={() => storageSet(TABS, (tabsOn = !tabsOn) ? '1' : '0')}><Icon name="layers" /></button>
-      {/if}
       {#if session.kind}
-        <span class="state {session.state}" role="status" title={session.store.noEvents ? t('The node refused its events subscription (other pages hold its streams): toasts from outside this page wait for one. Asked again every minute.') : undefined}>
-          <i></i>{stateText}{#if session.store.noEvents && session.state === 'open'}, {t('no events')}{/if}
+        {@const quiet = session.store.noEvents && session.state === 'open'}
+        <span class="state {session.state}" class:quiet role="status" title={session.store.noEvents ? t('The node refused its events subscription (other pages hold its streams): toasts from outside this page wait for one. Asked again every minute.') : undefined}>
+          <i></i><span class="lab">{stateText}{#if quiet}, {t('no events')}{/if}</span>
         </span>
       {/if}
       {#if close && session.kind}
         <button type="button" class="quiet" title={t('Close this connection')} aria-label={t('Close this connection')} onclick={close}><Icon name="x" /></button>
       {/if}
       {#if session.signedIn}
-        <button type="button" class="quiet" onclick={() => session.signOut()}><Icon name="lock" /> {t('Sign out')}</button>
+        <button type="button" class="quiet" onclick={() => session.signOut()}><Icon name="lock" /> <span class="lab">{t('Sign out')}</span></button>
       {:else if session.login}
-        <button type="button" class="quiet" onclick={() => (session.needToken = true)}><Icon name="lock" /> {t('Sign in')}</button>
+        <button type="button" class="quiet" onclick={() => (session.needToken = true)}><Icon name="lock" /> <span class="lab">{t('Sign in')}</span></button>
       {/if}
     </header>
   {/if}
@@ -271,6 +285,13 @@
           <div class="sub">{#each e.children as c, j (j)}{@render entry(c)}{/each}</div>
         {/if}
       {/each}
+      {#if nodes.length && !around}
+        <hr />
+        <label class="pref">
+          <span class="ic"><Icon name="layers" /></span>{t('Nodes as tabs')}
+          <input type="checkbox" role="switch" checked={tabsOn} onchange={() => storageSet(TABS, (tabsOn = !tabsOn) ? '1' : '0')} />
+        </label>
+      {/if}
     </nav>
     {#if drawer}<div class="scrim drawer" onclick={() => (drawer = false)}></div>{/if}
   {/if}
@@ -562,12 +583,35 @@
     color: var(--text);
     text-decoration: none;
   }
+  .bar {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex: 1;
+    min-width: 0;
+  }
+  /* Shadows at the edges that have more tabs beyond them. */
   .tabs {
     display: flex;
     gap: 4px;
     overflow-x: auto;
-    flex: 1;
     min-width: 0;
+    background:
+      linear-gradient(90deg, var(--surface) 50%, #0000) left / 24px 100% local,
+      linear-gradient(270deg, var(--surface) 50%, #0000) right / 24px 100% local,
+      radial-gradient(farthest-side at 0 50%, #0003, #0000) 1px 0 / 10px 100% scroll,
+      radial-gradient(farthest-side at 100% 50%, #0003, #0000) right 1px top 0 / 10px 100% scroll;
+    background-repeat: no-repeat;
+  }
+  .all {
+    margin-left: auto;
+  }
+  .node {
+    display: none;
+  }
+  .state.quiet i {
+    outline: 2px solid var(--warn);
+    outline-offset: 1px;
   }
   .tabs a {
     display: flex;
@@ -671,6 +715,17 @@
     border-radius: 50%;
     background: var(--muted);
   }
+  .pref {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 38px;
+    padding: 0 10px;
+    cursor: pointer;
+  }
+  .pref input {
+    margin-left: auto;
+  }
   .sub a {
     padding-left: 38px;
     min-height: 34px;
@@ -707,6 +762,45 @@
     .side.open {
       transform: none;
       box-shadow: 0 10px 40px #0005;
+    }
+  }
+  /* A phone: the header's first row is the menu, the node shown and the
+     connection (a dot, its text for screen readers); the tabs get the
+     second, full width (DESIGN.md §6.2). */
+  @media (max-width: 640px) {
+    .top {
+      gap: 8px;
+      padding: 0 8px;
+    }
+    .node {
+      display: block;
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-weight: 650;
+    }
+    .bar {
+      order: 1;
+      flex-basis: calc(100% + 16px);
+      margin: 0 -8px;
+      padding: 0 8px 6px;
+    }
+    .tabs {
+      scrollbar-width: none;
+    }
+    .lab {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
+    }
+    .side {
+      top: 0;
+      height: 100dvh;
     }
   }
   .scrim {

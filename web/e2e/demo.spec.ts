@@ -468,6 +468,19 @@ test('phone width: no horizontal scroll, 44 px controls, the menu in a drawer', 
   await open(page, '#/lamp');
   await expect(row(page, 'Brightness')).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(360);
+  // The node tabs get a row of their own, below the menu button, the shown
+  // node's label and the connection's dot (its text for screen readers);
+  // the current tab scrolls into view.
+  const tabs = page.locator('nav.tabs');
+  const burger = (await page.getByRole('button', { name: 'Menu' }).boundingBox())!;
+  expect((await tabs.boundingBox())!.y).toBeGreaterThanOrEqual(burger.y + burger.height - 1);
+  await expect(page.locator('header .node')).toHaveText('TesserUI demo');
+  await expect(page.locator('.state')).toHaveText('Live');
+  expect((await page.locator('.state').boundingBox())!.width).toBeLessThan(20);
+  await page.evaluate(() => (location.hash = '#/peers/porch-lamp'));
+  await expect(page.locator('header .node')).toHaveText('Porch lamp');
+  await expect(tabs.getByRole('link', { name: 'Porch lamp' })).toBeInViewport({ ratio: 0.95 });
+  await expect(row(page, 'Brightness')).toBeVisible();
   const small = await page.evaluate(
     () =>
       [...document.querySelectorAll('input:not([type=checkbox]):not([type=radio]):not([type=range]), select, button')].filter(
@@ -518,12 +531,12 @@ test('nodes as tabs, each with its own menu and views', async ({ page }) => {
   await expect(menu.locator('[aria-current=page]')).toHaveText('Status');
   await expect(row(page, 'Uptime')).toBeVisible();
   // Off: the device's menu again, its peers under Nodes; remembered.
-  await page.getByRole('button', { name: 'Nodes as tabs' }).click();
+  await page.locator('nav.side').getByRole('switch', { name: 'Nodes as tabs' }).click();
   await expect(tabs).toHaveCount(0);
   await expect(page.locator('.brand')).toHaveText('TesserUI demo');
   await page.reload();
   await expect(page.locator('.state')).toHaveText('Live');
-  await expect(page.getByRole('button', { name: 'Nodes as tabs' })).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.locator('nav.side').getByRole('switch', { name: 'Nodes as tabs' })).not.toBeChecked();
   await expect(tabs).toHaveCount(0);
 });
 

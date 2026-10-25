@@ -200,6 +200,7 @@ Layout follows the tree. Children render in declaration order, which is TesserAP
 - **Weight:** a card's rows, roughly. A value or an action is 1; a chart, an events log 3; a log 6; a table or a list 4; a gauge, a knob, a text area 2; a custom element 8; a link 1.5; a heading or a title 1. A collapsed card or group is 1, an "Advanced" group 1, tabs their heaviest tab, hidden items 0. The gap between cards counts 1.
 - Rows are a two-column grid (label, control), stacked below 300 px of card content width, so that phones (about 320 px) keep two columns.
 - Phone width: no horizontal scroll, 16 px gutters, controls at least 44 px tall.
+- **The header on a phone** (below 640 px): tabs (the nodes', §6.5, or the views', §8) get a second row of their own, full width, with the buttons that belong to them (*Apply to all*, §6.6, the launcher's `+`, §9.7.2) at its end, outside what scrolls. The first row is the menu button, the shown node's label (with node tabs), the connection's dot, the launcher's `×` and the sign-in button as an icon. The connection's and the sign-in's texts are for screen readers only. Tabs that overflow scroll sideways, a shadow at each edge with more beyond it, and the current one scrolls into view. The drawer (§6.3) takes the screen's full height.
 
 ### 6.3 Menu (both renderers)
 
@@ -214,7 +215,7 @@ A node's UI is a **menu** of pages rather than one page of every card.
 - **Sub-entries:** an object with `ui.page` (`/sys`), or one holding remote nodes (`/peers`), lists its objects, lists and nodes as sub-entries, one level deep. A list's page is the list alone. The web shows them while the entry's page, or one of theirs, is open.
 - **Pages:** an entry's page follows §6.1 with the object as its root: its own values form the first card, and its child objects are cards. The start page shows its own values only, the rest being entries. A remote node's entry opens its root page (§7.6).
 - **Start:** the first entry opens when the route is empty, when it names a view that doesn't exist (renamed by a firmware update), or when it is the start page and that has no entry of its own.
-- **Web:** a sidebar beside the page; below 800 px, a drawer opened from the header's menu button, closed by choosing an entry. The header keeps the device label (or the node tabs, §6.5), the connection state and sign-in. The menu replaces the view tabs. It's on for the node's own page and off when the UI is embedded or has no header (§9.9): those show the start page with every card, and view tabs. The `menu` option (§9.2) decides otherwise.
+- **Web:** a sidebar beside the page; below 800 px, a drawer opened from the header's menu button, closed by choosing an entry. The header keeps the device label (or the node tabs, §6.5), the connection state and sign-in (on a phone, in two rows, §6.2). The menu replaces the view tabs. It's on for the node's own page and off when the UI is embedded or has no header (§9.9): those show the start page with every card, and view tabs. The `menu` option (§9.2) decides otherwise.
 
 ### 6.4 LCD
 
@@ -234,7 +235,7 @@ A gateway's UI reaches other nodes: the remote nodes of its tree (TesserKIT's `/
   - its views (§8), read from its `/_ui` through the gateway, their paths moved below the node.
 - **Routes** stay the node's paths (`#/peers/<name>/...`; a remote node's view is `#<node>/_ui/<id>`). The tab follows from the route, so links, the back button and shared URLs keep working.
 - **Opening a tab** opens its node's root: its status, or its first entry when it has none (§6.3, *Start*). The menu waits for the node's views, which come first.
-- **On or off:** tabs are on by default with the menu, when the node has remote nodes. A header button switches them off and back, and the browser remembers it; `tabs: false` (§9.2) makes off the default. Off, remote nodes are entries of the device's menu (§6.3), and a peer's root page shows all its cards.
+- **On or off:** tabs are on by default with the menu, when the node has remote nodes. A switch at the foot of the menu turns them off and back on, and the browser remembers it; `tabs: false` (§9.2) makes off the default. Off, remote nodes are entries of the device's menu (§6.3), and a peer's root page shows all its cards.
 
 ### 6.6 Apply to all (web)
 
@@ -252,7 +253,7 @@ Setting up many nodes alike (a field of heliostats, the lamps of a show) means m
   | (an offline stub: not sent) | offline: its dot |
 
 - **When some node is offline or refused,** one `warn` toast says so, at the path's labels: "Lamp › Brightness: Applied to 1 of 3 other nodes. kitchen-lamp: offline". It comes once a burst of writes, such as a drag, has been quiet for half a second. Absent nodes only show on their tabs: nodes that differ are expected.
-- **The switch** is the header's button beside the tabs, solid while on. It starts off on each load, since a change sent to every node by mistake costs more than a click, and turning it off clears the marks.
+- **The switch** is the header's button beside the tabs (at the end of their row on a phone, §6.2), solid while on. It starts off on each load, since a change sent to every node by mistake costs more than a click, and turning it off clears the marks.
 
 ## 7. Data and reactivity
 
@@ -282,7 +283,7 @@ TesserAPI allows 4 subscriptions per client (default `maxSubscriptionsPerClient`
 1. **The page:** `sub <page path>` with `keys` = the visible children and `depth` = the visible depth (a list's element objects count, a level below the list), `interval` 100 ms. Navigating unsubscribes the old page before subscribing the new one. The snapshot fills the store, replacing what it covers: a child the store has and the snapshot doesn't (a node removed by a firmware update) goes, down to `depth` (objects below it come as `{}`, cut, and are kept) and, at the page's level, among its `keys`. So does each polled read. On `too_large`, subscribe with `snapshot: false` and read the visible cards with one get each.
 2. **The remote nodes' stubs,** on a gateway: `sub /peers` (each parent of the node's remote nodes) at `depth` 1, for their tabs' online states and advertised hashes (§6.5); while the page is a peer's inside another remote node, its stub too (`keys` = the peer). A page showing links needs nothing extra: unmirrored remote nodes are part of its subscription and read as `null`. A notification carrying `{"<name>": null}` means that peer changed (mounted, online state, schema hash): re-read its stub with `/peers?view=schema&depth=1&keys=<name>`.
 3. **Condition paths** outside the page, when there are any.
-4. **The tree's events,** for those that toast wherever the user is (§7.8): `sub /` with `changes: false` (TesserAPI §11: events only), `snapshot: false` and `interval` 60 s, which keeps firmware that predates `changes` to one change notification a minute. It is subscribed after the page's, kept across pages, and subscribed again after an `unsub /`. Over HTTP, it is a streamed `GET` (§9.2). When the node refuses it there are no toasts from other pages meanwhile, and nothing is polled for it. Refused for now (`busy`: a node allows 2 streams, which other pages may hold), it is asked for again a minute later (on a reconnection, at once), and the header's connection state says so (*Polling, no events*, with the reason as its tooltip) until it is had. Not to be had (`not_allowed`: a transport that can't deliver notifications; over HTTP, an answer that isn't a stream from a node at protocol 1, which predates streams), it isn't asked for again on that node; from a node at protocol 2, which always has streams, such an answer is an error, asked for again a minute later. One that timed out is asked for again 5 s later.
+4. **The tree's events,** for those that toast wherever the user is (§7.8): `sub /` with `changes: false` (TesserAPI §11: events only), `snapshot: false` and `interval` 60 s, which keeps firmware that predates `changes` to one change notification a minute. It is subscribed after the page's, kept across pages, and subscribed again after an `unsub /`. Over HTTP, it is a streamed `GET` (§9.2). When the node refuses it there are no toasts from other pages meanwhile, and nothing is polled for it. Refused for now (`busy`: a node allows 2 streams, which other pages may hold), it is asked for again a minute later (on a reconnection, at once), and the header's connection state says so (*Polling, no events*, with the reason as its tooltip, and a ring around its dot, all a phone shows) until it is had. Not to be had (`not_allowed`: a transport that can't deliver notifications; over HTTP, an answer that isn't a stream from a node at protocol 1, which predates streams), it isn't asked for again on that node; from a node at protocol 2, which always has streams, such an answer is an error, asked for again a minute later. One that timed out is asked for again 5 s later.
 
 The page subscription leaves out mirrored remote children (their copies would come along) and `ui.page` sub-pages (they subscribe themselves). Specs for the same path are merged into one subscription, since `unsub` removes every subscription of a client at a path. Beyond 3 subscriptions, or when the node answers `busy` or `not_allowed`, the rest is polled; a subscribe that times out (an offline peer) is retried every 5 s. A `busy` for the node's subscription limit (other clients hold them) is tried again after 5, 10, 20... up to 160 s, and the subscription replaces the poll once it is had; `not_allowed` (below a list) stays polled.
 
@@ -444,7 +445,7 @@ web/
   | `path` | The path the UI starts from and doesn't go above: a subtree, or a peer. View pages show only when it is `/`. |
   | `header` | `false` hides the top bar; a lost connection still shows a banner. |
   | `menu` | The navigation menu (§6.3). Default: on for the node's own page, off when embedded; always off without the header. |
-  | `tabs` | Remote nodes as tabs (§6.5), with the menu. Default: on; the header's button overrides it in the browser. |
+  | `tabs` | Remote nodes as tabs (§6.5), with the menu. Default: on; the menu's switch overrides it in the browser. |
   | `routing` | `hash` (default) follows `location.hash`; `memory` keeps the route inside the UI, for pages that own the URL. |
   | `launcher` | `true`: the page is a launcher (§9.7) despite having a configuration. |
   | `firmware` | Firmware the launcher installs over USB (§9.7.1): `{images, wifi, manifest, flasher}`. |
