@@ -139,8 +139,15 @@
   let drawer = $state(false);
   // The tabs scroll sideways when they overflow (a narrow screen's second
   // row, §6.2): the current one is brought into view, centred, without
-  // scrolling the page as scrollIntoView() would.
+  // scrolling the page as scrollIntoView() would. An edge with more tabs
+  // beyond it fades them out (--l, --r: the fade's width).
   let strip: HTMLElement | undefined = $state();
+  function edges() {
+    const s = strip;
+    if (!s) return;
+    s.style.setProperty('--l', s.scrollLeft > 1 ? '32px' : '0px');
+    s.style.setProperty('--r', s.scrollLeft + s.clientWidth < s.scrollWidth - 1 ? '32px' : '0px');
+  }
   $effect(() => {
     void [home, route];
     const a = strip?.querySelector('[aria-current]');
@@ -149,6 +156,12 @@
     const r = a.getBoundingClientRect();
     if (r.left < n.left || r.right > n.right) strip.scrollLeft += r.left - n.left - (n.width - r.width) / 2;
   });
+  $effect(() => {
+    void [tabs, views];
+    edges();
+  });
+  addEventListener('resize', edges);
+  $effect(() => () => removeEventListener('resize', edges));
   // Pages come in menu order: an empty route opens the first one, and so
   // does the start page when it has nothing of its own.
   const first = $derived(flat[0]?.href ?? (views?.length ? viewHref(home, views[0].id) : undefined));
@@ -216,7 +229,7 @@
         <!-- On a narrow screen, the shown node's label, and the tabs below. -->
         <span class="node">{tabs.find((n) => n.path === home)?.label}</span>
         <div class="bar">
-        <nav class="tabs" aria-label={t('Nodes')} bind:this={strip}>
+        <nav class="tabs" aria-label={t('Nodes')} bind:this={strip} onscroll={edges}>
           {#each tabs as n (n.key)}
             {@const a = n.mark}
             <a
@@ -239,7 +252,7 @@
         <a class="brand" href={first ?? `#${top}`}>{deviceLabel}</a>
       {/if}
       {#if views?.length && !menu}
-        <nav class="tabs bar" aria-label={t('Pages')} bind:this={strip}>
+        <nav class="tabs bar" aria-label={t('Pages')} bind:this={strip} onscroll={edges}>
           {#each views as v (v.id)}
             <a href="#/v/{v.id}" aria-current={route.view === v.id ? 'page' : undefined}>{v.label}</a>
           {/each}
@@ -590,18 +603,12 @@
     flex: 1;
     min-width: 0;
   }
-  /* Shadows at the edges that have more tabs beyond them. */
   .tabs {
     display: flex;
     gap: 4px;
     overflow-x: auto;
     min-width: 0;
-    background:
-      linear-gradient(90deg, var(--surface) 50%, #0000) left / 24px 100% local,
-      linear-gradient(270deg, var(--surface) 50%, #0000) right / 24px 100% local,
-      radial-gradient(farthest-side at 0 50%, #0003, #0000) 1px 0 / 10px 100% scroll,
-      radial-gradient(farthest-side at 100% 50%, #0003, #0000) right 1px top 0 / 10px 100% scroll;
-    background-repeat: no-repeat;
+    mask-image: linear-gradient(90deg, #0000, #000 var(--l, 0px), #000 calc(100% - var(--r, 0px)), #0000);
   }
   .all {
     margin-left: auto;
