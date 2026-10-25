@@ -1023,8 +1023,9 @@ Page buildPage(JsonObjectConst s, std::string_view path, std::string_view root, 
             item.label.clear();
             card.items.push_back(std::move(item));
             page.cards.push_back(std::move(card));
-        } else if (item.kind == ItemKind::Leaf && item.widget == Widget::Button && !truthyJson(item.value) &&
-                   !item.advanced && !item.hidden && item.visibleWhen.empty()) {
+        } else if (item.kind == ItemKind::Leaf && item.widget == Widget::Button && !item.hasField &&
+                   item.type != NodeType::Object && !truthyJson(item.value) && !item.advanced && !item.hidden &&
+                   item.visibleWhen.empty()) {
             page.actions.push_back(std::move(item));
         } else {
             (item.advanced ? first.advancedItems : first.items).push_back(std::move(item));

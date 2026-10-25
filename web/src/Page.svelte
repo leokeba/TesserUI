@@ -107,6 +107,7 @@
 <style>
   .head {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 8px;
     margin: 0 0 12px;
@@ -118,6 +119,8 @@
   .actions {
     margin-left: auto;
     display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
     gap: 8px;
   }
   .back {

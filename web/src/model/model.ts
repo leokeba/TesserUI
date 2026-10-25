@@ -617,7 +617,7 @@ export function buildPage(s: Schema, path: string, root = '/', t: (text: string)
     } else if (item.kind === 'leaf' && (item.widget === 'list' || item.widget === 'table') && !item.advanced) {
       // A list is a card of its own, titled by it.
       page.cards.push({ ...first, path: item.path, label: item.label, description: item.description, items: [{ ...item, label: '' }], advancedItems: [] });
-    } else if (item.kind === 'leaf' && item.widget === 'button' && !item.value && !item.advanced && !item.hidden && !item.visibleWhen && !item.suggests) {
+    } else if (item.kind === 'leaf' && item.widget === 'button' && !item.field && !item.params && !item.value && !item.advanced && !item.hidden && !item.visibleWhen && !item.suggests) {
       page.actions.push(item);
     } else {
       (item.advanced ? first.advancedItems : first.items).push(item);

@@ -2710,6 +2710,24 @@
        "keepalive": 400
       },
       {
+       "name": "moveTo",
+       "path": "/motor/moveTo",
+       "label": "Move to",
+       "advanced": false,
+       "hidden": false,
+       "kind": "leaf",
+       "widget": "button",
+       "type": "number",
+       "editable": true,
+       "min": 0,
+       "max": 360,
+       "unit": "°",
+       "confirm": "Move the mirror?",
+       "deferred": false,
+       "submit": false,
+       "field": "slider"
+      },
+      {
        "name": "homed",
        "path": "/motor/homed",
        "label": "Homed",
@@ -2781,24 +2799,6 @@
     }
    ],
    "actions": [
-    {
-     "name": "moveTo",
-     "path": "/motor/moveTo",
-     "label": "Move to",
-     "advanced": false,
-     "hidden": false,
-     "kind": "leaf",
-     "widget": "button",
-     "type": "number",
-     "editable": true,
-     "min": 0,
-     "max": 360,
-     "unit": "°",
-     "confirm": "Move the mirror?",
-     "deferred": false,
-     "submit": false,
-     "field": "slider"
-    },
     {
      "name": "stop",
      "path": "/motor/stop",
@@ -4520,6 +4520,21 @@
        "contentType": "application/json"
       },
       {
+       "name": "scan",
+       "path": "/system/scan",
+       "label": "Scan",
+       "advanced": false,
+       "hidden": false,
+       "access": "admin",
+       "kind": "leaf",
+       "widget": "button",
+       "type": "string",
+       "editable": true,
+       "deferred": true,
+       "submit": false,
+       "field": "text"
+      },
+      {
        "name": "log",
        "path": "/system/log",
        "label": "Log",
@@ -4660,70 +4675,84 @@
      "form": false
     }
    ],
-   "actions": [
-    {
-     "name": "scan",
-     "path": "/system/scan",
-     "label": "Scan",
-     "advanced": false,
-     "hidden": false,
-     "access": "admin",
-     "kind": "leaf",
-     "widget": "button",
-     "type": "string",
-     "editable": true,
-     "deferred": true,
-     "submit": false,
-     "field": "text"
-    }
-   ],
+   "actions": [],
    "columns": 3,
    "depth": 4
   },
   "/account": {
    "path": "/account",
    "label": "Account",
-   "cards": [],
-   "actions": [
+   "cards": [
     {
-     "name": "login",
-     "path": "/account/login",
-     "label": "Login",
+     "name": "",
+     "path": "/account",
+     "label": "",
      "advanced": false,
      "hidden": false,
-     "kind": "leaf",
-     "widget": "button",
-     "type": "object",
-     "editable": true,
-     "deferred": true,
-     "submit": false,
-     "params": [
+     "kind": "section",
+     "level": 1,
+     "items": [
       {
-       "name": "name",
-       "path": "name",
-       "label": "Name",
+       "name": "login",
+       "path": "/account/login",
+       "label": "Login",
        "advanced": false,
        "hidden": false,
        "kind": "leaf",
-       "widget": "text",
-       "type": "string",
-       "editable": true
+       "widget": "button",
+       "type": "object",
+       "editable": true,
+       "deferred": true,
+       "submit": false,
+       "params": [
+        {
+         "name": "name",
+         "path": "name",
+         "label": "Name",
+         "advanced": false,
+         "hidden": false,
+         "kind": "leaf",
+         "widget": "text",
+         "type": "string",
+         "editable": true
+        },
+        {
+         "name": "password",
+         "path": "password",
+         "label": "Password",
+         "advanced": false,
+         "hidden": false,
+         "kind": "leaf",
+         "widget": "password",
+         "type": "string",
+         "editable": true,
+         "secret": true
+        }
+       ]
       },
       {
-       "name": "password",
-       "path": "password",
-       "label": "Password",
+       "name": "whoami",
+       "path": "/account/whoami",
+       "label": "Whoami",
        "advanced": false,
-       "hidden": false,
+       "hidden": true,
        "kind": "leaf",
-       "widget": "password",
-       "type": "string",
-       "editable": true,
-       "secret": true
+       "widget": "button",
+       "type": "action",
+       "editable": false,
+       "deferred": true,
+       "submit": false
       }
-     ]
+     ],
+     "advancedItems": [],
+     "lazy": false,
+     "tabs": false,
+     "inline": false,
+     "collapsed": false,
+     "form": false
     }
    ],
+   "actions": [],
    "columns": 3,
    "depth": 1
   },
