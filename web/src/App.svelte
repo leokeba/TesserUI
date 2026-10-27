@@ -19,13 +19,13 @@
   import { compareVersions, PLACE, provideSession } from './shared.svelte';
   import Icon from './Icon.svelte';
   import Item from './Item.svelte';
-  import { humanize } from './model/format';
-  import { buildMenu, viewHref, type MenuEntry } from './model/menu';
+  import { buildMenu, parseRoute, viewHref, type MenuEntry } from './model/menu';
   import { isUnder } from './model/schema';
+  import Menu from './Menu.svelte';
   import Page from './Page.svelte';
   import Toasts from './Toasts.svelte';
   import { connectScreen } from './widgets/registry.svelte';
-  import Secret from './widgets/Secret.svelte';
+  import SignIn from './SignIn.svelte';
   import { storageGet, storageSet, type Session } from './store/session.svelte';
   import ViewPage from './ViewPage.svelte';
 
@@ -51,11 +51,8 @@
   const { config, store } = session;
   const t = (text: string, vars?: Record<string, string | number>) => session.t(text, vars);
 
-  // Routes: #/<path> is the page of the node at that path (#/peers/<name>
-  // for a peer behind a UI host), #/v/<id> a view page, #<node>/_ui/<id> a
-  // remote node's (DESIGN.md §7.6, §8, §6.5).
-  // With memory routing, the route stays inside the UI and its links are
-  // intercepted; the page keeps its URL.
+  // The route (model/menu.ts, parseRoute). With memory routing, it stays
+  // inside the UI and its links are intercepted; the page keeps its URL.
   const memory = config.routing === 'memory';
   // top: where the UI starts and doesn't go above.
   const top = config.path ?? '/';
@@ -72,15 +69,7 @@
       hash = href;
     }
   }
-  const route = $derived.by(() => {
-    const h = decodeURIComponent(hash.slice(1));
-    const v = h.match(/^(?:\/v|(.*)\/_ui)\/([^/]+)$/);
-    if (v && top === '/') return { view: v[2] as string | null, path: v[1] || '/' };
-    // A files widget's place, after "~": the page is its object's.
-    const [, at, sub] = h.match(/^(.*?)\/~(\/.*)?$/) ?? [, h];
-    const path = at!.replace(/\/+$/, '') || top;
-    return { view: null, path: isUnder(path, top) ? path : top, sub: at === h ? undefined : sub || '/' };
-  });
+  const route = $derived(parseRoute(hash, top));
   setContext(PLACE, {
     get sub() {
       return route.sub;
@@ -140,12 +129,7 @@
     return s ? buildMenu(s, home, views ?? null, t) : null;
   });
   const all = (es: MenuEntry[]): MenuEntry[] => es.flatMap((e) => [e, ...all(e.children ?? [])]);
-  const inside = (e: MenuEntry, x?: MenuEntry): boolean => !!e.children?.some((c) => c === x || inside(c, x));
   const flat = $derived(menu ? all(menu).filter((e) => e.href) : []);
-  // An entry's sub-entries fold and unfold with its chevron; they start
-  // unfolded while its page, or one of theirs, is open.
-  const unfolded: Record<string, boolean> = $state({});
-  const opened = (e: MenuEntry) => unfolded[e.href!] ?? (current === e || inside(e, current));
   // The entry shown: the deepest one the route is in.
   const current = $derived.by(() => {
     const at = route.view !== null ? viewHref(route.path, route.view) : `#${route.path}`;
@@ -225,21 +209,6 @@
   );
   const tooOld = $derived(!!config.minVersion && compareVersions(__VERSION__, config.minVersion) < 0);
 
-  let token = $state('');
-  // The login action's text fields (DESIGN.md §7.4).
-  const loginFields = $derived(
-    Object.entries(session.login?.schema.params?.children ?? {})
-      .filter(([, c]) => c.type === 'string')
-      .map(([name, c]) => ({ name, label: c.label ?? humanize(name), secret: !!c.secret })),
-  );
-  let creds: Record<string, string> = $state({});
-  let loginError = $state('');
-  async function authenticate(e: SubmitEvent) {
-    e.preventDefault();
-    if (!session.login) return session.setToken(token);
-    loginError = (await session.signIn(creds)) ?? '';
-    if (!loginError) creds = {};
-  }
 </script>
 
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
@@ -324,17 +293,7 @@
 
   <div class="body">
   {#if menu}
-    <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
-    <nav class="side" class:open={drawer} aria-label={t('Menu')} onclick={(e) => (e.target as Element).closest('a') && (drawer = false)}>
-      {@render list(menu, 0)}
-      {#if nodes.length && !around}
-        <hr />
-        <label class="pref">
-          <span class="ic"><Icon name="layers" /></span>{t('Nodes as tabs')}
-          <input type="checkbox" role="switch" checked={tabsOn} onchange={() => storageSet(TABS, (tabsOn = !tabsOn) ? '1' : '0')} />
-        </label>
-      {/if}
-    </nav>
+    <Menu {menu} {current} open={drawer} close={() => (drawer = false)} tabs={nodes.length && !around ? tabsOn : undefined} toggle={() => storageSet(TABS, (tabsOn = !tabsOn) ? '1' : '0')} />
     {#if drawer}<div class="scrim drawer" onclick={() => (drawer = false)}></div>{/if}
   {/if}
   <main>
@@ -355,59 +314,9 @@
   </main>
   </div>
 
-  <!-- Entries, a group's under its heading; sub-entries under their entry
-       while it is unfolded. -->
-  {#snippet list(es: MenuEntry[], depth: number)}
-    {#each es as e, i (i)}
-      {#if !depth && i && es[i - 1].href?.startsWith('#/v/') && !e.href?.startsWith('#/v/')}<hr />{/if}
-      {#if e.href}
-        {@render entry(e)}
-        {#if e.children && opened(e)}<div class="sub">{@render list(e.children, depth + 1)}</div>{/if}
-      {:else}
-        <p class="group">{e.label}</p>
-        <div class="sub">{@render list(e.children!, depth + 1)}</div>
-      {/if}
-    {/each}
-  {/snippet}
-
-  {#snippet entry(e: MenuEntry)}
-    <div class="ent">
-      <a href={e.href} aria-current={current === e ? 'page' : undefined}>
-        <span class="ic">{#if e.icon}<Icon name={e.icon} />{/if}</span>{e.label}
-        {#if e.online === false}<i class="off" title={t('Offline')}></i>{/if}
-      </a>
-      {#if e.children}
-        <button type="button" class="quiet" class:up={opened(e)} aria-expanded={opened(e)} aria-label={t('Sections of {label}', { label: e.label })} onclick={() => (unfolded[e.href!] = !opened(e))}><Icon name="down" /></button>
-      {/if}
-    </div>
-  {/snippet}
-
   {#if session.needToken}
     <div class="scrim"></div>
-    <dialog open aria-labelledby="token-title">
-      <form method="dialog" onsubmit={authenticate}>
-        <h2 id="token-title"><Icon name="lock" /> {t('Authentication')}</h2>
-        {#if session.login}
-          {#each loginFields as f, i (f.name)}
-            {#if f.secret}
-              <!-- svelte-ignore a11y_autofocus -->
-              <Secret show={t('Show password')} autofocus={i === 0} bind:value={creds[f.name]} placeholder={f.label} label={f.label} autocomplete="current-password" />
-            {:else}
-              <!-- svelte-ignore a11y_autofocus -->
-              <input autofocus={i === 0} bind:value={creds[f.name]} placeholder={f.label} aria-label={f.label} autocomplete="username" />
-            {/if}
-          {/each}
-          {#if loginError}<p class="error" role="alert">{loginError}</p>{/if}
-        {:else}
-          <p>{t('This node needs a token to make changes.')}</p>
-          <Secret show={t('Show password')} bind:value={token} label={t('Token')} autocomplete="current-password" />
-        {/if}
-        <div class="actions">
-          <button type="button" class="quiet" onclick={() => (session.needToken = false)}>{t('Cancel')}</button>
-          <button class="primary">{session.login ? t('Sign in') : t('Save')}</button>
-        </div>
-      </form>
-    </dialog>
+    <SignIn />
   {/if}
 
   {@render children?.()}
@@ -524,54 +433,6 @@
     flex: 1;
     min-width: 0;
   }
-  .side {
-    position: sticky;
-    top: 52px;
-    flex: none;
-    width: 230px;
-    height: calc(100vh - 52px);
-    overflow-y: auto;
-    padding: 12px 8px;
-    background: var(--surface);
-    border-right: 1px solid var(--border);
-  }
-  .side a {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    min-height: 38px;
-    padding: 0 10px;
-    border-radius: 8px;
-    color: var(--text);
-    text-decoration: none;
-  }
-  .side a:hover {
-    background: var(--surface-2);
-  }
-  .ent {
-    display: flex;
-  }
-  .ent a {
-    flex: 1;
-    min-width: 0;
-  }
-  .ent button {
-    min-height: 0;
-    padding: 0 10px;
-    color: var(--muted);
-  }
-  .ent .up :global(svg) {
-    transform: rotate(180deg);
-  }
-  .side a[aria-current] {
-    background: color-mix(in srgb, var(--accent) 14%, transparent);
-    color: var(--accent);
-    font-weight: 600;
-  }
-  .ic {
-    width: 1.15em;
-    display: flex;
-  }
   .top [aria-pressed='true'] {
     color: var(--accent);
   }
@@ -596,40 +457,6 @@
     border-radius: 50%;
     background: var(--muted);
   }
-  .pref {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    min-height: 38px;
-    padding: 0 10px;
-    cursor: pointer;
-  }
-  .pref input {
-    margin-left: auto;
-  }
-  .sub a {
-    padding-left: 38px;
-    min-height: 34px;
-  }
-  .sub .sub a {
-    padding-left: 56px;
-  }
-  .sub .group {
-    margin-left: 38px;
-  }
-  .side hr {
-    border: 0;
-    border-top: 1px solid var(--border);
-    margin: 8px 10px;
-  }
-  .group {
-    margin: 14px 10px 4px;
-    font-size: 0.8em;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    color: var(--muted);
-  }
   .burger {
     display: none;
     padding: 0 8px;
@@ -638,17 +465,6 @@
     .burger {
       display: inline-flex;
       align-items: center;
-    }
-    .side {
-      position: fixed;
-      left: 0;
-      z-index: 6;
-      transform: translateX(-100%);
-      transition: transform 0.2s;
-    }
-    .side.open {
-      transform: none;
-      box-shadow: 0 10px 40px #0005;
     }
   }
   /* A phone: the header's first row is the menu, the node shown and the
@@ -685,10 +501,6 @@
       clip-path: inset(50%);
       white-space: nowrap;
     }
-    .side {
-      top: 0;
-      height: 100dvh;
-    }
   }
   .scrim {
     position: fixed;
@@ -707,29 +519,5 @@
     gap: 10px;
     align-items: center;
     justify-content: center;
-  }
-  dialog {
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    background: var(--surface);
-    color: var(--text);
-    width: min(360px, calc(100% - 32px));
-    position: fixed;
-    inset: 0;
-    margin: auto;
-    box-shadow: 0 10px 40px #0005;
-    z-index: 6;
-  }
-  dialog form {
-    display: grid;
-    gap: 12px;
-  }
-  dialog p {
-    margin: 0;
-  }
-  .actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 8px;
   }
 </style>

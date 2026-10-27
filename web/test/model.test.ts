@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildMenu } from '../src/model/menu';
+import { buildMenu, parseRoute } from '../src/model/menu';
 import { relocate } from '../src/model/views';
 import { buildLeaf, buildPage, depthOf, inferWidget, placeCards, visiblePaths, weight, type Leaf, type Section } from '../src/model/model';
 import { isCut, mergeSchema, remoteOf, schemaAt, type Schema } from '../src/model/schema';
@@ -314,5 +314,22 @@ describe('columns (DESIGN §6.2)', () => {
     ]);
     expect(names(placeCards(page.cards, 3))).toEqual([['system', 'elevation'], ['heliostat', 'settings'], ['azimuth']]);
     expect(names(placeCards(page.cards, 1))).toEqual([page.cards.map((c) => c.name)]);
+  });
+});
+
+describe('routes (DESIGN §7.6, §8, §4.1)', () => {
+  it('reads node pages, view pages and a files widget\'s place', () => {
+    expect(parseRoute('', '/')).toEqual({ view: null, path: '/', sub: undefined });
+    expect(parseRoute('#/lamp/', '/')).toEqual({ view: null, path: '/lamp', sub: undefined });
+    expect(parseRoute('#/v/overview', '/')).toEqual({ view: 'overview', path: '/' });
+    expect(parseRoute('#/peers/a/_ui/sky', '/')).toEqual({ view: 'sky', path: '/peers/a' });
+    expect(parseRoute('#/files/~', '/')).toEqual({ view: null, path: '/files', sub: '/' });
+    expect(parseRoute('#/files/~/www/a%20b.txt', '/')).toEqual({ view: null, path: '/files', sub: '/www/a b.txt' });
+  });
+
+  it("doesn't go above the UI's start, which has no view pages", () => {
+    expect(parseRoute('#/system', '/motor')).toEqual({ view: null, path: '/motor', sub: undefined });
+    expect(parseRoute('#/motor/axis', '/motor')).toEqual({ view: null, path: '/motor/axis', sub: undefined });
+    expect(parseRoute('#/v/overview', '/motor').view).toBeNull();
   });
 });

@@ -3,7 +3,7 @@
 // the UI starts from, in tree order. Each entry is a page of its own.
 
 import type { Schema } from './schema';
-import { joinPath } from './schema';
+import { isUnder, joinPath } from './schema';
 import { humanize } from './format';
 import type { ViewPage } from './views';
 
@@ -56,6 +56,26 @@ export function hasOwnItems(s: Schema): boolean {
 // A view's route: #/v/<id> for the node's, #<node>/_ui/<id> for a remote
 // node's (DESIGN.md §6.5).
 export const viewHref = (node: string, id: string) => (node === '/' ? `#/v/${id}` : `#${node}/_ui/${id}`);
+
+// Routes (DESIGN.md §7.6, §8, §6.5): #/<path> is the page of the node at that
+// path (#/peers/<name> for a peer behind a UI host), #/v/<id> a view page,
+// #<node>/_ui/<id> a remote node's; after "~", a files widget's place, the
+// page its object's (§4.1). `top` is where the UI starts and doesn't go
+// above.
+export interface Route {
+  view: string | null;
+  path: string;
+  sub?: string;
+}
+
+export function parseRoute(hash: string, top: string): Route {
+  const h = decodeURIComponent(hash.slice(1));
+  const v = h.match(/^(?:\/v|(.*)\/_ui)\/([^/]+)$/);
+  if (v && top === '/') return { view: v[2], path: v[1] || '/' };
+  const [, at, sub] = h.match(/^(.*?)\/~(\/.*)?$/) ?? [, h];
+  const path = at!.replace(/\/+$/, '') || top;
+  return { view: null, path: isUnder(path, top) ? path : top, sub: at === h ? undefined : sub || '/' };
+}
 
 export function buildMenu(s: Schema, home: string, views: ViewPage[] | null, t: (text: string) => string = (x) => x): MenuEntry[] {
   const out: MenuEntry[] = (views ?? []).map((v) => (v.icon ? { label: v.label, icon: v.icon, href: viewHref(home, v.id) } : { label: v.label, href: viewHref(home, v.id) }));
