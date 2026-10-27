@@ -52,6 +52,9 @@ export default defineConfig(({ mode }) => ({
                 codeSplitting: {
                   groups: [
                     { name: 'core', tags: ['$initial'] },
+                    // The connection screen of §9.7, which no node serves
+                    // (scripts/bundle.mjs).
+                    { name: 'connect', test: /\/(Connect\.svelte|client\/lines\.ts)$/ },
                     { name: 'widgets', test: (id: string) => !/\/widgets\/(files|editor)\//.test(id) },
                     { name: 'files', test: /\/widgets\/files\// },
                     { name: 'editor', test: /\/widgets\/editor\// },

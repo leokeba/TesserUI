@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { bleLink, EnvelopeClient, serialLink } from '../src/client/envelope';
+import { EnvelopeClient } from '../src/client/envelope';
+import { bleLink, serialLink } from '../src/client/lines';
 
 const enc = new TextEncoder();
 const dec = new TextDecoder();

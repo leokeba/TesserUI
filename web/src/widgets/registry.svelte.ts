@@ -111,6 +111,12 @@ export const WIDGETS: Record<string, Def> = {
 const edit = lazy(() => import('./editor/Editor.svelte'), {}, c((_: unknown, p: { close(): void }) => queueMicrotask(p.close)));
 export const editor = () => (edit.component === none ? null : (edit.component as unknown as Component<Record<string, unknown>>));
 
+// The connection screen of a page that waits for a USB or Bluetooth line
+// (§9.7), with the links it gives the session (client/lines.ts): a chunk of
+// its own, which a node never serves, since its page never asks for one.
+const connect = lazy(() => import('../Connect.svelte'), {}, none);
+export const connectScreen = () => connect.component as unknown as Component;
+
 // Custom elements (§9.8): the element's host and its scripts' loader.
 const element = lazy(() => import('./Element.svelte'));
 

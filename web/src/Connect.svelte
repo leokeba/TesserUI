@@ -3,7 +3,7 @@
   // with `serial: true`. The launcher adds its own ways (the network, the
   // bridge, installing firmware) as `children`, with the same `pick`.
   import type { Snippet } from 'svelte';
-  import { NUS_SERVICE } from './client/envelope';
+  import { NUS_SERVICE } from './client/lines';
   import Icon from './Icon.svelte';
   import { useSession } from './shared.svelte';
 

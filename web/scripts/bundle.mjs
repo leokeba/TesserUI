@@ -4,7 +4,8 @@
 // §9.4), and enforces the budgets (§2): 65 KB for ui.js, what a page loads
 // first, 71 KB with the widgets' chunk, what a node's flash holds (70 until
 // the file browser, 2026-10-25); the file browser's and the editor's chunks
-// have budgets of their own, 6 and 4 KB. `--check` only measures. A node
+// have budgets of their own, 6 and 4 KB, and so has the connection screen,
+// 3 KB, which only the launcher's pages serve. `--check` only measures. A node
 // without file browsers or the editor leaves their chunks out of its flash
 // (TESSERUI_NO_FILES_UI, TESSERUI_NO_EDITOR: OPTIONAL below).
 
@@ -13,11 +14,14 @@ import { gzipAsync } from '@gfx/zopfli';
 
 const BUDGET = 65 * 1024;
 const TOTAL = 71 * 1024;
-const OWN = { files: 6 * 1024, editor: 4 * 1024 };
+const OWN = { files: 6 * 1024, editor: 4 * 1024, connect: 3 * 1024 };
 // The chunks a firmware may leave out, and the macro (or Kconfig option,
 // CONFIG_ before it) that does: WebUi then answers for them with a module
 // that fails, which the page takes for a widget it can't draw (DESIGN.md §9.4).
 const OPTIONAL = { files: 'TESSERUI_NO_FILES_UI', editor: 'TESSERUI_NO_EDITOR' };
+// The chunks no node serves: the connection screen of a page waiting for a
+// USB or Bluetooth line (DESIGN.md §9.7), which a node's page never is.
+const NEVER = ['connect'];
 const web = new URL('../', import.meta.url);
 const dist = new URL('dist/', web);
 const header = new URL('../src/tesserui/bundle/tesserui_bundle.h', web);
@@ -76,6 +80,7 @@ const array = (name, data) => {
 };
 const optional = (c) => OPTIONAL[c.name.replace(/-.*/, '')];
 const guard = (c, text, otherwise = '') => {
+  if (NEVER.includes(c.name.replace(/-.*/, ''))) return otherwise;
   const m = optional(c);
   if (!m) return text;
   return `#if !defined(${m}) && !defined(CONFIG_${m})\n${text}${otherwise && `#else\n${otherwise}`}#endif\n`;

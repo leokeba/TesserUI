@@ -2,7 +2,8 @@
 // envelope client, opened once and handed to the launcher's session, so the
 // board isn't reset by a second opening of its port.
 
-import { EnvelopeClient, serialLink } from '../client/envelope';
+import { EnvelopeClient } from '../client/envelope';
+import { serialLink } from '../client/lines';
 import type { Client, ConnState } from '../client/types';
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));

@@ -16,7 +16,6 @@
 
 <script lang="ts">
   import { setContext, untrack, type Snippet } from 'svelte';
-  import Connect from './Connect.svelte';
   import { compareVersions, PLACE, provideSession } from './shared.svelte';
   import Icon from './Icon.svelte';
   import Item from './Item.svelte';
@@ -25,6 +24,7 @@
   import { isUnder } from './model/schema';
   import Page from './Page.svelte';
   import Toasts from './Toasts.svelte';
+  import { connectScreen } from './widgets/registry.svelte';
   import Secret from './widgets/Secret.svelte';
   import { storageGet, storageSet, type Session } from './store/session.svelte';
   import ViewPage from './ViewPage.svelte';
@@ -337,7 +337,7 @@
   {/if}
   <main>
     {#if !session.kind && (config.transport === 'serial' || config.transport === 'ble')}
-      {#if connect}{@render connect()}{:else}<Connect />{/if}
+      {#if connect}{@render connect()}{:else}{@const Connect = connectScreen()}<Connect />{/if}
     {:else if !session.loaded || (landing && first) || (!!tabs && !views)}
       <p class="muted center">{session.state === 'open' ? t('Loading…') : stateText}</p>
     {:else if route.view !== null}

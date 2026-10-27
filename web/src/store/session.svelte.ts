@@ -1,9 +1,10 @@
 // One connection to a node (or a UI host and the peers behind it): the
 // client, the schema tree fetched so far, the store and the subscriptions.
 
-import { bleLink, EnvelopeClient, serialLink, webSocketLink } from '../client/envelope';
+import { EnvelopeClient, webSocketLink, type Link } from '../client/envelope';
 import { HttpClient } from '../client/http';
 import { isObject, parse, stringify } from '../client/json';
+import type { BluetoothDeviceLike, SerialPortLike } from '../client/lines';
 import { errorText, lowMemory, reason, type Client, type ConnState, type Notification, type Reply, type Request } from '../client/types';
 import type { Firmware } from '../flash/firmware';
 import { nodeActions, toastKind, visiblePaths, type Item, type Leaf, type Page, type Section } from '../model/model';
@@ -11,6 +12,10 @@ import { isCut, isUnder, joinPath, mergeSchema, parentPath, rank, remoteOf, sche
 import { relocate, type ViewPage } from '../model/views';
 import { Store } from './store.svelte';
 import { commonAncestor, Subscriptions, type SubSpec } from './subs';
+
+// The links of Web Serial and Bluetooth, which client/lines.ts gives when it
+// loads: ui.js loads it with its connection screen, a chunk (DESIGN.md §9.4).
+export const links: { serial?: (port: SerialPortLike) => Link; ble?: (device: BluetoothDeviceLike) => Link } = {};
 
 export interface Config {
   api: string;
@@ -307,14 +312,14 @@ export class Session {
 
   // Web Serial: the port comes from a user gesture (navigator.serial.requestPort()).
   // Or a line the flasher already opened (§9.7.1).
-  useSerial(port: Parameters<typeof serialLink>[0] | Client) {
-    this.useLine('serial', 'request' in port ? port : new EnvelopeClient('serial', () => serialLink(port)));
+  useSerial(port: SerialPortLike | Client) {
+    this.useLine('serial', 'request' in port ? port : new EnvelopeClient('serial', () => links.serial!(port)));
   }
 
   // Web Bluetooth: the device too (navigator.bluetooth.requestDevice()).
   // Chrome keeps a device's id across visits: its token is kept by it.
-  useBle(device: Parameters<typeof bleLink>[0]) {
-    this.useLine(`ble:${device.id ?? device.name ?? ''}`, new EnvelopeClient('ble', () => bleLink(device)));
+  useBle(device: BluetoothDeviceLike) {
+    this.useLine(`ble:${device.id ?? device.name ?? ''}`, new EnvelopeClient('ble', () => links.ble!(device)));
   }
 
   private useLine(key: string, client: Client) {

@@ -272,6 +272,23 @@ for (const [way, button] of [
   });
 }
 
+// DESIGN.md §9.4: ui.js on a page that waits for a line (not a launcher)
+// loads its connection screen, and the links, from a chunk.
+test('a page with serial: true connects over USB, its screen from a chunk', async ({ page }) => {
+  await page.addInitScript(fakeDevices);
+  const chunks: string[] = [];
+  page.on('request', (r) => r.url().includes('/ui/') && chunks.push(new URL(r.url()).pathname.replace(/-.*/, '')));
+  await serve(page, 'https://pages.line.test', '<!doctype html><body><script>window.TESSER={api:"/api",ws:null,serial:true}</script><script src="ui.js"></script></body>');
+  // The demo's custom elements, which this origin hasn't.
+  await page.route('https://pages.line.test/ext/**', (r) => r.fulfill({ body: '', contentType: 'text/javascript' }));
+  await page.goto('https://pages.line.test/');
+  await page.getByRole('button', { name: 'Choose a port' }).click();
+  await expect(page.locator('.state')).toHaveText('USB');
+  await expect(page.locator('.brand')).toHaveText('TesserUI demo');
+  expect(chunks).toContain('/ui/connect');
+  expect(chunks).not.toContain('/launcher.js');
+});
+
 // DESIGN.md §9.7.2: a remembered port is a tab on the next visit, opened
 // only on a click (opening it resets the board), without the chooser when
 // it is the only port of its kind this page was given.
