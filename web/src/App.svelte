@@ -26,7 +26,8 @@
   import Toasts from './Toasts.svelte';
   import { connectScreen } from './widgets/registry.svelte';
   import SignIn from './SignIn.svelte';
-  import { storageGet, storageSet, type Session } from './store/session.svelte';
+  import type { Session } from './store/session.svelte';
+  import { storageGet, storageSet } from './store/storage';
   import ViewPage from './ViewPage.svelte';
 
   // full: the UI is the whole page (the node's own), not embedded. A

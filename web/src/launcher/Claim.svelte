@@ -6,7 +6,8 @@
   // everyone else to sign in. "Not now" is remembered per node.
   import { untrack } from 'svelte';
   import Icon from '../Icon.svelte';
-  import { storageGet, storageSet, type Session } from '../store/session.svelte';
+  import type { Session } from '../store/session.svelte';
+  import { storageGet, storageSet } from '../store/storage';
   import Secret from '../widgets/Secret.svelte';
   import { claim, claimable } from './claim';
 

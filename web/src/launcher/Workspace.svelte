@@ -13,7 +13,8 @@
   import Connect from '../Connect.svelte';
   import { resolve, type Options } from '../embed';
   import { parentPath, type Schema } from '../model/schema';
-  import { Session, storageGet, storageSet } from '../store/session.svelte';
+  import { Session } from '../store/session.svelte';
+  import { storageGet, storageSet } from '../store/storage';
   import Claim from './Claim.svelte';
   import { onePerDevice } from './devices';
   import Ways, { type Nearby } from './Ways.svelte';
