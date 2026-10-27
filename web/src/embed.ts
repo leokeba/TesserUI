@@ -3,6 +3,7 @@
 
 import { mount, unmount } from 'svelte';
 import App from './App.svelte';
+import Theme from './Theme.svelte';
 import { Session, type Config } from './store/session.svelte';
 
 export type Options = Partial<Config> & { api: string };
@@ -25,11 +26,14 @@ export function resolve(o: Options): Config {
 export function mountUi(target: HTMLElement, options: Options): Mounted {
   const session = new Session(resolve(options));
   session.start();
+  // The theme first: App's own rules come after it, and win a tie.
+  const theme = mount(Theme, { target });
   const app = mount(App, { target, props: { session, full: target === document.body } });
   return {
     session,
     destroy() {
       unmount(app);
+      unmount(theme);
       session.close();
     },
   };

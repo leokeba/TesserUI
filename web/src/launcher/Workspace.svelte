@@ -7,6 +7,7 @@
   // connections the user added or opened, not for every node the bridge
   // finds: they run beside every saved node's token (DESIGN.md §9.8).
   import App, { type Tab } from '../App.svelte';
+  import Theme from '../Theme.svelte';
   import { NUS_SERVICE } from '../client/lines';
   import { HttpClient } from '../client/http';
   import Connect from '../Connect.svelte';
@@ -347,6 +348,7 @@
   })();
 </script>
 
+<Theme />
 {#key shown}
   <App session={shown} full {around} add={() => activate(null)} close={active ? () => close(active!) : undefined}>
     {#snippet connect()}
