@@ -916,4 +916,84 @@ TEST(lcd_offline_peer) {
     CHECK(!g.demo.porch.on);  // written again once back
 }
 
+// ---- A hold button through a busy gateway --------------------------------
+
+namespace {
+
+// A node whose hold action's calls wait for answer(), as a gateway's
+// forwarded calls do; it refuses the first `refuse` releases for want of
+// room (pending_limit).
+struct Jog {
+    tesser::Api api;
+    Jog() { api.object("motor").action("jog", [](bool) {}).ui("widget", "hold"); }
+};
+
+struct Gatekeeper : tesser::LocalClient {
+    using LocalClient::LocalClient;
+    std::vector<std::string> sent;  // the bodies of /motor/jog's calls
+    std::vector<std::pair<std::string, ResponseHandler>> held;
+    int refuse = 0;
+    bool request(tesser::Op op, std::string_view path, std::string_view body, ResponseHandler done,
+                 const tesser::Query& query) override {
+        if (op != tesser::Op::Set || path != "/motor/jog") return LocalClient::request(op, path, body, std::move(done), query);
+        sent.emplace_back(body);
+        held.emplace_back(std::string(body), std::move(done));
+        return true;
+    }
+    void answer() {
+        auto calls = std::move(held);
+        held.clear();
+        for (auto& c : calls) {
+            JsonDocument d;
+            bool refused = c.first == "false" && refuse > 0 && refuse-- > 0;
+            if (refused) {
+                d["error"] = "busy";
+                d["reason"] = "pending_limit";
+            }
+            if (c.second) c.second(refused ? tesser::Status::Busy : tesser::Status::Ok, d.as<JsonVariantConst>());
+        }
+    }
+};
+
+}  // namespace
+
+TEST(lcd_hold_waits_and_releases) {
+    Jog node;
+    Gatekeeper client{node.api};
+    lcd::Screen screen;
+    tesserui::LvglUi ui{client, screen.display()};
+    std::function<void()> each = [&] {
+        node.api.poll(lv_tick_get());
+        ui.loop();
+    };
+    ui.begin("/");
+    screen.run(300, each);
+    ui.open("/motor");
+    screen.run(300, each);
+    lv_obj_t* l = screen.label("Jog");
+    CHECK(l != nullptr);
+    if (!l) return;
+    lv_area_t a;
+    lv_obj_get_coords(l, &a);
+    screen.press((a.x1 + a.x2) / 2, (a.y1 + a.y2) / 2);
+    // Unanswered, the true isn't repeated.
+    screen.run(1000, each);
+    CHECK_EQ(client.sent.size(), size_t(1));
+    // Answered, it is, every 300 ms.
+    client.answer();
+    screen.run(320, each);
+    CHECK_EQ(client.sent.size(), size_t(2));
+    client.refuse = 2;
+    screen.release();
+    screen.run(20, each);
+    // The release goes at once, a repeat in flight or not; refused, again.
+    CHECK_EQ(client.sent.back(), std::string("false"));
+    for (int i = 0; i < 3; i++) {
+        client.answer();
+        screen.run(250, each);
+    }
+    std::vector<std::string> expected = {"true", "true", "false", "false", "false"};
+    CHECK(client.sent == expected);
+}
+
 int main(int argc, char** argv) { return check::run(argc > 1 ? argv[1] : nullptr) ? 1 : 0; }

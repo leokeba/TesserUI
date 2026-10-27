@@ -253,6 +253,8 @@ struct LvglUi::Bound {
     std::vector<std::string> mapText;
     std::string dropdownText;      // a value that isn't among the options
     lv_timer_t* hold = nullptr;
+    lv_timer_t* release = nullptr;  // a hold's release, sent again
+    int releases = 0;
     Widget fieldWidget = Widget::Readout;  // an action's argument input
     Route target;  // links and menu entries: where they go
     size_t draft = 0;        // a draft's field: the draft's index + 1
@@ -288,8 +290,10 @@ LvglUi::~LvglUi() {
     if (!eventsPath_.empty() && eventsPath_ != subscribed_) client_.unsubscribe(eventsPath_);
     if (retryTimer_) lv_timer_delete(retryTimer_);
     if (pollTimer_) lv_timer_delete(pollTimer_);
+    if (menuTimer_) lv_timer_delete(menuTimer_);
     for (auto& b : bound_) {
         if (b->hold) lv_timer_delete(b->hold);
+        if (b->release) lv_timer_delete(b->release);
     }
     if (screen_) lv_obj_clean(screen_);
     if (toast_) lv_obj_delete(toast_);
@@ -796,6 +800,7 @@ void LvglUi::clearPage() {
 void LvglUi::clearContent() {
     for (auto& b : bound_) {
         if (b->hold) lv_timer_delete(b->hold);
+        if (b->release) lv_timer_delete(b->release);
     }
     if (content_) lv_obj_clean(content_);
     lv_group_remove_all_objs(group_);
@@ -2127,12 +2132,15 @@ void LvglUi::event(Bound& b, lv_event_t* e) {
     if (target == b.button) {
         if (item.widget == Widget::Hold) {
             if (code == LV_EVENT_PRESSED) {
+                if (b.release) lv_timer_delete(b.release);
+                b.release = nullptr;
+                b.releases = 0;
                 call(b, "true");
                 if (!b.hold) {
                     b.hold = lv_timer_create(
                         [](lv_timer_t* t) {
                             Bound* hb = static_cast<Bound*>(lv_timer_get_user_data(t));
-                            hb->ui->client_.set(hb->item->path, "true");
+                            if (!hb->ui->offline_) hb->ui->call(*hb, "true");
                         },
                         item.keepalive ? item.keepalive : 300, &b);
                 }
@@ -2399,22 +2407,41 @@ void LvglUi::ask(const std::string& question, std::function<void()> yes) {
 void LvglUi::call(Bound& b, const std::string& arg) {
     if (offlineRefused(b.item->label)) return;
     bool hold = b.item->widget == Widget::Hold;
+    bool release = hold && arg == "false";
+    // A hold's repeat waits for the last one: through a gateway, they would
+    // pile up past its maxPending, and the release be refused. The release
+    // goes at once.
+    if (b.pending > 0 && !release) return;
+    b.pending++;
     if (!hold) {
-        if (b.pending > 0) return;
-        b.pending++;
         lv_obj_add_state(b.button, LV_STATE_DISABLED);  // while the call is in flight
         lv_obj_set_hidden(b.result, true);
     }
     std::weak_ptr<int> alive = alive_;
     uint32_t gen = gen_;
     size_t index = b.index;
-    bool sent = client_.set(b.item->path, arg, [this, alive, gen, index, hold](Status s, JsonVariantConst body) {
+    bool sent = client_.set(b.item->path, arg, [this, alive, gen, index, hold, release](Status s, JsonVariantConst body) {
         if (alive.expired() || gen != gen_) return;
         Bound& bb = *bound_[index];
+        bb.pending--;
         if (!hold) {
-            bb.pending--;
             lv_obj_remove_state(bb.button, LV_STATE_DISABLED);
             conditions(bb);
+        }
+        const char* reason = body["reason"];
+        if (release && s == Status::Busy && reason && strcmp(reason, "pending_limit") == 0 && !bb.hold && bb.releases < 5) {
+            // A release the gateway had no room for is sent again, 200 ms
+            // later: the device would stop only at its timeout.
+            bb.releases++;
+            bb.release = lv_timer_create(
+                [](lv_timer_t* t) {
+                    Bound* rb = static_cast<Bound*>(lv_timer_get_user_data(t));
+                    lv_timer_delete(t);
+                    rb->release = nullptr;
+                    rb->ui->call(*rb, "false");
+                },
+                200, &bb);
+            return;
         }
         if (s != Status::Ok) {
             error(bb.item->label, s, body);
@@ -2433,10 +2460,8 @@ void LvglUi::call(Bound& b, const std::string& arg) {
         }
     });
     if (!sent) {
-        if (!hold) {
-            b.pending--;
-            lv_obj_remove_state(b.button, LV_STATE_DISABLED);
-        }
+        b.pending--;
+        if (!hold) lv_obj_remove_state(b.button, LV_STATE_DISABLED);
         toast(b.item->label + ": not sent", true);
     }
 }
@@ -3122,8 +3147,8 @@ void LvglUi::loadChoices(Bound& b) {
         const char* key = schema["key"];
         if (type && strcmp(type, "list") == 0 && key) {
             std::string k = key;
-            client_.get(from, [this, gen, done, k](Status st, JsonVariantConst list) {
-                if (gen != gen_ || st != Status::Ok) return;
+            client_.get(from, [this, alive, gen, done, k](Status st, JsonVariantConst list) {
+                if (alive.expired() || gen != gen_ || st != Status::Ok) return;
                 std::vector<model::Option> found;
                 for (JsonVariantConst e : list.as<JsonArrayConst>()) {
                     const char* v = e[k];
