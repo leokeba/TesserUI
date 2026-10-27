@@ -72,12 +72,18 @@ describe.each([1, 2])('reconnection, protocol %i (DESIGN §7.5)', (protocol) => 
     await settle();
     const answer = client.answer!;
     let down = false;
-    client.answer = (r) => (down ? { status: 'timeout', body: null } : answer(r));
+    let slow = 0;
+    client.answer = (r) => (down || (r.view === 'info' && slow-- > 0) ? { status: 'timeout', body: null } : answer(r));
     let reopened = 0;
     client.close = () => client.state('down');
     client.connect = () => void reopened++;
     vi.useFakeTimers();
     // One that keeps answering isn't.
+    s.watchNode();
+    await vi.advanceTimersByTimeAsync(4000);
+    expect([s.restarting, reopened]).toEqual([false, 0]);
+    // Nor one slow to answer one read: busy.
+    slow = 1;
     s.watchNode();
     await vi.advanceTimersByTimeAsync(4000);
     expect([s.restarting, reopened]).toEqual([false, 0]);

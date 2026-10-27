@@ -39,8 +39,10 @@
     void session.schemaVersion;
     return schema ? buildPage(schema, path, nodeRoot, t, accessAt(session.root, parentPath(path)), menu && path === home) : null;
   });
+  // One that failed to load shows nothing: the last page's subscriptions go.
   $effect(() => {
     if (page) session.showPage(page);
+    else if (failed) untrack(() => session.show([], [], path));
   });
   // Columns (DESIGN.md §6.2): as many 360 px ones as fit, at most the
   // page's; cards are placed from the model, so they move only when the

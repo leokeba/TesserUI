@@ -72,13 +72,16 @@ export async function download(client: Client, path: string, progress: (f: numbe
     }
     return !sums || b.crc32 === crc32(bytes);
   };
-  for (;;) {
+  // A device that gives nothing three chunks running is given up on.
+  for (let stuck = 0; ; ) {
     const r = await ask(client, { op: 'download', path, offset, filename, ...(sums && { crc32: true }) }, false, CHUNK_TIMEOUT_MS, intact);
     if (r.status !== 'ok') return r;
     const b = r.body as Chunk;
     head ??= b;
     parts.push(bytes);
     offset += bytes.length;
+    stuck = bytes.length ? 0 : stuck + 1;
+    if (!b.end && stuck === 3) return { status: 'internal', body: { error: 'internal', message: 'the device stopped sending the download' } };
     if (head.size) progress(offset / head.size);
     if (b.end) return { status: 'ok', body: new File(parts, head.filename ?? '', { type: head.contentType }) };
   }

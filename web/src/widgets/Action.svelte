@@ -5,7 +5,7 @@
   import { untrack } from 'svelte';
   import { useSession } from '../shared.svelte';
   import { isObject, parse } from '../client/json';
-  import { DEFERRED_TIMEOUT_MS } from '../client/types';
+  import { DEFERRED_TIMEOUT_MS, reason } from '../client/types';
   import Icon from '../Icon.svelte';
   import { formatValue } from '../model/format';
   import { fieldOf } from './registry.svelte';
@@ -71,14 +71,24 @@
 
   // While held, true is sent again every leaf.keepalive ms, for a device's
   // dead-man timer (a jog): a lost release still stops within its timeout.
+  // Not while one is in flight: through a gateway, they would pile up past
+  // its maxPending, and the release be refused. A release the gateway had
+  // no room for is sent again.
   let held = false;
+  let calling = false;
   let repeat: ReturnType<typeof setInterval> | undefined;
-  function hold(on: boolean) {
+  async function press() {
+    if (calling) return;
+    calling = true;
+    await store.call(leaf.path, true);
+    calling = false;
+  }
+  async function hold(on: boolean) {
     if (held === on || (on && disabled)) return;
     held = on;
     clearInterval(repeat);
-    store.call(leaf.path, on);
-    if (on) repeat = setInterval(() => store.call(leaf.path, true), leaf.keepalive ?? 300);
+    if (on) return void (press(), (repeat = setInterval(press, leaf.keepalive ?? 300)));
+    for (let i = 0; i < 5 && reason(await store.call(leaf.path, false)) === 'pending_limit' && !held; i++) await new Promise((done) => setTimeout(done, 200));
   }
   $effect(() => {
     if (leaf.widget !== 'hold') return;

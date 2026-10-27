@@ -110,6 +110,14 @@ describe('downloads in envelopes', () => {
     const refused = Object.assign(new Device(bytes(10)), { request: async () => ({ status: 'not_allowed', body: { error: 'not_allowed', message: 'not a file' } }) });
     expect(await download(refused, '/f', () => {})).toEqual({ status: 'not_allowed', body: { error: 'not_allowed', message: 'not a file' } });
   });
+
+  it('gives up on a device that stops sending the download', async () => {
+    // Chunks of nothing, never the last.
+    const d = new Device(bytes(10), 0);
+    const r = await download(d, '/f', () => {});
+    expect(r.status).toBe('internal');
+    expect(d.sent).toHaveLength(3);
+  });
 });
 
 describe('uploads in envelopes', () => {

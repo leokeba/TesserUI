@@ -26,11 +26,12 @@ export async function transfer(session: Session, path: string, body: File | null
     if (!body) x.responseType = 'blob';
     (body ? x.upload : x).onprogress = (e) => e.lengthComputable && progress(e.loaded / e.total);
     x.onload = async () => {
-      const text = body ? x.responseText : await (x.response as Blob).text();
       if (x.status < 300) {
         const name = /filename="?([^";]+)"?/.exec(x.getResponseHeader('Content-Disposition') ?? '')?.[1] ?? '';
-        return done({ status: 'ok', body: body ? text : new File([x.response as Blob], name, { type: (x.response as Blob).type }) });
+        return done({ status: 'ok', body: body ? x.responseText : new File([x.response as Blob], name, { type: (x.response as Blob).type }) });
       }
+      // An error's body, as text, only then.
+      const text = body ? x.responseText : await (x.response as Blob).text();
       let reply: unknown = null;
       try {
         reply = parse(text);

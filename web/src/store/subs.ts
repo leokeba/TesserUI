@@ -34,6 +34,11 @@ interface Active {
   // no memory for, or refused (its subscription limit), not before `next`,
   // waiting longer each time.
   failed: boolean;
+  // Whether the node may hold it: asked for, and not refused. One that
+  // timed out may have been taken, and TesserAPI adds a subscription for
+  // every sub, even at a path it has: it is given back before it is asked
+  // for again, and when it goes.
+  taken?: boolean;
   tries: number;
   next: number;
   // Polls: one read at a time, every `wait` ms, not before `due`.
@@ -82,8 +87,7 @@ export class Subscriptions {
       if (!nextKeys.has(k)) {
         this.active.delete(k);
         delete this.store.stale[a.spec.path];
-        if (a.mode === 'sub' && !a.failed && !this.asleep) {
-          this.client().request({ op: 'unsub', path: a.spec.path });
+        if (this.unsub(a)) {
           // That removed the events subscription too.
           if (a.spec.path === '/' && this.events === 'on') this.events = 'off';
         }
@@ -113,7 +117,8 @@ export class Subscriptions {
     if (this.asleep) return;
     let root = false;
     for (const a of this.active.values()) {
-      if (a.mode === 'sub' && fresh && !a.failed) this.client().request({ op: 'unsub', path: a.spec.path });
+      // Reconnected, the node holds none; fresh, subscribe() gives them back.
+      a.taken &&= fresh;
       if (a.mode === 'sub') this.subscribe(a);
       else this.poll(a);
       root ||= a.mode === 'sub' && a.spec.path === '/';
@@ -153,7 +158,7 @@ export class Subscriptions {
   // pause already while the page is hidden.
   sleep() {
     if (this.asleep) return;
-    for (const a of this.active.values()) if (a.mode === 'sub' && !a.failed) this.client().request({ op: 'unsub', path: a.spec.path });
+    for (const a of this.active.values()) this.unsub(a);
     if (this.events === 'on') this.client().request({ op: 'unsub', path: '/' });
     if (this.events === 'on' || this.events === 'failed') this.events = 'off';
     this.asleep = true;
@@ -230,14 +235,26 @@ export class Subscriptions {
     else if (now - a.ok > STALE_MS) this.store.stale[a.spec.path] = true;
   }
 
+  // Gives the subscription back if the node may hold it.
+  private unsub(a: Active) {
+    if (a.taken) this.client().request({ op: 'unsub', path: a.spec.path });
+    return a.taken && !(a.taken = false);
+  }
+
   private async subscribe(a: Active) {
     const { path, keys, depth } = a.spec;
+    // That of / takes the events' with it: asked for again after this.
+    if (this.unsub(a) && path === '/' && this.events === 'on') this.events = 'failed';
+    a.taken = true;
     let r = await this.client().request({ op: 'sub', path, keys, depth, interval: 100 });
+    a.taken = r.status === 'ok' || r.status === 'timeout';
     if (!this.isCurrent(a)) return;
     // Asleep meanwhile: woken, it subscribes again.
-    if (this.asleep) return void (r.status === 'ok' && this.client().request({ op: 'unsub', path }));
+    if (this.asleep) return void this.unsub(a);
     if (r.status === 'too_large') {
+      a.taken = true;
       r = await this.client().request({ op: 'sub', path, keys, depth, interval: 100, snapshot: false });
+      a.taken = r.status === 'ok' || r.status === 'timeout';
       if (r.status === 'ok') {
         a.failed = false;
         a.mode = 'sub';

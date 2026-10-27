@@ -62,12 +62,19 @@ export function storageGet(key: string): string | null {
   }
 }
 
-export function storageSet(key: string, value: string | null) {
+// The schema cache's entries (DESIGN.md §7.2): at the quota, they give way
+// to anything else, a token above all.
+const CACHE = 'tesserui:schema:';
+
+export function storageSet(key: string, value: string | null, again = !key.startsWith(CACHE)) {
   try {
     if (value === null) localStorage.removeItem(key);
     else localStorage.setItem(key, value);
   } catch {
     // private mode, full: the cache is only a cache
+    if (!again) return;
+    for (const k of Object.keys(localStorage)) if (k.startsWith(CACHE)) localStorage.removeItem(k);
+    storageSet(key, value, false);
   }
 }
 
@@ -132,6 +139,10 @@ export class Session {
   private client!: Client;
   private stubRefresh = new Map<string, ReturnType<typeof setTimeout>>();
   private remotePaths: string[] = [];
+  // Schema reads in flight, which callers share; and the peers whose root
+  // was asked for, by advertised hash: each merge shows the page again.
+  private fetching = new Map<string, Promise<boolean>>();
+  private asked = new Set<string>();
 
   // A launcher talks to many nodes from one origin: each has its token.
   private tokenKey: string;
@@ -236,6 +247,7 @@ export class Session {
   }
 
   private forget() {
+    this.asked.clear();
     this.loaded = false;
     this.views = {};
     for (const k of Object.keys(this.root)) delete (this.root as unknown as Record<string, unknown>)[k];
@@ -251,7 +263,7 @@ export class Session {
     // A node without enableWebSocket(), or one that wasn't reachable yet
     // (restarting): fall back to HTTP, and switch back once a WebSocket opens.
     ws.onState((s) => {
-      if (s === 'down' && ws.opened === 0 && this.client === ws) {
+      if (s === 'down' && ws.opened === 0 && this.client === ws && !this.closed) {
         // Switch first: closing emits 'down' again.
         this.use(this.httpClient());
         ws.close();
@@ -263,7 +275,7 @@ export class Session {
 
   private probe(delay: number) {
     setTimeout(() => {
-      if (this.client?.kind !== 'http') return;
+      if (this.client?.kind !== 'http' || this.closed) return;
       let p: WebSocket;
       try {
         p = new WebSocket(this.wsUrl());
@@ -273,7 +285,7 @@ export class Session {
       p.onopen = () => {
         p.close();
         const http = this.client;
-        if (http?.kind !== 'http') return;
+        if (http?.kind !== 'http' || this.closed) return;
         this.start();
         http.close();
       };
@@ -281,7 +293,11 @@ export class Session {
     }, delay);
   }
 
+  // Closed for good: the fallback's probe doesn't open it again.
+  private closed = false;
   close() {
+    this.closed = true;
+    for (const t of this.stubRefresh.values()) clearTimeout(t);
     this.via?.relay.delete(this);
     globalThis.document?.removeEventListener('visibilitychange', this.visibility);
     clearTimeout(this.hiding);
@@ -385,16 +401,17 @@ export class Session {
     client.connect();
   }
 
-  // After an action: a node that stops answering within a few seconds is
-  // taken to be restarting, until it answers again. A WebSocket to a node
+  // After an action: a node that stops answering within a few seconds (a
+  // read and its second try: one slow read is a busy node) is taken to be
+  // restarting, until it answers again. A WebSocket to a node
   // that restarted may never hear it close: it is opened again, and its
   // reconnection reads the node again (resume()), as HTTP's does. A serial
   // or Bluetooth line stays open: it is asked until the node answers.
   async watchNode() {
     const at = ++this.watching;
-    const answers = async () => {
+    const answers = async (again = true): Promise<boolean> => {
       const r = this.state === 'open' ? await this.client.request({ op: 'get', path: '/', view: 'info' }, 2500) : null;
-      return !!r && r.status !== 'timeout' && r.status !== 'disconnected';
+      return (!!r && r.status !== 'timeout' && r.status !== 'disconnected') || (again && r?.status === 'timeout' && answers(false));
     };
     const sleep = (ms: number) => new Promise((done) => setTimeout(done, ms));
     for (const wait of [1000, 2500]) {
@@ -738,14 +755,24 @@ export class Session {
   // response. Entries are the node's own, by its address and identity (a
   // peer's: its gateway's, at its path): another node can't plant one by
   // answering with the same hash.
-  async fetchSchema(path: string, depth: number, quiet = false): Promise<boolean> {
+  fetchSchema(path: string, depth: number, quiet = false): Promise<boolean> {
+    const k = path + ' ' + depth;
+    let p = this.fetching.get(k);
+    if (!p) this.fetching.set(k, (p = this.read(path, depth, quiet).finally(() => this.fetching.delete(k))));
+    return p;
+  }
+
+  private async read(path: string, depth: number, quiet: boolean): Promise<boolean> {
     const remote = remoteOf(this.root, path);
     const hash = remote ? remote.stub.schema : this.rootHash;
-    const cacheKey = hash && 'tesserui:schema:' + JSON.stringify([this.lineKey || this.apiUrl(), this.identity, remote?.path ?? '', hash, path.slice(remote?.path.length ?? 0) || '/', depth]);
+    // One entry per node, path and depth, the hash it was read for before
+    // the schema: a new hash replaces it.
+    const cacheKey = hash && CACHE + JSON.stringify([this.lineKey || this.apiUrl(), JSON.parse(this.identity || '[]')[1], remote?.path ?? '', path.slice(remote?.path.length ?? 0) || '/', depth]);
+    const head = hash + '\n';
     const cached = cacheKey && storageGet(cacheKey);
-    if (cached) {
+    if (cached?.startsWith(head)) {
       try {
-        this.merge(path, parse(cached) as Schema);
+        this.merge(path, parse(cached.slice(head.length)) as Schema);
         return true;
       } catch {
         // a broken entry: read again
@@ -767,7 +794,7 @@ export class Session {
       return false;
     }
     this.merge(path, r.body as Schema);
-    if (cacheKey) storageSet(cacheKey, stringify(r.body));
+    if (cacheKey) storageSet(cacheKey, head + stringify(r.body));
     return true;
   }
 
@@ -805,7 +832,8 @@ export class Session {
         if (i.history) store.charts.set(i.path, i.history);
         if (i.lines) store.lines.set(i.path, i.lines);
       } else if (i.kind === 'link' && i.remote && i.online && !this.schemaAt(i.path)?.tree) {
-        peers.push(i.path);
+        const k = i.path + ' ' + this.schemaAt(i.path)?.schema;
+        if (!this.asked.has(k)) this.asked.add(k), peers.push(i.path);
       }
     });
     const all = [...specs];
@@ -823,7 +851,8 @@ export class Session {
       all.push({ path: parentPath(remote.path), keys: name, depth: 1 });
     }
     this.subs.want(all);
-    // Peers' labels are in their own root schemas: fetch them, one by one.
+    // Peers' labels are in their own root schemas: fetch them, one by one,
+    // each once per advertised hash.
     (async () => {
       for (const p of peers) await this.fetchSchema(p, 0);
     })();

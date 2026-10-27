@@ -602,11 +602,18 @@ test('widgets few pages use come from a chunk, loaded on demand', async ({ page 
   expect(chunks.slice(2)).toEqual([chunk('files')]);
 });
 
-test('a widget whose chunk fails to load shows as a readout', async ({ page }) => {
+// DESIGN.md §9.4: the chunk may be gone after an update: the page reloads
+// once, and then it's a readout.
+test('a widget whose chunk fails to load shows as a readout, after one reload', async ({ page }) => {
   await page.route('**/ui/*.js', (r) => r.abort());
+  let loads = 0;
+  page.on('load', () => loads++);
   await page.goto('http://localhost:8091/#/lamp');
+  await expect.poll(() => loads).toBe(2);
   await expect(row(page, 'Power').locator('output')).toHaveText('36 W');
   await expect(row(page, 'Power').getByRole('meter')).toHaveCount(0);
+  await page.waitForTimeout(1000);
+  expect(loads).toBe(2);
 });
 
 // DESIGN.md §6.3: an entry's sub-entries fold and unfold with its chevron,

@@ -47,7 +47,20 @@ function lazy(load: () => Promise<{ default: unknown }>, def: Omit<Def, 'compone
         loading = true;
         load().then(
           (m) => (chunk.component = c(m.default)),
-          (e) => (console.error(e), (chunk.component = c(Readout))),
+          (e) => {
+            console.error(e);
+            chunk.component = c(Readout);
+            // The node was updated since the page loaded, and its chunks
+            // have other names: the page reloads if the node answers, once
+            // a minute at most.
+            try {
+              if (Date.now() - (sessionStorage.tesseruiReload ?? 0) > 60000) {
+                fetch(location.href, { cache: 'no-store' }).then((r) => r.ok && ((sessionStorage.tesseruiReload = Date.now()), location.reload()));
+              }
+            } catch {
+              // no session storage: no reload
+            }
+          },
         );
       }
       return chunk.component ?? none;

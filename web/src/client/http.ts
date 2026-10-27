@@ -20,6 +20,10 @@ export const fileUrl = (api: string, path: string, filename?: string) =>
 // A stream sends at least a newline every 15 s.
 const SILENCE_MS = 40000;
 const BACKOFF_MS = [1000, 2000, 5000, 10000, 30000];
+// A request that times out takes the connection down only when nothing has
+// answered for this long: one slow reply is a busy node (a gateway waiting
+// on a peer), and coming back re-reads everything.
+const DOWN_MS = 15000;
 
 export class HttpClient implements Client {
   readonly kind = 'http';
@@ -48,8 +52,10 @@ export class HttpClient implements Client {
 
   private retry: ReturnType<typeof setTimeout> | undefined;
   private closed = false;
+  private answered = 0;
 
   private setState(s: ConnState) {
+    if (s === 'open') this.answered = Date.now();
     // While the node doesn't answer, keep probing so that callers waiting for
     // 'open' (the first schema load) are woken up; not once closed.
     if (s === 'down' && this.retry === undefined && !this.closed) {
@@ -126,8 +132,8 @@ export class HttpClient implements Client {
     } catch {
       // A newer sub or unsub took over: that one answers for the stream.
       if (r.op === 'sub' && this.stream !== ctl) return { status: 'ok', body: null };
-      this.setState('down');
       const timedOut = ctl.signal.aborted;
+      if (!timedOut || Date.now() - this.answered > DOWN_MS) this.setState('down');
       return { status: timedOut ? 'timeout' : 'disconnected', body: null };
     } finally {
       clearTimeout(timer);

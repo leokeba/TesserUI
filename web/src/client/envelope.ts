@@ -13,6 +13,10 @@ export interface Link {
 }
 
 const BACKOFF_MS = [500, 1000, 2000, 5000];
+// A WebSocket silent for two of these is asked for the node's view=info,
+// and dropped after two more: one to a node that lost power may never
+// close (DESIGN.md §7.5).
+const QUIET_MS = 10000;
 
 interface Pending {
   resolve: (r: Reply) => void;
@@ -29,6 +33,8 @@ export class EnvelopeClient implements Client {
   private attempt = 0;
   private retry: ReturnType<typeof setTimeout> | undefined;
   private closed = false;
+  // Checks of the WebSocket since its last message.
+  private silent = 0;
   state: ConnState = 'down';
   // How many times the link opened, so callers can tell a first failure.
   opened = 0;
@@ -59,22 +65,31 @@ export class EnvelopeClient implements Client {
     this.link = link;
     link.open(
       (text) => this.receive(text),
-      () => {
-        if (this.link !== link) return;
-        this.link = null;
-        this.failAll();
-        this.setState('down');
-        if (!this.closed) this.retry = setTimeout(() => this.connect(), BACKOFF_MS[Math.min(this.attempt++, BACKOFF_MS.length - 1)]);
-      },
+      () => this.lost(link),
     ).then(
       () => {
         if (this.link !== link) return;
         this.attempt = 0;
         this.opened++;
+        this.silent = 0;
         this.setState('open');
+        if (this.kind !== 'ws') return;
+        const quiet = setInterval(() => {
+          if (this.link !== link) clearInterval(quiet);
+          else if (++this.silent > 3) this.lost(link), link.close();
+          else if (this.silent > 1) this.request({ op: 'get', path: '/', view: 'info' });
+        }, QUIET_MS);
       },
       () => {},
     );
+  }
+
+  private lost(link: Link) {
+    if (this.link !== link) return;
+    this.link = null;
+    this.failAll();
+    this.setState('down');
+    if (!this.closed) this.retry = setTimeout(() => this.connect(), BACKOFF_MS[Math.min(this.attempt++, BACKOFF_MS.length - 1)]);
   }
 
   close() {
@@ -109,6 +124,7 @@ export class EnvelopeClient implements Client {
   }
 
   private receive(text: string) {
+    this.silent = 0;
     let msg: unknown;
     try {
       msg = parse(text);
