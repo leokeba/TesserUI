@@ -4,7 +4,9 @@
 // §9.4), and enforces the budgets (§2): 65 KB for ui.js, what a page loads
 // first, 71 KB with the widgets' chunk, what a node's flash holds (70 until
 // the file browser, 2026-10-25); the file browser's and the editor's chunks
-// have budgets of their own, 6 and 4 KB. `--check` only measures.
+// have budgets of their own, 6 and 4 KB. `--check` only measures. A node
+// without file browsers or the editor leaves their chunks out of its flash
+// (TESSERUI_NO_FILES_UI, TESSERUI_NO_EDITOR: OPTIONAL below).
 
 import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { gzipAsync } from '@gfx/zopfli';
@@ -12,6 +14,10 @@ import { gzipAsync } from '@gfx/zopfli';
 const BUDGET = 65 * 1024;
 const TOTAL = 71 * 1024;
 const OWN = { files: 6 * 1024, editor: 4 * 1024 };
+// The chunks a firmware may leave out, and the macro (or Kconfig option,
+// CONFIG_ before it) that does: WebUi then answers for them with a module
+// that fails, which the page takes for a widget it can't draw (DESIGN.md §9.4).
+const OPTIONAL = { files: 'TESSERUI_NO_FILES_UI', editor: 'TESSERUI_NO_EDITOR' };
 const web = new URL('../', import.meta.url);
 const dist = new URL('dist/', web);
 const header = new URL('../src/tesserui/bundle/tesserui_bundle.h', web);
@@ -68,6 +74,12 @@ const array = (name, data) => {
   }
   return `alignas(4) inline constexpr uint8_t ${name}[] = {\n${bytes.join('\n')}\n};\n`;
 };
+const optional = (c) => OPTIONAL[c.name.replace(/-.*/, '')];
+const guard = (c, text, otherwise = '') => {
+  const m = optional(c);
+  if (!m) return text;
+  return `#if !defined(${m}) && !defined(CONFIG_${m})\n${text}${otherwise && `#else\n${otherwise}`}#endif\n`;
+};
 writeFileSync(
   header,
   `#pragma once
@@ -79,16 +91,15 @@ namespace bundle {
 inline constexpr char kVersion[] = "${version}";
 inline constexpr char kEtag[] = "\\"${etag}\\"";
 inline constexpr size_t kUiJsGzSize = ${gz.length};
-${array('kUiJsGz', gz)}${chunks.map((c, i) => array(`kChunk${i}`, c.gz)).join('')}
-// The chunks ui.js loads from ui/, gzipped.
+${array('kUiJsGz', gz)}${chunks.map((c, i) => guard(c, array(`kChunk${i}`, c.gz))).join('')}
+// The chunks ui.js loads from ui/, gzipped; one left out has no data.
 struct Chunk {
     const char* name;
     const uint8_t* data;
     size_t size;
 };
 inline constexpr Chunk kChunks[] = {
-${chunks.map((c, i) => `    {"${c.name}", kChunk${i}, sizeof(kChunk${i})},`).join('\n')}
-};
+${chunks.map((c, i) => guard(c, `    {"${c.name}", kChunk${i}, sizeof(kChunk${i})},\n`, `    {"${c.name}", nullptr, 0},\n`)).join('')}};
 inline constexpr size_t kChunkCount = ${chunks.length};
 }  // namespace bundle
 }  // namespace tesserui

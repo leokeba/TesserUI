@@ -36,8 +36,9 @@ const none = c(() => {});
 
 // A widget used on few pages, from the chunk beside ui.js (DESIGN.md §9.4),
 // loaded when a page first reads its component. Rows read it
-// reactively, so they draw it as it arrives, or as a readout if it can't.
-function lazy(load: () => Promise<{ default: unknown }>, def: Omit<Def, 'component'> = {}): Def {
+// reactively, so they draw it as it arrives, or as `failed` (a readout) if
+// it can't.
+function lazy(load: () => Promise<{ default: unknown }>, def: Omit<Def, 'component'> = {}, failed: Widget = c(Readout)): Def {
   const chunk = $state<{ component?: Widget }>({});
   let loading = false;
   return {
@@ -49,12 +50,13 @@ function lazy(load: () => Promise<{ default: unknown }>, def: Omit<Def, 'compone
           (m) => (chunk.component = c(m.default)),
           (e) => {
             console.error(e);
-            chunk.component = c(Readout);
+            chunk.component = failed;
             // The node was updated since the page loaded, and its chunks
             // have other names: the page reloads if the node answers, once
-            // a minute at most.
+            // a minute at most. A chunk the firmware left out loads, and
+            // throws something else.
             try {
-              if (Date.now() - (sessionStorage.tesseruiReload ?? 0) > 60000) {
+              if (e instanceof TypeError && Date.now() - (sessionStorage.tesseruiReload ?? 0) > 60000) {
                 fetch(location.href, { cache: 'no-store' }).then((r) => r.ok && ((sessionStorage.tesseruiReload = Date.now()), location.reload()));
               }
             } catch {
@@ -105,8 +107,8 @@ export const WIDGETS: Record<string, Def> = {
 
 // The editor (§4.2), a chunk of its own, for the widgets that open it: null
 // until it arrives. Loaded from here so the chunks never import one another
-// dynamically.
-const edit = lazy(() => import('./editor/Editor.svelte'));
+// dynamically. One that can't load closes again.
+const edit = lazy(() => import('./editor/Editor.svelte'), {}, c((_: unknown, p: { close(): void }) => queueMicrotask(p.close)));
 export const editor = () => (edit.component === none ? null : (edit.component as unknown as Component<Record<string, unknown>>));
 
 // Custom elements (§9.8): the element's host and its scripts' loader.

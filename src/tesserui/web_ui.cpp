@@ -152,9 +152,17 @@ esp_err_t WebUi::onChunk(httpd_req_t* req) {
     for (const bundle::Chunk& c : bundle::kChunks) {
         if (strlen(c.name) != len || strncmp(c.name, name, len) != 0) continue;
         httpd_resp_set_type(req, "application/javascript");
+        httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+        if (!c.data) {
+            // Left out of this firmware (TESSERUI_NO_FILES_UI...): a module
+            // that fails, which the page takes for a widget it can't draw,
+            // where a 404 would have it reload. Not cached: an update may
+            // bring it under the same name.
+            httpd_resp_set_hdr(req, "Cache-Control", "no-cache");
+            return httpd_resp_sendstr(req, "throw Error(\"not in this firmware\")");
+        }
         httpd_resp_set_hdr(req, "Content-Encoding", "gzip");
         httpd_resp_set_hdr(req, "Cache-Control", "public, max-age=31536000, immutable");
-        httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
         return sendChunks(req, reinterpret_cast<const char*>(c.data), c.size);
     }
     return httpd_resp_send_404(req);

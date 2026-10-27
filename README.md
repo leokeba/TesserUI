@@ -30,7 +30,7 @@ void setup() {
 
     http.enableWebSocket("/ws");
     http.begin(80, "/api");
-    web.serve(http.handle());   // GET /, /ui.js and /ui/*: the whole UI, about 66 KB of flash
+    web.serve(http.handle());   // GET /, /ui.js and /ui/*: the whole UI, about 80 KB of flash
     api.startTask();
 }
 ```
@@ -89,7 +89,7 @@ The full vocabulary is in [DESIGN.md §5](docs/DESIGN.md#5-hints-tier-1).
 
 | Mode | Who stores the bundle | How |
 |---|---|---|
-| Self-hosted | The node (~66 KB of flash) | `web.serve(http.handle())` |
+| Self-hosted | The node (~80 KB of flash; `TESSERUI_NO_FILES_UI`, `TESSERUI_NO_EDITOR` leave out 7 KB) | `web.serve(http.handle())` |
 | UI host | One ESP with spare flash, also a NowTP gateway | `nowApi.mountPeers(api.object("peers"))`: every nearby node gets a page at `#/peers/<name>`, forwarded over ESP-NOW |
 | Stub | The launcher's site, a CDN or the UI host | `web.integrity("sha384-…").serveStub(http.handle(), "https://leokeba.github.io/TesserUI/v0.1.20/ui.js")`: a 300-byte page, pinned to a version |
 | Launcher | GitHub Pages | Pick a node: USB (Web Serial), Bluetooth (Web Bluetooth), or its address on the network; or install firmware |

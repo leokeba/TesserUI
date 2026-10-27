@@ -616,6 +616,23 @@ test('a widget whose chunk fails to load shows as a readout, after one reload', 
   expect(loads).toBe(2);
 });
 
+// DESIGN.md §9.4: a firmware built without the file browser and the editor
+// answers for their chunks with a module that throws: no reload, a readout.
+test("a chunk the firmware left out shows as a readout, and doesn't reload", async ({ page }) => {
+  await page.route(/\/ui\/(files|editor)-[\w-]+\.js$/, (r) => r.fulfill({ contentType: 'application/javascript', body: 'throw Error("not in this firmware")' }));
+  let loads = 0;
+  page.on('load', () => loads++);
+  await page.goto('http://localhost:8091/#/files');
+  await expect(page.locator('main output').first()).toBeVisible();
+  await expect(page.locator('.files')).toHaveCount(0);
+  // Edit closes again.
+  await page.goto('http://localhost:8091/#/system');
+  await page.getByRole('button', { name: 'Edit' }).click();
+  await expect(page.getByRole('button', { name: 'Edit' })).toBeVisible();
+  await page.waitForTimeout(1000);
+  expect(loads).toBe(1);
+});
+
 // DESIGN.md §6.3: an entry's sub-entries fold and unfold with its chevron,
 // on a phone without closing the drawer; ui.group gathers them.
 test('menu: sub-entries unfold in place, grouped', async ({ page }) => {

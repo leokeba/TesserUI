@@ -1,0 +1,19 @@
+menu "TesserUI"
+
+    config TESSERUI_NO_FILES_UI
+        bool "Leave the file browser out of the web bundle"
+        default n
+        help
+            The file browser's chunk (ui.widget "files") isn't served from
+            flash: about 4.7 KB less. A page that draws one shows a readout.
+            Same as defining TESSERUI_NO_FILES_UI.
+
+    config TESSERUI_NO_EDITOR
+        bool "Leave the text editor out of the web bundle"
+        default n
+        help
+            The editor's chunk isn't served from flash: about 2.5 KB less.
+            Edit buttons then close again at once. Same as defining
+            TESSERUI_NO_EDITOR.
+
+endmenu
