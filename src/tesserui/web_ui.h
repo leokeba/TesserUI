@@ -110,8 +110,9 @@ public:
     // Unregisters the handlers.
     void end();
 
-    // The page served at the base path, once serving.
-    const std::string& page() const { return page_; }
+    // The page served at the base path, once serving. Rendered on each
+    // request, from the options: nothing of it is kept.
+    std::string page() const { return renderPage(pageOptions_); }
 
 private:
     struct Asset {
@@ -138,7 +139,6 @@ private:
     PageOptions pageOptions_;
     std::vector<Asset> assets_;
     size_t registered_ = 0;  // assets registered
-    std::string page_;
 };
 
 }  // namespace tesserui

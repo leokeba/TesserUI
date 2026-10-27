@@ -3,6 +3,8 @@
 // The HTML page WebUi serves at "/" (docs/DESIGN.md sections 9.4 and 9.6).
 // Platform-independent, so it is host-tested.
 
+#include <stddef.h>
+
 #include <string>
 #include <utility>
 #include <vector>
@@ -36,5 +38,11 @@ struct PageOptions {
 //   <!doctype html><html><head>...<script>window.TESSER={api:"/api",ws:"/ws",minVersion:"0.1.0"}</script>
 //   </head><body><script src="/ui.js"></script></body></html>
 std::string renderPage(const PageOptions& options);
+
+// The same page in pieces, in order, without building it: each piece is a
+// constant or a run of the options' own text (WebUi sends them as they
+// come, keeping nothing on the heap).
+using PageSink = void (*)(void* context, const char* data, size_t size);
+void renderPage(const PageOptions& options, PageSink sink, void* context);
 
 }  // namespace tesserui

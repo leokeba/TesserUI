@@ -400,4 +400,31 @@ TEST(page_options) {
     CHECK(page.find("<script src=\"/ui/ui.js\">") != std::string::npos);
 }
 
+// WebUi sends the page as renderPage() hands it over: pieces of constants
+// and of the options' text, never empty, which make the same page.
+TEST(page_in_pieces) {
+    tesserui::PageOptions o;
+    o.title = "A <b>";
+    o.script = "http://h/ui.js?a=1&b=\"2\"";
+    o.theme = {{"accent", "#d97706"}};
+    o.fallback = true;
+    struct Pieces {
+        std::string page;
+        size_t count = 0;
+        bool empty = false;
+    } pieces;
+    tesserui::renderPage(
+        o,
+        [](void* context, const char* data, size_t size) {
+            auto* p = static_cast<Pieces*>(context);
+            p->page.append(data, size);
+            p->count++;
+            p->empty = p->empty || size == 0;
+        },
+        &pieces);
+    CHECK_EQ(pieces.page, tesserui::renderPage(o));
+    CHECK(pieces.count > 10);
+    CHECK(!pieces.empty);
+}
+
 int main(int argc, char** argv) { return check::run(argc > 1 ? argv[1] : nullptr) ? 1 : 0; }

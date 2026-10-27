@@ -12,126 +12,163 @@ const char kIcon[] =
     "d='M1 1h14v14H1zm4 4v6h6V5zl-4-4m14 0-4 4m0 6 4 4m-14 0 4-4' fill='none' stroke='%232f5bd3' "
     "stroke-width='2'/></svg>";
 
+// The escapes of a context: the replacement of each character that needs
+// one, or null.
+using Escape = const char* (*)(char c);
+
 // A JavaScript string literal's content; "<" is escaped so the text can't
 // close the script element.
-void appendJs(std::string& out, const char* s) {
-    for (; *s; s++) {
-        switch (*s) {
-            case '"': out += "\\\""; break;
-            case '\\': out += "\\\\"; break;
-            case '<': out += "\\u003c"; break;
-            case '\n': out += "\\n"; break;
-            default: out += *s;
-        }
+const char* jsEscape(char c) {
+    switch (c) {
+        case '"': return "\\\"";
+        case '\\': return "\\\\";
+        case '<': return "\\u003c";
+        case '\n': return "\\n";
+        default: return nullptr;
     }
 }
 
 // Text or an attribute value in HTML.
-void appendHtml(std::string& out, const char* s) {
-    for (; *s; s++) {
-        switch (*s) {
-            case '&': out += "&amp;"; break;
-            case '<': out += "&lt;"; break;
-            case '>': out += "&gt;"; break;
-            case '"': out += "&quot;"; break;
-            default: out += *s;
+const char* htmlEscape(char c) {
+    switch (c) {
+        case '&': return "&amp;";
+        case '<': return "&lt;";
+        case '>': return "&gt;";
+        case '"': return "&quot;";
+        default: return nullptr;
+    }
+}
+
+// HTML escaped as an attribute value: the stub's fallback is HTML kept in
+// a data attribute.
+const char* htmlTwiceEscape(char c) {
+    switch (c) {
+        case '&': return "&amp;amp;";
+        case '<': return "&amp;lt;";
+        case '>': return "&amp;gt;";
+        case '"': return "&amp;quot;";
+        default: return nullptr;
+    }
+}
+
+struct Out {
+    PageSink sink;
+    void* context;
+
+    void raw(const char* s, size_t n) {
+        if (n) sink(context, s, n);
+    }
+    void raw(const char* s) { raw(s, strlen(s)); }
+    // `n` characters of `s`, the runs between escapes as they are.
+    void escaped(const char* s, size_t n, Escape escape) {
+        size_t run = 0;
+        for (size_t i = 0; i < n; i++) {
+            const char* e = escape(s[i]);
+            if (!e) continue;
+            raw(s + run, i - run);
+            raw(e);
+            run = i + 1;
         }
+        raw(s + run, n - run);
     }
-}
-
-void appendString(std::string& out, const char* s) {
-    out += '"';
-    appendJs(out, s ? s : "");
-    out += '"';
-}
-
-void appendObject(std::string& out, const char* key, const Pairs& pairs) {
-    if (pairs.empty()) return;
-    out += ',';
-    out += key;
-    out += ":{";
-    for (size_t i = 0; i < pairs.size(); i++) {
-        if (i) out += ',';
-        appendString(out, pairs[i].first);
-        out += ':';
-        appendString(out, pairs[i].second);
+    void js(const char* s, size_t n) { escaped(s, n, jsEscape); }
+    void js(const char* s) { js(s, strlen(s)); }
+    void html(const char* s) { escaped(s, strlen(s), htmlEscape); }
+    void string(const char* s) {
+        raw("\"");
+        js(s ? s : "");
+        raw("\"");
     }
-    out += '}';
-}
+    void object(const char* key, const Pairs& pairs) {
+        if (pairs.empty()) return;
+        raw(",");
+        raw(key);
+        raw(":{");
+        for (size_t i = 0; i < pairs.size(); i++) {
+            if (i) raw(",");
+            string(pairs[i].first);
+            raw(":");
+            string(pairs[i].second);
+        }
+        raw("}");
+    }
+};
 
 }  // namespace
 
-std::string renderPage(const PageOptions& o) {
+void renderPage(const PageOptions& o, PageSink sink, void* context) {
+    Out out{sink, context};
     // The API base without its trailing slashes, as HttpServer uses it.
-    std::string api = o.api ? o.api : "";
-    while (!api.empty() && api.back() == '/') api.pop_back();
+    const char* api = o.api ? o.api : "";
+    size_t apiLen = strlen(api);
+    while (apiLen > 0 && api[apiLen - 1] == '/') apiLen--;
     const char* script = o.script ? o.script : "/ui.js";
 
-    std::string out;
-    out.reserve(520 + strlen(script) * 3);
-    out += "<!doctype html><html><head><meta charset=\"utf-8\">"
-           "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
-           "<title>";
-    appendHtml(out, o.title ? o.title : "TesserUI");
-    out += "</title><link rel=\"icon\" href=\"";
+    out.raw("<!doctype html><html><head><meta charset=\"utf-8\">"
+            "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
+            "<title>");
+    out.html(o.title ? o.title : "TesserUI");
+    out.raw("</title><link rel=\"icon\" href=\"");
     if (o.icon) {
-        appendHtml(out, o.icon);
+        out.html(o.icon);
     } else {
-        out += kIcon;  // as it is: no '"' or '&' in it
+        out.raw(kIcon);  // as it is: no '"' or '&' in it
     }
-    out += "\"><script>window.TESSER={api:\"";
-    appendJs(out, api.c_str());
-    out += "\",ws:";
+    out.raw("\"><script>window.TESSER={api:\"");
+    out.js(api, apiLen);
+    out.raw("\",ws:");
     if (o.ws) {
-        out += '"';
-        appendJs(out, o.ws);
-        out += '"';
+        out.string(o.ws);
     } else {
-        out += "null";
+        out.raw("null");
     }
     if (o.minVersion) {
-        out += ",minVersion:";
-        appendString(out, o.minVersion);
+        out.raw(",minVersion:");
+        out.string(o.minVersion);
     }
     if (o.title) {
-        out += ",title:";
-        appendString(out, o.title);
+        out.raw(",title:");
+        out.string(o.title);
     }
     if (!o.scripts.empty()) {
-        out += ",scripts:[";
+        out.raw(",scripts:[");
         for (size_t i = 0; i < o.scripts.size(); i++) {
-            if (i) out += ',';
-            appendString(out, o.scripts[i]);
+            if (i) out.raw(",");
+            out.string(o.scripts[i]);
         }
-        out += ']';
+        out.raw("]");
     }
-    appendObject(out, "theme", o.theme);
-    appendObject(out, "strings", o.strings);
-    out += "}</script></head><body><script src=\"";
-    appendHtml(out, script);
-    out += '"';
+    out.object("theme", o.theme);
+    out.object("strings", o.strings);
+    out.raw("}</script></head><body><script src=\"");
+    out.html(script);
+    out.raw("\"");
     if (o.integrity) {
-        out += " integrity=\"";
-        appendHtml(out, o.integrity);
-        out += "\" crossorigin=\"anonymous\"";
+        out.raw(" integrity=\"");
+        out.html(o.integrity);
+        out.raw("\" crossorigin=\"anonymous\"");
     }
     if (o.fallback) {
-        // The fallback is HTML kept in a data attribute, so it is escaped
-        // twice: once as HTML, once as an attribute value.
-        std::string link = api + "/";
-        std::string html = "The interface could not be loaded from ";
-        appendHtml(html, script);
-        html += ": no internet access? Raw API: <a href=\"";
-        appendHtml(html, link.c_str());
-        html += "\">";
-        appendHtml(html, link.c_str());
-        html += "</a>";
-        out += " data-fallback=\"";
-        appendHtml(out, html.c_str());
-        out += "\" onerror=\"document.body.innerHTML=this.dataset.fallback\"";
+        // HTML escaped once more as the attribute's value: its markup
+        // written so, its text twice.
+        out.raw(" data-fallback=\"The interface could not be loaded from ");
+        out.escaped(script, strlen(script), htmlTwiceEscape);
+        out.raw(": no internet access? Raw API: &lt;a href=&quot;");
+        out.escaped(api, apiLen, htmlTwiceEscape);
+        out.raw("/&quot;&gt;");
+        out.escaped(api, apiLen, htmlTwiceEscape);
+        out.raw("/&lt;/a&gt;\" onerror=\"document.body.innerHTML=this.dataset.fallback\"");
     }
-    out += "></script></body></html>";
-    return out;
+    out.raw("></script></body></html>");
+}
+
+std::string renderPage(const PageOptions& o) {
+    std::string page;
+    page.reserve(520 + (o.script ? strlen(o.script) * 3 : 0));
+    renderPage(
+        o, [](void* context, const char* data, size_t size) { static_cast<std::string*>(context)->append(data, size); },
+        &page);
+    return page;
 }
 
 }  // namespace tesserui

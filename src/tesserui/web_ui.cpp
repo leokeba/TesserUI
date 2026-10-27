@@ -41,11 +41,10 @@ esp_err_t WebUi::serve(httpd_handle_t server, const char* apiPath, const char* w
     if (pageUri_.back() != '/') pageUri_ += '/';
     scriptUri_ = pageUri_ + "ui.js";
     chunkUri_ = pageUri_ + "ui/*";
-    PageOptions o = pageOptions_;
-    o.api = apiPath;
-    o.ws = wsPath;
-    o.script = scriptUri_.c_str();
-    page_ = renderPage(o);
+    pageOptions_.api = apiPath;
+    pageOptions_.ws = wsPath;
+    pageOptions_.script = scriptUri_.c_str();
+    pageOptions_.fallback = false;
     return start(server, true);
 }
 
@@ -54,12 +53,10 @@ esp_err_t WebUi::serveStub(httpd_handle_t server, const char* scriptUrl, const c
     if (!scriptUrl) return ESP_ERR_INVALID_ARG;
     pageUri_ = base_ && *base_ ? base_ : "/";
     if (pageUri_.back() != '/') pageUri_ += '/';
-    PageOptions o = pageOptions_;
-    o.api = apiPath;
-    o.ws = wsPath;
-    o.script = scriptUrl;
-    o.fallback = true;
-    page_ = renderPage(o);
+    pageOptions_.api = apiPath;
+    pageOptions_.ws = wsPath;
+    pageOptions_.script = scriptUrl;
+    pageOptions_.fallback = true;
     return start(server, false);
 }
 
@@ -122,10 +119,39 @@ void WebUi::end() {
 }
 
 esp_err_t WebUi::onPage(httpd_req_t* req) {
+    // Rendered as it is sent, through a buffer on the stack: the page isn't
+    // kept between requests.
+    struct Buffer {
+        explicit Buffer(httpd_req_t* r) : req(r) {}
+        httpd_req_t* req;
+        esp_err_t err = ESP_OK;
+        size_t size = 0;
+        char data[256];
+        void flush() {
+            if (size && err == ESP_OK) err = httpd_resp_send_chunk(req, data, static_cast<ssize_t>(size));
+            size = 0;
+        }
+    } buffer(req);
     auto* self = static_cast<WebUi*>(req->user_ctx);
     httpd_resp_set_type(req, "text/html; charset=utf-8");
     httpd_resp_set_hdr(req, "Cache-Control", "no-cache");
-    return httpd_resp_send(req, self->page_.data(), static_cast<ssize_t>(self->page_.size()));
+    renderPage(
+        self->pageOptions_,
+        [](void* context, const char* data, size_t size) {
+            auto* b = static_cast<Buffer*>(context);
+            while (size > 0) {
+                if (b->size == sizeof(b->data)) b->flush();
+                size_t n = size < sizeof(b->data) - b->size ? size : sizeof(b->data) - b->size;
+                memcpy(b->data + b->size, data, n);
+                b->size += n;
+                data += n;
+                size -= n;
+            }
+        },
+        &buffer);
+    buffer.flush();
+    if (buffer.err != ESP_OK) return buffer.err;
+    return httpd_resp_send_chunk(req, nullptr, 0);
 }
 
 esp_err_t WebUi::onScript(httpd_req_t* req) {
