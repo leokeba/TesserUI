@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { defineConfig } from 'vite';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import { classicEntry, staticWidgets } from './scripts/chunks.mjs';
+import { minifyCss } from './scripts/css.mjs';
 
 const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8'));
 
@@ -18,6 +19,7 @@ const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 
 export default defineConfig(({ mode }) => ({
   plugins: [
     svelte({ emitCss: false }),
+    mode !== 'development' && minifyCss(),
     mode === 'production' && classicEntry(),
     (mode === 'lib' || mode === 'launcher') && staticWidgets(),
   ],

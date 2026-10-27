@@ -32,6 +32,9 @@ importers:
       esptool-js:
         specifier: ^0.7.0
         version: 0.7.0
+      lightningcss:
+        specifier: 1.33.0
+        version: 1.33.0
       svelte:
         specifier: ^5.57.2
         version: 5.57.2
