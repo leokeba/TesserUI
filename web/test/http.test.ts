@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { HttpClient } from '../src/client/http';
 import type { Notification } from '../src/client/types';
-import { EVENTS } from '../src/store/subs';
+import { EVENTS, TOASTS } from '../src/store/subs';
 
 // A streamed response whose chunks are pushed by the test.
 function streamed() {
@@ -44,8 +44,8 @@ describe('HTTP: the events stream', () => {
     const c = new HttpClient('http://node.local/api', () => 'tok');
     const got: Notification[] = [];
     c.onNotify((n) => got.push(n));
-    expect(await c.request(EVENTS)).toEqual({ status: 'ok', body: null });
-    expect(calls[0].url).toBe('http://node.local/api/?sub&interval=60000&changes=false&snapshot=false');
+    expect(await c.request(TOASTS)).toEqual({ status: 'ok', body: null });
+    expect(calls[0].url).toBe('http://node.local/api/?sub&interval=60000&events=toast&changes=false&snapshot=false');
     expect(calls[0].init.method).toBe('GET');
     expect((calls[0].init.headers as Record<string, string>).Authorization).toBe('Bearer tok');
     // Lines split across chunks, keepalives, 64-bit values.

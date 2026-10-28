@@ -119,6 +119,20 @@ test('keep-alives outlast dead-man timers, and stop with the control', async ({ 
 });
 
 test('events log on their page, and toast wherever the user is', async ({ page }) => {
+  // The events subscription asks for those with ui.toast only (TesserAPI
+  // v0.3.3): the log's lines and Pressed don't reach a page without them.
+  const subs: unknown[] = [];
+  const heard: string[] = [];
+  page.on('websocket', (ws) => {
+    ws.on('framesent', (f) => {
+      const m = typeof f.payload === 'string' ? JSON.parse(f.payload) : null;
+      if (m?.op === 'sub' && m.path === '/') subs.push(m.events);
+    });
+    ws.on('framereceived', (f) => {
+      const m = typeof f.payload === 'string' ? JSON.parse(f.payload) : null;
+      if (m?.op === 'event') heard.push(m.path);
+    });
+  });
   await open(page, '#/sensors');
   await expect(row(page, 'Pressed').locator('li').first()).toBeVisible({ timeout: 7000 });
   await expect(page.locator('.toast')).toHaveCount(0);
@@ -132,6 +146,11 @@ test('events log on their page, and toast wherever the user is', async ({ page }
   await expect(page).toHaveURL(/#\/motor$/);
   await toast.getByRole('button', { name: 'Dismiss' }).click();
   await expect(toast).toHaveCount(0);
+  await page.locator('nav.side').getByRole('link', { name: 'Lamp' }).click();
+  heard.length = 0;
+  await page.waitForTimeout(6500);
+  expect(subs).toContain('toast');
+  expect(heard).toEqual([]);
 });
 
 test('a log shows its lines oldest first, coloured by level, until cleared', async ({ page }) => {

@@ -26,6 +26,10 @@ export const STALE_MS = 5000;
 // without changes, or a streamed GET over HTTP. Firmware that predates `changes` ignores it: the interval
 // keeps the tree's changes to one notification a minute there.
 export const EVENTS: Request = { op: 'sub', path: '/', changes: false, snapshot: false, interval: 60000 };
+// Only those with ui.toast, from TesserAPI v0.3.3 on (37db87d): not every
+// log line, while the page's own subscriptions bring its events. A node
+// before it refuses the hint (bad_request) and gets EVENTS.
+export const TOASTS: Request = { ...EVENTS, events: 'toast' };
 
 interface Active {
   spec: SubSpec;
@@ -59,6 +63,10 @@ export class Subscriptions {
   // again from `eventsAt`; 'shared': another connection to the device holds
   // it (share()).
   private events: 'off' | 'on' | 'failed' | 'none' | 'shared' = 'off';
+  // Whether the node takes TOASTS, until it refuses it; and whether the
+  // events subscription in place is TOASTS.
+  private hints = true;
+  private toasts = false;
   private eventsAt = 0;
   // A page hidden for a while gives its subscriptions back (DESIGN.md §7.3):
   // what it wants is kept, and subscribed again when it wakes.
@@ -107,6 +115,7 @@ export class Subscriptions {
     }
     // After the page's: they come first within the node's budget.
     if (this.events === 'off' && !this.asleep) this.subscribeEvents();
+    else this.widen();
     this.schedule();
   }
 
@@ -151,6 +160,7 @@ export class Subscriptions {
   forget() {
     this.active.clear();
     this.events = 'off';
+    this.hints = true;
     this.store.stale = {};
   }
 
@@ -276,6 +286,7 @@ export class Subscriptions {
       a.failed = r.status === 'busy';
       a.next = Date.now() + RETRY_MS * 2 ** Math.min(a.tries++, 5);
       this.schedule();
+      this.widen();
     } else {
       this.mark(a, false);
       a.failed = true;
@@ -289,10 +300,35 @@ export class Subscriptions {
     }
   }
 
+  // Whether the events subscription may keep to toasts: every path the page
+  // watches has a subscription of its own, which brings its events. Over
+  // HTTP (whose values are polled), or with a path polled, it brings them.
+  private toastsOnly() {
+    return this.hints && this.client().subscribes && ![...this.active.values()].some((a) => a.mode === 'poll');
+  }
+
+  // A path polled since the events subscription was TOASTS: it is taken
+  // again for every event. Unsubscribing / takes the page's there too.
+  private widen() {
+    if (this.events !== 'on' || !this.toasts || this.toastsOnly() || this.asleep) return;
+    this.client().request({ op: 'unsub', path: '/' });
+    for (const a of this.active.values()) {
+      if (a.spec.path !== '/' || a.mode !== 'sub') continue;
+      a.taken = false;
+      this.subscribe(a);
+    }
+    this.subscribeEvents();
+  }
+
   // Over HTTP, a stream (HttpClient): the page's values are still polled.
   private async subscribeEvents() {
     this.events = 'on';
-    const r = await this.client().request(EVENTS);
+    this.toasts = this.toastsOnly();
+    let r = await this.client().request(this.toasts ? TOASTS : EVENTS);
+    if (r.status === 'bad_request' && this.toasts && this.events === 'on') {
+      this.hints = this.toasts = false;
+      r = await this.client().request(EVENTS);
+    }
     if (r.status === 'ok') this.store.noEvents = false;
     if (this.events !== 'on' || r.status === 'ok') return;
     // Not to be had (a transport that can't deliver them; firmware without

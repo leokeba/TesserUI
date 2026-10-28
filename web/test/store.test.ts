@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Store } from '../src/store/store.svelte';
-import { EVENTS, Subscriptions, commonAncestor } from '../src/store/subs';
+import { EVENTS, TOASTS, Subscriptions, commonAncestor } from '../src/store/subs';
 import type { Schema } from '../src/model/schema';
 import { FakeClient, tick } from './fake';
 
@@ -174,6 +174,9 @@ describe('subscriptions (DESIGN §7.3)', () => {
     await tick();
     expect(client.sent.filter((r) => r.op === 'sub' && r !== EVENTS).map((r) => r.path)).toEqual(['/a', '/b', '/c']);
     expect(client.sent.find((r) => r.op === 'get')?.path).toBe('/d');
+    // /d is polled: the events subscription brings its events, all of them.
+    expect(client.sent).toContain(EVENTS);
+    expect(client.sent).not.toContain(TOASTS);
     client.sent = [];
     subs.want([{ path: '/a' }, { path: '/b', keys: 'x' }]);
     await tick();
@@ -186,7 +189,7 @@ describe('subscriptions (DESIGN §7.3)', () => {
     const subs = new Subscriptions(() => client, store);
     subs.want([{ path: '/', keys: 'a', depth: 1 }, { path: '/', keys: 'b', depth: 3 }]);
     await tick();
-    expect(client.sent).toEqual([{ op: 'sub', path: '/', keys: 'a,b', depth: 3, interval: 100 }, EVENTS]);
+    expect(client.sent).toEqual([{ op: 'sub', path: '/', keys: 'a,b', depth: 3, interval: 100 }, TOASTS]);
     subs.stop();
   });
   it('reads in pieces when the snapshot is too large', async () => {
@@ -205,7 +208,7 @@ describe('subscriptions (DESIGN §7.3)', () => {
     const { client, store } = setup();
     client.answer = (r) => ({ status: 'ok', body: r.op === 'unsub' ? 1 : null });
     const subs = new Subscriptions(() => client, store);
-    const sent = () => client.sent.splice(0).map((r) => (r === EVENTS ? 'events' : `${r.op} ${r.path}`));
+    const sent = () => client.sent.splice(0).map((r) => (r === TOASTS ? 'events' : `${r.op} ${r.path}`));
     subs.want([{ path: '/a' }, { path: '/b' }, { path: '/c' }]);
     await tick();
     expect(sent()).toEqual(['sub /a', 'sub /b', 'sub /c', 'events']);
@@ -227,18 +230,58 @@ describe('subscriptions (DESIGN §7.3)', () => {
     vi.useFakeTimers();
     const { client, store } = setup();
     let refuse = true;
-    client.answer = (r) => (r === EVENTS && refuse ? { status: 'busy', body: { error: 'busy', message: 'too many subscriptions' } } : { status: 'ok', body: null });
+    client.answer = (r) => (r === TOASTS && refuse ? { status: 'busy', body: { error: 'busy', message: 'too many subscriptions' } } : { status: 'ok', body: null });
     const subs = new Subscriptions(() => client, store);
     subs.want([{ path: '/a' }]);
     await vi.advanceTimersByTimeAsync(0);
     client.sent = [];
     await vi.advanceTimersByTimeAsync(55000);
-    expect(client.sent.filter((r) => r === EVENTS)).toHaveLength(0);
+    expect(client.sent.filter((r) => r === TOASTS)).toHaveLength(0);
     refuse = false;
     await vi.advanceTimersByTimeAsync(5000);
-    expect(client.sent.filter((r) => r === EVENTS)).toHaveLength(1);
+    expect(client.sent.filter((r) => r === TOASTS)).toHaveLength(1);
     await vi.advanceTimersByTimeAsync(60000);
-    expect(client.sent.filter((r) => r === EVENTS)).toHaveLength(1);
+    expect(client.sent.filter((r) => r === TOASTS)).toHaveLength(1);
+    subs.stop();
+  });
+  it('asks a node that refuses the toast hint for every event, until the node changes', async () => {
+    vi.useFakeTimers();
+    const { client, store } = setup();
+    // A node before TesserAPI v0.3.3: "events must be a boolean".
+    client.answer = (r) => (r === TOASTS ? { status: 'bad_request', body: { error: 'bad_request', message: 'events must be a boolean' } } : { status: 'ok', body: null });
+    const subs = new Subscriptions(() => client, store);
+    subs.want([{ path: '/a' }]);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(client.sent.filter((r) => r === TOASTS || r === EVENTS)).toEqual([TOASTS, EVENTS]);
+    expect(store.errors).toEqual({});
+    // Asked again (a reconnection): the hint isn't.
+    client.sent = [];
+    subs.renew(true);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(client.sent.filter((r) => r === TOASTS || r === EVENTS)).toEqual([EVENTS]);
+    // Another node: the hint again.
+    client.sent = [];
+    subs.forget();
+    subs.want([{ path: '/a' }]);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(client.sent.filter((r) => r === TOASTS || r === EVENTS)).toEqual([TOASTS, EVENTS]);
+    subs.stop();
+  });
+  it("takes every event again once a path is polled, and the page's subscription at / with it", async () => {
+    const { client, store } = setup();
+    let refuse = false;
+    client.answer = (r) => (r.op === 'sub' && r.path === '/b' && refuse ? { status: 'busy', body: { error: 'busy', reason: 'subscription_limit' } } : { status: 'ok', body: {} });
+    const subs = new Subscriptions(() => client, store);
+    subs.want([{ path: '/', depth: 1 }]);
+    await tick();
+    expect(client.sent.filter((r) => r === TOASTS || r === EVENTS)).toEqual([TOASTS]);
+    client.sent = [];
+    refuse = true;
+    subs.want([{ path: '/', depth: 1 }, { path: '/b' }]);
+    await tick();
+    await tick();
+    const sent = client.sent.map((r) => (r === EVENTS ? 'events' : r === TOASTS ? 'toasts' : `${r.op} ${r.path}`));
+    expect(sent).toEqual(['sub /b', 'unsub /', 'sub /', 'events']);
     subs.stop();
   });
   it('finds common ancestors', () => {
@@ -369,7 +412,7 @@ describe('session: events (DESIGN §7.8)', () => {
     s.subs.want([{ path: '/lamp' }]);
     s.store.visible.add('/lamp');
     await tick();
-    expect(client.sent.some((r) => r === EVENTS)).toBe(true);
+    expect(client.sent.some((r) => r === TOASTS)).toBe(true);
 
     client.push({ op: 'event', path: '/lamp/pressed', body: 1 });
     client.push({ op: 'event', path: '/lamp/blinked', body: 2 });
@@ -415,7 +458,7 @@ describe('session: events (DESIGN §7.8)', () => {
     expect(b.s.store.toasts.list[0]).toMatchObject({ kind: 'ok', text: 'Workshop' });
     // Its holder gone, b takes its own again.
     b.s.eventsFrom(null);
-    expect(b.client.sent.at(-1)).toBe(EVENTS);
+    expect(b.client.sent.at(-1)).toBe(TOASTS);
     a.client.push({ op: 'event', path: '/sys/net/wifi/joined', body: 'Shed' });
     await tick();
     expect(b.s.store.toasts.list.length).toBe(1);
@@ -427,7 +470,7 @@ describe('session: events (DESIGN §7.8)', () => {
     const { client, store } = setup();
     let refuse = true;
     client.answer = (r) =>
-      r === EVENTS && refuse ? { status: 'busy', body: { error: 'busy', reason: 'subscription_limit', message: 'too many streams' } } : { status: 'ok', body: null };
+      r === TOASTS && refuse ? { status: 'busy', body: { error: 'busy', reason: 'subscription_limit', message: 'too many streams' } } : { status: 'ok', body: null };
     const subs = new Subscriptions(() => client, store);
     subs.want([{ path: '/a' }]);
     await tick();
@@ -470,13 +513,13 @@ describe('a node short of memory', () => {
     vi.useFakeTimers();
     const { client, store } = setup();
     let memory = false;
-    client.answer = (r) => (r.op === 'sub' && r !== EVENTS && !memory ? short : { status: 'ok', body: r.op === 'get' ? { [r.keys!]: 1 } : null });
+    client.answer = (r) => (r.op === 'sub' && r !== TOASTS && !memory ? short : { status: 'ok', body: r.op === 'get' ? { [r.keys!]: 1 } : null });
     const subs = new Subscriptions(() => client, store);
     subs.want([{ path: '/peers/r1', keys: 'a,b', depth: 1 }]);
     await vi.advanceTimersByTimeAsync(0);
     expect(store.get('/peers/r1/a')).toBe(1);
     expect(store.get('/peers/r1/b')).toBe(1);
-    const sent = () => client.sent.splice(0).filter((r) => r !== EVENTS).map((r) => `${r.op} ${r.keys ?? ''}`);
+    const sent = () => client.sent.splice(0).filter((r) => r !== TOASTS).map((r) => `${r.op} ${r.keys ?? ''}`);
     expect(sent()).toEqual(['sub a,b', 'get a', 'get b']);
     // Not polled each second; tried again after 5 s, then 10 s.
     await vi.advanceTimersByTimeAsync(4000);
@@ -568,7 +611,7 @@ describe('a node under load (DESIGN §7.3)', () => {
     const { client, store } = setup();
     let full = true;
     client.answer = (r) =>
-      r.op === 'sub' && r !== EVENTS && full ? { status: 'busy', body: { error: 'busy', message: 'too many subscriptions' } } : { status: 'ok', body: r.op === 'get' ? {} : null };
+      r.op === 'sub' && r !== TOASTS && full ? { status: 'busy', body: { error: 'busy', message: 'too many subscriptions' } } : { status: 'ok', body: r.op === 'get' ? {} : null };
     const subs = new Subscriptions(() => client, store);
     subs.want([{ path: '/a' }]);
     await vi.advanceTimersByTimeAsync(3000);
@@ -577,7 +620,7 @@ describe('a node under load (DESIGN §7.3)', () => {
     await vi.advanceTimersByTimeAsync(5000);
     client.sent = [];
     await vi.advanceTimersByTimeAsync(5000);
-    expect(client.sent.filter((r) => r.op !== 'sub' || r === EVENTS)).toEqual([]);
+    expect(client.sent.filter((r) => r.op !== 'sub' || r === TOASTS)).toEqual([]);
     subs.stop();
   });
 });
@@ -623,7 +666,7 @@ describe('error reasons (TesserAPI §10.1.2)', () => {
     vi.useFakeTimers();
     const { client, store } = setup();
     let body: object = { reason: 'pending_limit' };
-    client.answer = (r) => (r.op === 'sub' && r !== EVENTS ? busy(body) : { status: 'ok', body: {} });
+    client.answer = (r) => (r.op === 'sub' && r !== TOASTS ? busy(body) : { status: 'ok', body: {} });
     const subs = new Subscriptions(() => client, store);
     // Passing: tried again as a subscription, not polled.
     subs.want([{ path: '/a' }]);

@@ -13,7 +13,8 @@ export interface Request {
   view?: 'value' | 'schema' | 'hash' | 'info';
   remotes?: boolean;
   interval?: number;
-  events?: boolean;
+  // false: no events; a ui hint ("toast"): only the events that have it.
+  events?: boolean | string;
   changes?: boolean;
   snapshot?: boolean;
   token?: string;
