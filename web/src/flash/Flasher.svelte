@@ -115,7 +115,10 @@
     try {
       const bytes = await data!;
       doing = erase ? t('Erasing the flash, then writing…') : t('Writing…');
-      await write(board!, bytes, erase, (p) => (progress = p));
+      await write(board!, bytes, erase, (p) => {
+        progress = p;
+        if (p >= 1) doing = t('Checking what was written…');
+      });
       await restart(board!);
     } catch (e) {
       error = t('Installing failed: {error}', { error: failure(e) });

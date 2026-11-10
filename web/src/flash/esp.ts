@@ -3,13 +3,16 @@
 
 import { ESPLoader, Transport } from 'esptool-js';
 import { targetOf } from './firmware';
+import { md5 } from './md5';
 
-// The stub flasher's rate after the ROM's 115200: esptool's own default.
-// Changing it reopens the port, which resets devkits with a USB-to-UART
-// bridge (DTR and RTS move): esptool-js then goes on at 115200, about 100 s
-// for a 1.8 MB image. A chip's own USB keeps the faster rate. Talking to the
-// ROM at 460800 from the start fails on an ESP32 devkit.
-const BAUD = 460800;
+// The stub flasher's rate after the ROM's 115200: idf.py's 460800 on a
+// chip's own USB (Espressif's vendor id), where the rate means nothing, and
+// 230400 through a USB-to-UART bridge: a CH340 drops bytes at 460800 (the
+// cheap yellow display's, reading with esptool). Changing the rate reopens
+// the port, which resets many devkits with a bridge (DTR and RTS move):
+// esptool-js then goes on at 115200, about 100 s for a 1.8 MB image. Talking
+// to the ROM faster from the start fails on an ESP32 devkit.
+const baudFor = (port: SerialPort) => (port.getInfo().usbVendorId === 0x303a ? 460800 : 230400);
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -27,7 +30,7 @@ export interface Board {
 export async function connect(port: SerialPort, log: (line: string) => void): Promise<Board> {
   const transport = new Transport(port);
   const terminal = { clean() {}, writeLine: log, write: log };
-  const loader = new ESPLoader({ transport, baudrate: BAUD, terminal });
+  const loader = new ESPLoader({ transport, baudrate: baudFor(port), terminal });
   try {
     const description = await loader.main();
     return { loader, transport, description, target: targetOf(loader.chip.CHIP_NAME), mac: await loader.chip.readMac(loader) };
@@ -46,6 +49,9 @@ export async function write(board: Board, image: Uint8Array, eraseAll: boolean, 
     flashSize: 'keep',
     eraseAll,
     compress: true,
+    // esptool's check: the flash's MD5 over the written range against the
+    // image's, which fails the install when a byte was lost on the way
+    calculateMD5Hash: md5,
     reportProgress: (_, written, total) => progress(written / total),
   });
 }
