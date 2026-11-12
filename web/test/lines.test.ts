@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { EnvelopeClient } from '../src/client/envelope';
 import { bleLink, serialLink } from '../src/client/lines';
+import { openLine } from '../src/flash/line';
 
 const enc = new TextEncoder();
 const dec = new TextDecoder();
@@ -8,19 +9,33 @@ const flush = () => new Promise((r) => setTimeout(r, 0));
 
 // A serial port whose device output the test pushes, recording what the
 // page writes.
-function fakePort() {
+function fakePort(answer = false) {
   let device!: ReadableStreamDefaultController<Uint8Array>;
   const written: string[] = [];
+  const signals: { dataTerminalReady?: boolean; requestToSend?: boolean }[] = [];
   const port = {
     readable: null as ReadableStream<Uint8Array> | null,
     writable: null as WritableStream<Uint8Array> | null,
     async open() {
       port.readable = new ReadableStream({ start: (c) => void (device = c) });
-      port.writable = new WritableStream({ write: (chunk) => void written.push(dec.decode(chunk)) });
+      port.writable = new WritableStream({
+        write(chunk) {
+          const text = dec.decode(chunk);
+          written.push(text);
+          if (answer && text.startsWith('{"id":')) {
+            const request = JSON.parse(text);
+            device.enqueue(enc.encode(JSON.stringify({ id: request.id, status: 'ok', body: 'hash' }) + '\n'));
+          }
+        },
+      });
+    },
+    async setSignals(value: { dataTerminalReady?: boolean; requestToSend?: boolean }) {
+      signals.push(value);
     },
     async close() {},
+    getInfo: () => ({ usbVendorId: 0x10c4, usbProductId: 0xea60 }),
   };
-  return { port, written, push: (text: string) => device.enqueue(enc.encode(text)) };
+  return { port, written, signals, push: (text: string) => device.enqueue(enc.encode(text)) };
 }
 
 async function connected() {
@@ -33,8 +48,21 @@ async function connected() {
 }
 
 describe('envelopes over a line (DESIGN §9.2)', () => {
+  it('releases reset after opening the post-flash UART line', async () => {
+    const f = fakePort(true);
+    const client = await openLine(f.port as unknown as SerialPort, 5000);
+    expect(client?.opened).toBe(1);
+    expect(f.signals).toEqual([
+      { dataTerminalReady: false, requestToSend: false },
+      { dataTerminalReady: false, requestToSend: true },
+      { dataTerminalReady: false, requestToSend: false },
+    ]);
+    client?.close();
+  });
+
   it('takes whole lines, after reset noise, in pieces', async () => {
-    const { client, push } = await connected();
+    const { client, push, signals } = await connected();
+    expect(signals).toEqual([{ dataTerminalReady: false, requestToSend: false }]);
     const reply = client.request({ op: 'get', path: '/a' });
     push('\xff\x00\r\n{"id":1,"sta');
     push('tus":"ok","body":18446744073709551615}\r\n');

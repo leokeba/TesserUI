@@ -27,6 +27,7 @@ function lineReader(onMessage: (text: string) => void) {
 
 export interface SerialPortLike {
   open(o: { baudRate: number }): Promise<void>;
+  setSignals(o: { dataTerminalReady?: boolean; requestToSend?: boolean }): Promise<void>;
   close(): Promise<void>;
   readable: ReadableStream<Uint8Array> | null;
   writable: WritableStream<Uint8Array> | null;
@@ -40,6 +41,7 @@ export function serialLink(port: SerialPortLike, baudRate = 115200): Link {
     async open(onMessage, onClose) {
       try {
         await port.open({ baudRate });
+        await port.setSignals({ dataTerminalReady: false, requestToSend: false });
       } catch (e) {
         onClose();
         throw e;

@@ -1,6 +1,5 @@
 // The serial line to the firmware just installed: the launcher's own
-// envelope client, opened once and handed to the launcher's session, so the
-// board isn't reset by a second opening of its port.
+// envelope client, opened once and handed to the launcher's session.
 
 import { EnvelopeClient } from '../client/envelope';
 import { serialLink } from '../client/lines';
@@ -12,8 +11,20 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 // or null after `waitMs`.
 export async function openLine(port: SerialPort, waitMs = 60000): Promise<EnvelopeClient | null> {
   const client = new EnvelopeClient('serial', () => serialLink(port));
-  client.connect();
   const end = Date.now() + waitMs;
+  client.connect();
+  while (client.opened === 0 && Date.now() < end) await sleep(50);
+  if (client.opened === 0) {
+    client.close();
+    return null;
+  }
+  if (port.getInfo().usbVendorId !== 0x303a) {
+    // Closing esptool's handle can leave a USB-to-UART board held in reset.
+    await port.setSignals({ dataTerminalReady: false, requestToSend: true });
+    await sleep(100);
+    await port.setSignals({ dataTerminalReady: false, requestToSend: false });
+    await sleep(1000);
+  }
   while (Date.now() < end) {
     const r = await client.request({ op: 'get', path: '/', view: 'hash' }, 1500);
     if (r.status !== 'timeout' && r.status !== 'disconnected') return client;

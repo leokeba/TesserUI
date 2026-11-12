@@ -68,6 +68,7 @@ export async function restart(board: Board) {
     await sleep(100);
     // the chip's own USB may leave with the reset
     await t.setRTS(false).catch(() => {});
+    await sleep(100);
   } finally {
     await release(board.transport);
   }
