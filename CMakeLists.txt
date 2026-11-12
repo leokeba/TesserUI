@@ -51,7 +51,7 @@ project(tesserui CXX)
 option(TESSERUI_BUILD_TESTS "Build host-side tests and the fixture generator" ON)
 option(TESSERUI_SANITIZE "Build tests with ASan/UBSan" ON)
 option(TESSERUI_LVGL "Build the LVGL renderer's tests and simulator (fetches LVGL)" ON)
-set(TESSERAPI_DIR "" CACHE PATH "TesserAPI source tree (default: ../TesserAPI if present, else fetched from GitHub)")
+set(TESSERAPI_DIR "" CACHE PATH "TesserAPI source tree (default: ../TesserAPI if present, else fetched from GitHub at the commit deps.lock pins)")
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
@@ -63,16 +63,19 @@ if(NOT TARGET tesser_core)
         get_filename_component(TESSERAPI_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../TesserAPI" ABSOLUTE)
         set(TESSERAPI_DIR "${TESSERAPI_DIR}" CACHE PATH "" FORCE)
     endif()
+    include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/deps.cmake")
     if(TESSERAPI_DIR)
         message(STATUS "TesserAPI: ${TESSERAPI_DIR}")
+        tesserui_check_sibling(TesserAPI "${TESSERAPI_DIR}")
         add_subdirectory("${TESSERAPI_DIR}" "${CMAKE_BINARY_DIR}/tesserapi")
     else()
-        message(STATUS "TesserAPI: fetching https://github.com/leokeba/TesserAPI.git")
+        # The commit deps.lock pins, as CI uses.
+        tesserui_pinned(TesserAPI TESSERAPI_SHA)
+        message(STATUS "TesserAPI: fetching https://github.com/leokeba/TesserAPI.git at ${TESSERAPI_SHA}")
         include(FetchContent)
         FetchContent_Declare(tesserapi
             GIT_REPOSITORY https://github.com/leokeba/TesserAPI.git
-            GIT_TAG main
-            GIT_SHALLOW ON)
+            GIT_TAG ${TESSERAPI_SHA})
         FetchContent_MakeAvailable(tesserapi)
     endif()
 endif()

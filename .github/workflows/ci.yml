@@ -4,14 +4,25 @@ on:
   push:
   pull_request:
 
+# The siblings (TesserAPI, NowTP, TesserKIT's release workflow) are the
+# commits deps.lock pins, never their main: scripts/pin.sh moves them.
 jobs:
   host-tests:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+      - name: library.json and the workflows pin what deps.lock pins
+        run: scripts/pin.sh --check
+      - name: The pinned siblings (deps.lock)
+        id: deps
+        run: |
+          while IFS=@ read -r repo sha; do
+            echo "$(basename "$repo")=$sha" >> "$GITHUB_OUTPUT"
+          done < <(grep -v '^#' deps.lock | grep @)
       - uses: actions/checkout@v5
         with:
           repository: leokeba/TesserAPI
+          ref: ${{ steps.deps.outputs.TesserAPI }}
           path: TesserAPI
       - name: Build and run tests (ASan + UBSan)
         run: |
@@ -39,14 +50,22 @@ jobs:
         target: [esp32, esp32c3]
     steps:
       - uses: actions/checkout@v5
+      - name: The pinned siblings (deps.lock)
+        id: deps
+        run: |
+          while IFS=@ read -r repo sha; do
+            echo "$(basename "$repo")=$sha" >> "$GITHUB_OUTPUT"
+          done < <(grep -v '^#' deps.lock | grep @)
       # Inside the workspace, so the build container sees it.
       - uses: actions/checkout@v5
         with:
           repository: leokeba/TesserAPI
+          ref: ${{ steps.deps.outputs.TesserAPI }}
           path: TesserAPI
       - uses: actions/checkout@v5
         with:
           repository: leokeba/NowTP
+          ref: ${{ steps.deps.outputs.NowTP }}
           path: NowTP
       - name: Build the ESP-IDF examples
         uses: espressif/esp-idf-ci-action@v1
@@ -69,7 +88,8 @@ jobs:
             fi
 
   arduino:
-    runs-on: ubuntu-latest
+    # compile-sketches v1 pins Python 3.12.4, not available on Ubuntu 26.04.
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
@@ -77,6 +97,12 @@ jobs:
         fqbn: ["esp32:esp32:esp32", "esp32:esp32:esp32c3"]
     steps:
       - uses: actions/checkout@v5
+      - name: The pinned siblings (deps.lock)
+        id: deps
+        run: |
+          while IFS=@ read -r repo sha; do
+            echo "$(basename "$repo")=$sha" >> "$GITHUB_OUTPUT"
+          done < <(grep -v '^#' deps.lock | grep @)
       # The smaller examples, with the default partitions.
       - uses: arduino/compile-sketches@v1
         with:
@@ -92,7 +118,9 @@ jobs:
           libraries: |
             - source-path: ./
             - source-url: https://github.com/leokeba/TesserAPI.git
+              version: ${{ steps.deps.outputs.TesserAPI }}
             - source-url: https://github.com/leokeba/NowTP.git
+              version: ${{ steps.deps.outputs.NowTP }}
             - name: ArduinoJson
       # A UI host is the board with spare flash: about 1.36 MB on the C3, past
       # the default 1.25 MB app partition. Minimal SPIFFS keeps OTA. The NowTP
@@ -112,7 +140,9 @@ jobs:
           libraries: |
             - source-path: ./
             - source-url: https://github.com/leokeba/TesserAPI.git
+              version: ${{ steps.deps.outputs.TesserAPI }}
             - source-url: https://github.com/leokeba/NowTP.git
+              version: ${{ steps.deps.outputs.NowTP }}
             - name: ArduinoJson
       # Bluedroid makes the ESP32 build about 1.7 MB: a larger app partition.
       - uses: arduino/compile-sketches@v1
@@ -126,7 +156,9 @@ jobs:
           libraries: |
             - source-path: ./
             - source-url: https://github.com/leokeba/TesserAPI.git
+              version: ${{ steps.deps.outputs.TesserAPI }}
             - source-url: https://github.com/leokeba/NowTP.git
+              version: ${{ steps.deps.outputs.NowTP }}
             - name: ArduinoJson
       # Classic Bluetooth: the ESP32 only, with a larger app partition too.
       - if: matrix.fqbn == 'esp32:esp32:esp32'
@@ -141,7 +173,9 @@ jobs:
           libraries: |
             - source-path: ./
             - source-url: https://github.com/leokeba/TesserAPI.git
+              version: ${{ steps.deps.outputs.TesserAPI }}
             - source-url: https://github.com/leokeba/NowTP.git
+              version: ${{ steps.deps.outputs.NowTP }}
             - name: ArduinoJson
 
   web:
@@ -151,9 +185,17 @@ jobs:
         working-directory: web
     steps:
       - uses: actions/checkout@v5
+      - name: The pinned siblings (deps.lock)
+        id: deps
+        working-directory: .
+        run: |
+          while IFS=@ read -r repo sha; do
+            echo "$(basename "$repo")=$sha" >> "$GITHUB_OUTPUT"
+          done < <(grep -v '^#' deps.lock | grep @)
       - uses: actions/checkout@v5
         with:
           repository: leokeba/TesserAPI
+          ref: ${{ steps.deps.outputs.TesserAPI }}
           path: TesserAPI
       - uses: pnpm/action-setup@v4
         with:
@@ -168,7 +210,7 @@ jobs:
         run: pnpm check
       - name: Model and store tests
         run: pnpm test
-      - name: Bundle within budget (65 KB gzipped, 70 KB with its chunk)
+      - name: Bundle within budget (65 KB gzipped, 71 KB with its chunk)
         run: pnpm build
       - name: Generated files are up to date (bundle header, embedded element)
         run: git diff --exit-code -- ../src/tesserui/bundle/tesserui_bundle.h ../examples/arduino/CustomWidget/sun_dial.h
@@ -216,16 +258,16 @@ jobs:
       cancel-in-progress: false
     permissions:
       contents: write
-    uses: leokeba/TesserKIT/.github/workflows/firmware.yml@main
+    # TesserKIT's workflow at the commit deps.lock pins (scripts/pin.sh
+    # moves this ref), and the siblings built at theirs.
+    uses: leokeba/TesserKIT/.github/workflows/firmware.yml@4dafe71d70338670f4a06fd838e3c93ad513b0d4
     with:
       projects: |
         [{"project": "examples/idf/usb_gateway", "name": "tesserui-usb-gateway"},
          {"project": "examples/idf/bluetooth", "name": "tesserui-bluetooth"}]
       targets: '["esp32", "esp32c3", "esp32s3"]'
       stamp-command: node web/scripts/version.mjs "$VERSION"
-      dependencies: |
-        leokeba/TesserAPI
-        leokeba/NowTP
+      dependencies-file: deps.lock
 
   # The bridge as a macOS executable for each architecture, with this
   # launcher built in (bridge.yml), on the release the firmware job made.

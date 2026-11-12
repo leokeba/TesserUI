@@ -807,6 +807,7 @@ TesserUI/
   CMakeLists.txt, idf_component.yml, library.json, library.properties
 ```
 
+- **Siblings pinned:** `deps.lock` names the commits of TesserAPI, NowTP and TesserKIT (its release workflow) that TesserUI builds against, one `owner/repo@sha` per line, as TesserKIT's does. CI checks them out (host tests, ESP-IDF and Arduino examples, the web job's demo device), the release builds and lists them, `library.json`'s TesserAPI and the host build's fetched TesserAPI follow them, and CMake warns when a checkout beside the repository is at another commit. `scripts/pin.sh` moves the pins to the siblings' pushed `HEAD`s (or `repo=sha`) and rewrites `library.json` and the workflow's ref; `--check`, in CI, fails when they disagree with the lock.
 - **C++ library:** depends on TesserAPI. `LvglUi` is compiled only when LVGL is in the build (`__has_include(<lvgl.h>)` on Arduino and PlatformIO; component detection on ESP-IDF, as TesserAPI does for NowTP). `WebUi` is compiled only on ESP with `esp_http_server`.
 - **Versions:** the npm package and the C++ library share version numbers, as every repository of the stack does (TesserAPI, NowTP, TesserUI, TesserKIT, Leo 2026-10-22):
   - **Every push to `main` that passes is a release** `vX.Y.Z`, tagged and published by TesserKIT's reusable `firmware.yml`, which also builds the examples' images (stamped with `PROJECT_VER`).

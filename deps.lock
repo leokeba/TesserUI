@@ -1,0 +1,9 @@
+# The sibling commits TesserUI builds against: the host build's TesserAPI
+# (CMakeLists.txt, when no checkout is beside it), library.json's
+# dependency, CI's checkouts and Arduino libraries, the firmware it releases
+# and TesserKIT's reusable workflow that releases it (.github/workflows/ci.yml).
+# One owner/repo@sha per line. Update it with scripts/pin.sh, after the
+# siblings' commits are pushed, and commit it with the change that needs them.
+leokeba/TesserAPI@5a991e4fbeaac17831cb87fa134591ff041383cd
+leokeba/NowTP@d0af51bb59968aebb1756d999940ac795e051554
+leokeba/TesserKIT@4dafe71d70338670f4a06fd838e3c93ad513b0d4
