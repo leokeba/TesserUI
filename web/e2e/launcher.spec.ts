@@ -207,6 +207,7 @@ function fakeDevices() {
       const sink = lineSink(ws);
       this.writable = new WritableStream({ write: (chunk) => sink(chunk) });
     },
+    async setSignals() {},
     async close() {
       this.ws?.close();
     },

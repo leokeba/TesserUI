@@ -69,6 +69,16 @@ describe('envelopes over a line (DESIGN §9.2)', () => {
     expect(await reply).toEqual({ status: 'ok', body: 18446744073709551615n });
   });
 
+  it('opens a port that has no control lines (setSignals)', async () => {
+    const { port } = fakePort();
+    (port as { setSignals?: unknown }).setSignals = undefined;
+    const client = new EnvelopeClient('serial', () => serialLink(port));
+    client.connect();
+    await flush();
+    expect(client.state).toBe('open');
+    client.close();
+  });
+
   it('reads log lines as log output, even when they hold an envelope', async () => {
     const { client, push } = await connected();
     const notes: unknown[] = [];
