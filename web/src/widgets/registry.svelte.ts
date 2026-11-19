@@ -76,7 +76,7 @@ export const WIDGETS: Record<string, Def> = {
   toggle: { component: c(Bool), field: true },
   checkbox: { component: c(Bool), field: true },
   led: { component: c(Bool) },
-  slider: { component: c(Range), field: true },
+  slider: { component: c(Range), layout: 'wide', field: true },
   knob: lazy(() => import('./Knob.svelte'), { field: true }),
   number: { component: c(Num), field: true },
   stepper: { component: c(Num), field: true },

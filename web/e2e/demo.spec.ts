@@ -509,27 +509,53 @@ test('phone width: no horizontal scroll, 44 px controls, the menu in a drawer', 
   expect(small).toBe(0);
 });
 
-test('a range control stacks inside a narrow card without clipping its unit', async ({ page }) => {
+test('a range control stays inside its card with a usable slider width', async ({ page }) => {
+  await page.setViewportSize({ width: 576, height: 900 });
   await open(page, '#/lamp');
-  const range = row(page, 'Brightness').locator('.range');
+  const brightness = row(page, 'Brightness');
+  const range = brightness.locator('.range');
   await range.evaluate((el) => {
-    el.style.width = '140px';
+    // The demo range has no unit; mirror a motor card's value.
     const unit = document.createElement('span');
     unit.className = 'unit';
     unit.textContent = 'rpm';
     el.querySelector('.value')?.append(unit);
   });
-  const boxes = await range.evaluate((el) => {
-    const box = (selector: string) => {
-      const { left, right, top, bottom } = el.querySelector(selector)!.getBoundingClientRect();
-      return { left, right, top, bottom };
-    };
-    const { left, right } = el.getBoundingClientRect();
-    return { left, right, slider: box('input[type=range]'), entry: box('.entry'), unit: box('.unit') };
-  });
-  expect(boxes.slider.bottom).toBeLessThanOrEqual(boxes.entry.top);
-  expect(boxes.entry.right).toBeLessThanOrEqual(boxes.unit.left);
-  expect(boxes.unit.right).toBeLessThanOrEqual(boxes.right);
+  const layout = async () =>
+    range.evaluate((el) => {
+      const box = (element: Element) => {
+        const { left, right, top, bottom, width } = element.getBoundingClientRect();
+        return { left, right, top, bottom, width };
+      };
+      return {
+        slider: box(el.querySelector('input[type=range]')!),
+        entry: box(el.querySelector('.entry')!),
+        unit: box(el.querySelector('.unit')!),
+        label: box(el.parentElement!.parentElement!.querySelector(':scope > label')!),
+        card: box(el.closest('fieldset.card')!),
+      };
+    });
+  for (const width of [360, 576, 1024]) {
+    await page.setViewportSize({ width, height: 900 });
+    const boxes = await layout();
+    expect(boxes.slider.width).toBeGreaterThan(150);
+    expect(boxes.slider.left).toBeGreaterThanOrEqual(boxes.card.left);
+    expect(boxes.slider.right).toBeLessThanOrEqual(boxes.card.right);
+    expect(boxes.entry.right).toBeLessThanOrEqual(boxes.unit.left);
+    expect(boxes.unit.right).toBeLessThanOrEqual(boxes.card.right);
+    expect(boxes.slider.top).toBeGreaterThanOrEqual(boxes.label.bottom);
+    const mode = row(page, 'Mode');
+    const modeBoxes = await mode.evaluate((el) => {
+      const label = el.querySelector(':scope > label')!.getBoundingClientRect();
+      const control = el.querySelector('[role=radiogroup]')!.getBoundingClientRect();
+      return { label, control };
+    });
+    if (width <= 360) expect(modeBoxes.control.top).toBeGreaterThanOrEqual(modeBoxes.label.bottom);
+    else {
+      expect(modeBoxes.control.left).toBeGreaterThan(modeBoxes.label.right);
+      expect(modeBoxes.control.top).toBeLessThan(modeBoxes.label.bottom);
+    }
+  }
 });
 
 // A list the device fills (TesserAPI's ListNode::readOnly()) has no
