@@ -32,33 +32,44 @@
     onpointercancel={() => (dragging = false)}
     oninput={(e) => input(e.currentTarget)}
   />
-  <input
-    class="entry"
-    type="number"
-    min={b.min}
-    max={b.max}
-    step={b.step}
-    value={fixed(value, leaf.precision)}
-    {disabled}
-    aria-label={session.t('{label} value', { label: leaf.label })}
-    onchange={(e) => {
-      const v = parseNumber(e.currentTarget.value, leaf.type);
-      if (v !== undefined) set(v);
-    }}
-  />
-  {#if leaf.unit}<span class="unit">{leaf.unit}</span>{/if}
+  <div class="value">
+    <input
+      class="entry"
+      type="number"
+      min={b.min}
+      max={b.max}
+      step={b.step}
+      value={fixed(value, leaf.precision)}
+      {disabled}
+      aria-label={session.t('{label} value', { label: leaf.label })}
+      onchange={(e) => {
+        const v = parseNumber(e.currentTarget.value, leaf.type);
+        if (v !== undefined) set(v);
+      }}
+    />
+    {#if leaf.unit}<span class="unit">{leaf.unit}</span>{/if}
+  </div>
 </div>
 
 <style>
   .range {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 8px;
     width: 100%;
+    min-width: 0;
+    container-type: inline-size;
   }
   input[type='range'] {
-    flex: 1;
+    flex: 1 1 60px;
     min-width: 60px;
+  }
+  .value {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: none;
   }
   .entry {
     width: 5.5em;
@@ -66,5 +77,10 @@
   }
   .unit {
     color: var(--muted);
+  }
+  @container (max-width: 240px) {
+    input[type='range'] {
+      flex-basis: 100%;
+    }
   }
 </style>

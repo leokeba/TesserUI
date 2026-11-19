@@ -509,6 +509,29 @@ test('phone width: no horizontal scroll, 44 px controls, the menu in a drawer', 
   expect(small).toBe(0);
 });
 
+test('a range control stacks inside a narrow card without clipping its unit', async ({ page }) => {
+  await open(page, '#/lamp');
+  const range = row(page, 'Brightness').locator('.range');
+  await range.evaluate((el) => {
+    el.style.width = '140px';
+    const unit = document.createElement('span');
+    unit.className = 'unit';
+    unit.textContent = 'rpm';
+    el.querySelector('.value')?.append(unit);
+  });
+  const boxes = await range.evaluate((el) => {
+    const box = (selector: string) => {
+      const { left, right, top, bottom } = el.querySelector(selector)!.getBoundingClientRect();
+      return { left, right, top, bottom };
+    };
+    const { left, right } = el.getBoundingClientRect();
+    return { left, right, slider: box('input[type=range]'), entry: box('.entry'), unit: box('.unit') };
+  });
+  expect(boxes.slider.bottom).toBeLessThanOrEqual(boxes.entry.top);
+  expect(boxes.entry.right).toBeLessThanOrEqual(boxes.unit.left);
+  expect(boxes.unit.right).toBeLessThanOrEqual(boxes.right);
+});
+
 // A list the device fills (TesserAPI's ListNode::readOnly()) has no
 // "writable" in its schema: its rows show, with nothing to add, remove or
 // edit, and their actions still run. Elements with actions open into their
