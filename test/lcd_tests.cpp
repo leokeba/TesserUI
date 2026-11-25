@@ -37,6 +37,8 @@ struct Node {
     int dim = 0;
     char state[12] = "up";
     bool linked = false;
+    double trim = 0.5;
+    char key[17] = "";
 
     Node() {
         auto& lamp = api.object("lamp");
@@ -55,6 +57,8 @@ struct Node {
         dials.value("power", power).range(0, 50).unit("W").ui("widget", "gauge");
         dials.value("pin", pin).range(-1, 48).ui("widget", "number").ui("labels", "-1=none");
         dials.value("dim", dim).range(0, 10).ui("labels", "0=off");
+        dials.value("trim", trim).range(-1, 1).step(0.01);
+        dials.value("key", key).secret();
         // An index (section 6.3): its sub-entries are rows, with summaries.
         auto& sys = api.object("sys").ui("page");
         auto& net = sys.object("net").label("Network").ui("summary", "status/state");
@@ -237,6 +241,43 @@ TEST(lcd_link_summaries) {
     CHECK_EQ(r.ui.current(), "/sys/net");
 }
 
+// A range spanning 0 dragged near it gives exactly 0 (section 5.1).
+TEST(lcd_slider_detent_at_zero) {
+    Rig r;
+    r.open("/dials");
+    lv_obj_t* slider = r.screen.control("Trim");
+    CHECK(slider && lv_obj_check_type(slider, &lv_slider_class));
+    if (!slider) return;
+    r.screen.tap(slider, r.each, 0.515f, 0.5f);  // about +0.03: within 2.5 % of 2
+    r.screen.run(300, r.each);
+    CHECK_EQ(r.node.trim, 0.0);
+    CHECK_EQ(lv_slider_get_value(slider), 0);
+    r.screen.tap(slider, r.each, 0.75f, 0.5f);  // far from it: not snapped
+    r.screen.run(300, r.each);
+    CHECK(r.node.trim > 0.4 && r.node.trim < 0.6);
+}
+
+// A secret field's eye shows what is typed; sending hides it again.
+TEST(lcd_secret_eye) {
+    Rig r;
+    r.open("/dials");
+    lv_obj_t* field = r.screen.control("Key");
+    lv_obj_t* l = r.screen.label("Key");
+    lv_obj_t* eye = l ? lv_obj_get_child(lv_obj_get_parent(l), -1) : nullptr;
+    CHECK(field && lv_obj_check_type(field, &lv_textarea_class) && eye && lv_obj_check_type(eye, &lv_button_class));
+    if (!field || !eye) return;
+    CHECK(lv_textarea_get_password_mode(field));
+    r.screen.tap(eye, r.each);
+    CHECK(!lv_textarea_get_password_mode(field));
+    r.screen.tap(field, r.each);
+    lv_textarea_set_text(field, "abc");
+    lv_obj_send_event(field, LV_EVENT_READY, nullptr);
+    r.screen.run(300, r.each);
+    CHECK_EQ(std::string(r.node.key), "abc");
+    CHECK_EQ(std::string(lv_textarea_get_text(field)), "");
+    CHECK(lv_textarea_get_password_mode(field));
+}
+
 TEST(lcd_number_steps) {
     Rig r;
     r.open("/lamp");
@@ -353,6 +394,22 @@ void describe(tesser::Object& o, Slot& s) {
     o.value("runs", s.runs).readOnly();
 }
 
+enum class FixtureMode { Off, Auto };
+struct Fixture {
+    std::string name;
+    FixtureMode mode = FixtureMode::Off;
+    int level = 0;
+    int days = 0;
+    bool on = false;
+};
+void describe(tesser::Object& o, Fixture& f) {
+    o.value("name", f.name);
+    o.value("mode", f.mode, {"off", "auto"}).ui("labels", "Off,Auto");
+    o.value("level", f.level).range(0, 9);
+    o.value("days", f.days).ui("widget", "flags").ui("labels", "Mo,Tu,We");
+    o.value("on", f.on);
+}
+
 struct Rich {
     tesser::Api api;
     double az = 10, el = 20;
@@ -361,6 +418,7 @@ struct Rich {
     std::vector<Source> sources{{"Sun", 120, true}, {"Moon", 200, false}};
     std::vector<Slot> slots{{7, true, 3}, {19, false, 0}, {22, true, 1}};
     std::vector<int> gains{10, 40};
+    std::vector<Fixture> fixtures{{"Hall", FixtureMode::Auto, 4, 0x05, true}};
     int days = 0x05;
     std::string color = "#102030";
     tesser::EventNode* alarm = nullptr;
@@ -379,6 +437,7 @@ struct Rich {
         l.list("sources", sources).maxSize(4).key("name");
         l.list("slots", slots).maxSize(4);
         l.array("gains", gains).range(0, 100).maxSize(4);
+        l.list("fixtures", fixtures).key("name");
     }
 };
 
@@ -505,6 +564,18 @@ TEST(lcd_flags_and_color) {
     // Blue near its top (a tap's precision), red and green kept.
     CHECK_EQ(r.node.color.substr(0, 5), "#ff00");
     CHECK(strtol(r.node.color.c_str() + 5, nullptr, 16) > 0xf0);
+}
+
+// A list's line: its name, then up to three short values (section 4).
+TEST(lcd_list_line_values) {
+    RichRig r;
+    r.open("/lists");
+    lv_obj_t* hall = r.screen.label("Hall");
+    CHECK(hall != nullptr);
+    if (!hall) return;
+    lv_obj_t* values = lv_obj_get_child(lv_obj_get_parent(hall), 1);
+    CHECK(values && lv_obj_check_type(values, &lv_label_class));
+    if (values) CHECK_EQ(std::string(lv_label_get_text(values)), "Auto \xE2\x80\xA2 4 \xE2\x80\xA2 Mo We");
 }
 
 TEST(lcd_event_toasts) {

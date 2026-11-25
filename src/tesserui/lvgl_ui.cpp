@@ -104,6 +104,13 @@ double clampTo(const Item& i, double v) {
     return v;
 }
 
+// A detent at 0 (section 5.1): a range spanning 0 dragged within 2.5 % of
+// its width from 0 gives exactly 0, so a motor can be dragged back to a
+// stop. Encoder steps and typed values aren't snapped.
+bool atDetent(const Item& i, double v) {
+    return i.hasMin && i.hasMax && i.min < 0 && i.max > 0 && fabs(v) <= 0.025 * (i.max - i.min);
+}
+
 double snap(const Item& i, double v) {
     if (i.hasStep && i.step > 0) {
         double base = i.hasMin ? i.min : 0;
@@ -343,6 +350,7 @@ struct LvglUi::Bound {
     bool stalled = false;     // a keep-alive refused: not again until an edit
     uint32_t lastKeep = 0;
     lv_obj_t* zero = nullptr;  // a kept-alive number's way back to 0
+    lv_obj_t* eye = nullptr;   // a secret field's: shows what is typed, hides it again
 };
 
 LvglUi::LvglUi(tesser::ApiClient& client, lv_display_t* display)
@@ -1871,6 +1879,27 @@ void LvglUi::showSummary(Bound& b) {
     lv_obj_set_hidden(b.value, t.empty());
 }
 
+// Beside a secret field (section 4): a button that shows what is typed, and
+// hides it again.
+void LvglUi::eye(Bound& b, lv_obj_t* parent) {
+    if (!b.control || !lv_obj_check_type(b.control, &lv_textarea_class)) return;
+    b.eye = lv_button_create(parent);
+    lv_obj_set_size(b.eye, m_.button, m_.button);
+    lv_obj_t* l = lv_label_create(b.eye);
+    setLabel(l, LV_SYMBOL_EYE_OPEN);
+    lv_obj_center(l);
+    lv_obj_add_event_cb(b.eye, onEvent, LV_EVENT_CLICKED, &b);
+    focusable(b.eye);
+}
+
+// A secret sent: the field empty, and hidden again.
+void LvglUi::clearSecret(Bound& b) {
+    lv_textarea_set_text(b.control, "");
+    if (!b.eye) return;
+    lv_textarea_set_password_mode(b.control, true);
+    setLabel(lv_obj_get_child(b.eye, 0), LV_SYMBOL_EYE_OPEN);
+}
+
 // Beside a number field: its value's label (ui.labels), else its unit.
 void LvglUi::numberUnit(Bound& b, double v) {
     if (!b.unit) return;
@@ -1927,6 +1956,7 @@ void LvglUi::leaf(lv_obj_t* parent, const Item& item) {
         return;
     }
     control(b, column ? r : top, w);
+    if (w == Widget::Password || (item.secret && (w == Widget::Text || w == Widget::Textarea))) eye(b, top);
     // A kept-alive number gets a way back to 0: dragging to exactly 0 is hard.
     if (item.keepalive && item.editable && item.type != NodeType::Boolean && !b.draft) {
         b.zero = lv_button_create(top);
@@ -2204,6 +2234,7 @@ void LvglUi::action(lv_obj_t* parent, const Item& item) {
         } else {
             line = row(r, false);
             control(b, line, field);
+            if (field == Widget::Password || (item.secret && field == Widget::Text)) eye(b, line);
         }
         if (field == Widget::Slider && item.hasMin) {
             lv_slider_set_value(b.control, static_cast<int32_t>(lround(item.min * b.scale)), LV_ANIM_OFF);
@@ -2315,6 +2346,12 @@ void LvglUi::event(Bound& b, lv_event_t* e) {
         if (!useGroup_ || !lv_group_get_editing(group_) || lv_group_get_focused(group_) != target || typing_) return;
         code = LV_EVENT_CLICKED;
     }
+    if (b.eye && target == b.eye) {
+        bool hidden = lv_textarea_get_password_mode(b.control);
+        lv_textarea_set_password_mode(b.control, !hidden);
+        setLabel(lv_obj_get_child(b.eye, 0), hidden ? LV_SYMBOL_EYE_CLOSE : LV_SYMBOL_EYE_OPEN);
+        return;
+    }
     if (b.widget == Widget::Link) {
         route_.push_back(b.target);
         requestShow();
@@ -2381,6 +2418,10 @@ void LvglUi::event(Bound& b, lv_event_t* e) {
         case Widget::Color: {
             if (w != Widget::Color) {
                 double v = snap(item, positionOf(b.control) / b.scale);
+                if (code == LV_EVENT_VALUE_CHANGED && dragged(b.control) && atDetent(item, positionOf(b.control) / b.scale)) {
+                    v = 0;
+                    setPosition(b.control, 0);
+                }
                 if (b.value) setLabel(b.value, model::formatShown(v, item).c_str());
             } else {
                 uint8_t rgb[3];
@@ -2472,7 +2513,7 @@ void LvglUi::textDone(Bound& b, bool ok) {
     if (!ok) {
         // Cancelled: the value again.
         b.shown.clear();
-        if (b.item->secret) lv_textarea_set_text(b.control, "");
+        if (b.item->secret) clearSecret(b);
         sync(b);
         return;
     }
@@ -2483,7 +2524,7 @@ void LvglUi::textDone(Bound& b, bool ok) {
         return;
     }
     write(b, json);
-    if (b.item->secret) lv_textarea_set_text(b.control, "");
+    if (b.item->secret) clearSecret(b);
 }
 
 void LvglUi::keyboard(Bound& b, lv_obj_t* textarea, bool numeric) {
@@ -2917,8 +2958,10 @@ void LvglUi::rows(Bound& b, JsonVariantConst v) {
     JsonArrayConst a = v.as<JsonArrayConst>();
     bool array = item.schemaType == NodeType::Array;
     const Item* nameCol = nullptr;
-    const Item* sumCol = nullptr;
     const Item* switchCol = nullptr;
+    // Up to three short values after the name, as on the web: the element's
+    // own (not nested), neither booleans nor secrets.
+    std::vector<const Item*> sumCols;
     if (!array) {
         for (const Item& c : item.columns) {
             if (!switchCol && c.type == NodeType::Boolean && c.editable && item.editable) switchCol = &c;
@@ -2928,10 +2971,25 @@ void LvglUi::rows(Bound& b, JsonVariantConst v) {
             if (!nameCol && &c != switchCol && c.type != NodeType::Boolean && !c.secret) nameCol = &c;
         }
         for (const Item& c : item.columns) {
-            if (!sumCol && &c != nameCol && &c != switchCol && !c.secret) sumCol = &c;
+            if (sumCols.size() < 3 && &c != nameCol && c.type != NodeType::Boolean && !c.secret &&
+                c.path.find('/') == std::string::npos) {
+                sumCols.push_back(&c);
+            }
         }
     }
     auto shown = [](JsonVariantConst x, const Item& col) {
+        if (x.isNull() || x.isUnbound() || (x.is<const char*>() && !*x.as<const char*>())) return std::string();
+        if (col.widget == Widget::Flags) {
+            // Flags by the labels of the bits set.
+            std::string t;
+            uint32_t bits = x.as<uint32_t>();
+            for (size_t i = 0; i < col.flagLabels.size() && i < 32; i++) {
+                if (!(bits & (1u << i))) continue;
+                if (!t.empty()) t += ' ';
+                t += col.flagLabels[i];
+            }
+            return t;
+        }
         std::string t = model::formatValue(x, col);
         const char* s = x.as<const char*>();
         for (const model::Option& o : col.options) {
@@ -2948,8 +3006,14 @@ void LvglUi::rows(Bound& b, JsonVariantConst v) {
             name = std::to_string(i + 1);
             if (!item.columns.empty()) summary = shown(e, item.columns[0]);
         } else {
-            name = nameCol ? shown(at(e, nameCol->path), *nameCol) : "#" + std::to_string(i + 1);
-            if (sumCol) summary = shown(at(e, sumCol->path), *sumCol);
+            if (nameCol) name = shown(at(e, nameCol->path), *nameCol);
+            if (name.empty()) name = "#" + std::to_string(i + 1);
+            for (const Item* c : sumCols) {
+                std::string t = shown(at(e, c->path), *c);
+                if (t.empty()) continue;
+                if (!summary.empty()) summary += " \xE2\x80\xA2 ";  // a bullet: the font's
+                summary += t;
+            }
         }
         lv_obj_t* r = row(b.control, false);
         lv_obj_set_style_min_height(r, m_.listRow, 0);
@@ -2962,6 +3026,9 @@ void LvglUi::rows(Bound& b, JsonVariantConst v) {
         if (!summary.empty()) {
             lv_obj_t* sl = label(r, summary, false);
             lv_obj_set_style_text_opa(sl, LV_OPA_70, 0);
+            // Long values give way to the name: cut with dots.
+            lv_obj_set_style_max_width(sl, LV_PCT(55), 0);
+            lv_label_set_long_mode(sl, LV_LABEL_LONG_MODE_DOTS);
         }
         auto ref = [&](RowRef::Kind kind) {
             auto rr = std::make_unique<RowRef>();

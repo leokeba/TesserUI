@@ -178,9 +178,15 @@ lv_obj_t* Screen::control(const char* text) const {
     if (!l) return nullptr;
     lv_obj_t* row = lv_obj_get_parent(l);
     lv_obj_t* last = lv_obj_get_child(row, static_cast<int32_t>(lv_obj_get_child_count(row)) - 1);
+    // A secret field's eye button ends the top line of its row.
+    bool eye = false;
+    if (lv_obj_check_type(last, &lv_button_class) && lv_obj_get_child_count(last) == 1) {
+        const char* t = lv_label_get_text(lv_obj_get_child(last, 0));
+        eye = t && (strcmp(t, LV_SYMBOL_EYE_OPEN) == 0 || strcmp(t, LV_SYMBOL_EYE_CLOSE) == 0);
+    }
     // A row ending with text (the label, or a value beside it) is the top
     // line of a two-line row: the control is the line below.
-    if (lv_obj_check_type(last, &lv_label_class)) {
+    if (eye || lv_obj_check_type(last, &lv_label_class)) {
         lv_obj_t* outer = lv_obj_get_parent(row);
         if (outer && lv_obj_get_child_count(outer) > 1) return lv_obj_get_child(outer, 1);
     }
