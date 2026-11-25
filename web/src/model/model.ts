@@ -83,6 +83,8 @@ export interface Leaf extends Base {
   editable: boolean;
   min?: number;
   max?: number;
+  // An object argument's field: its default, to start the form from.
+  default?: unknown;
   step?: number;
   unit?: string;
   precision?: number;
@@ -297,6 +299,7 @@ export function buildLeaf(name: string, path: string, s: Schema, parent: string,
   const leaf: Leaf = { ...base(name, path, s, parent), kind: 'leaf', widget: 'readout', schema: s, type: s.type, editable: false };
   if (s.min !== undefined) leaf.min = s.min;
   if (s.max !== undefined) leaf.max = s.max;
+  if (s.default !== undefined) leaf.default = s.default;
   if (s.unit) leaf.unit = s.unit;
   const confirm = uiStr(s, 'confirm');
   if (confirm) leaf.confirm = confirm;

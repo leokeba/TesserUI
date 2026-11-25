@@ -26,6 +26,9 @@ export interface Schema {
   writable?: boolean;
   min?: number;
   max?: number;
+  // Action param fields: the value in the default-constructed argument
+  // (TesserAPI §4.2), so a form starts from what the device would use.
+  default?: unknown;
   maxLength?: number;
   enum?: string[];
   arg?: string;

@@ -78,7 +78,7 @@ Without any hint, each schema node maps to one semantic widget. The table is nor
 | `string`, read-only (with or without `enum`) | `readout` | |
 | `action`, no `arg` | `button` | |
 | `action`, typed `arg` | `field` + `button` | One input of the argument's type (the rules above, with the action's `min`, `max`, `unit`), then a button. |
-| `action`, `arg: "object"` | `button` with its `params` as fields | One input per value of the argument's object (nested objects flattened), each inferred by the rules above, then the button with the action's label. Untouched fields are left out of the argument, so the device uses its defaults. |
+| `action`, `arg: "object"` | `button` with its `params` as fields | One input per value of the argument's object (nested objects flattened), each inferred by the rules above, then the button with the action's label. On the web each field starts from its `default` — the value in the default-constructed argument (TesserAPI §4.2) — when it has one; without one it is left out of the argument until touched, so the device uses its defaults. |
 | `action`, `arg: "any"` | `json` + `button` | Raw JSON entry, shown only under "Advanced"; hidden on LCD. |
 | `action`, `deferred` | as above, with a busy state until the reply | A deferred action taking `tesser::Call&` alone reports `arg: "any"`: it is a plain button, no JSON entry. Typed deferred actions (`(T, Call&)`) get their input. Their reply may take up to TesserAPI's `deferTimeoutMs`: the request timeout is 15 s. |
 | `action`, `returns` | as above; the result is shown next to the button | Any reply other than `null` is shown, since a deferred action's reply has no declared type. |

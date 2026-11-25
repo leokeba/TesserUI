@@ -260,7 +260,7 @@ jobs:
       contents: write
     # TesserKIT's workflow at the commit deps.lock pins (scripts/pin.sh
     # moves this ref), and the siblings built at theirs.
-    uses: leokeba/TesserKIT/.github/workflows/firmware.yml@4dafe71d70338670f4a06fd838e3c93ad513b0d4
+    uses: leokeba/TesserKIT/.github/workflows/firmware.yml@57d517fa38aa80fc2baa317a10605e9b43f3fac2
     with:
       projects: |
         [{"project": "examples/idf/usb_gateway", "name": "tesserui-usb-gateway"},

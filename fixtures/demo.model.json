@@ -1981,7 +1981,8 @@
         "kind": "leaf",
         "widget": "text",
         "type": "string",
-        "editable": true
+        "editable": true,
+        "default": ""
        },
        {
         "name": "password",
@@ -4769,7 +4770,8 @@
          "kind": "leaf",
          "widget": "text",
          "type": "string",
-         "editable": true
+         "editable": true,
+         "default": ""
         },
         {
          "name": "password",

@@ -19,9 +19,16 @@
   // svelte-ignore state_referenced_locally
   let arg: unknown = $state(leaf.type === 'boolean' ? false : leaf.type === 'string' ? (leaf.options?.[0]?.value ?? '') : (leaf.min ?? 0));
   let json = $state('null');
-  // An object argument's fields, by path relative to it; untouched ones are
-  // left out, so the device uses its defaults.
-  let params: Record<string, unknown> = $state({});
+  // An object argument's fields, by path relative to it, starting from the
+  // action's defaults (the schema's "default"): what the device would use
+  // for an omitted field. A field without one stays out until touched.
+  let params: Record<string, unknown> = $state(initParams());
+
+  function initParams(): Record<string, unknown> {
+    const out: Record<string, unknown> = {};
+    for (const p of leaf.params ?? []) if (p.default !== undefined) out[p.path] = p.default;
+    return out;
+  }
   let busy = $state(false);
   let result: string | null = $state(null);
   // A reply that is a list of objects (a scan's networks) is shown as a table.
