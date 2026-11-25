@@ -131,6 +131,7 @@ struct Item {
     bool editable = false;
     bool hasMin = false, hasMax = false, hasStep = false;
     double min = 0, max = 0, step = 0;
+    std::string bounds;  // ui.bounds: the value whose magnitude or min/max these follow
     int8_t precision = -1;  // -1: none
     uint32_t maxLength = 0;
     std::string unit;

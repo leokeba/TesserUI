@@ -47,7 +47,8 @@ describe('demo: widgets', () => {
     }
   });
   it('maps the lamp', () => {
-    expect(leaf('/lamp/brightness')).toMatchObject({ widget: 'slider', step: 5, precision: 0 });
+    expect(leaf('/lamp/brightness')).toMatchObject({ widget: 'slider', step: 5, precision: 0, bounds: '/lamp/maxBrightness' });
+    expect(leaf('/lamp/maxBrightness')).toMatchObject({ widget: 'slider', min: 0, max: 255 });
     expect(leaf('/lamp/color').widget).toBe('color');
     expect(leaf('/lamp/mode')).toMatchObject({ widget: 'segmented', options: [{ label: 'Off' }, { label: 'Automatic' }, { label: 'Manual' }] });
     expect(leaf('/lamp/effect').widget).toBe('select');

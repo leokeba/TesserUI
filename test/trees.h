@@ -120,6 +120,11 @@ struct Move {
     std::string to;
 };
 
+// An object argument with one field, for the action fieldset on the web.
+struct Scale {
+    int factor = 2;
+};
+
 // The argument of the login action.
 struct Credentials {
     std::string name;
@@ -139,6 +144,7 @@ struct Demo {
     // lamp
     bool on = true;
     int brightness = 180;
+    int maxBrightness = 200;  // the slider's ui.bounds
     char color[8] = "#ffaa00";
     LampMode mode = LampMode::Auto;
     Effect effect = Effect::Breathe;

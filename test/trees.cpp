@@ -112,6 +112,10 @@ void describe(tesser::Object& o, Slot& s) {
     o.value("runs", s.runs).readOnly();
 }
 
+void describe(tesser::Object& o, Scale& s) {
+    o.value("factor", s.factor).range(1, 10).step(1).label("Factor").ui("widget", "number");
+}
+
 void describe(tesser::Object& o, Network& n) {
     o.value("ssid", n.ssid).label("Network");
     o.value("rssi", n.rssi).unit("dBm");
@@ -227,7 +231,8 @@ Demo::Demo()
 
     auto& lamp = api.object("lamp").label("Lamp").ui("icon", "bulb");
     lamp.value("on", on).watch();
-    lamp.value("brightness", brightness).range(0, 255).step(5).watch();
+    lamp.value("brightness", brightness).range(0, 255).step(5).ui("bounds", "maxBrightness").watch();
+    lamp.value("maxBrightness", maxBrightness).range(0, 255).step(5).label("Brightness ceiling");
     lamp.value("color", color).ui("widget", "color");
     lamp.value("mode", mode, {"off", "auto", "manual"}).ui("labels", "Off,Automatic,Manual");
     lamp.value("effect", effect, {"none", "rainbow", "breathe", "strobe", "candle", "fire"});
@@ -398,6 +403,7 @@ Demo::Demo()
     // The same, storing the device's id (its MAC) rather than its name.
     widgets.value("nodeId", nodeId).ui("options", "/peers").ui("optionsValue", "id").label("Node id");
     widgets.action("go", [] {}).ui("style", "primary");
+    widgets.action("scale", [](const Scale&) {}).label("Scale");
     widgets.action("scene", [this](std::string s) { scene = s; }).ui("widget", "button").ui("value", "sunset");
     widgets.object("pinned").ui("card").value("note", "A nested object shown as its own card.");
 

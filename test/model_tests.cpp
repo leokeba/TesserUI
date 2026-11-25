@@ -83,6 +83,7 @@ void write(JsonObject o, const Item& i) {
     o["editable"] = i.editable;
     if (i.hasMin) o["min"] = i.min;
     if (i.hasMax) o["max"] = i.max;
+    if (!i.bounds.empty()) o["bounds"] = i.bounds;
     if (i.hasStep) o["step"] = i.step;
     if (i.precision >= 0) o["precision"] = i.precision;
     if (i.maxLength) o["maxLength"] = i.maxLength;
@@ -332,6 +333,24 @@ TEST(model_printf) {
     CHECK_EQ(printfValue("%s!", d["s"]), "hi!");
     CHECK_EQ(printfValue("%u", d["u"]), "4294967295");
     CHECK_EQ(printfValue("%g", d["g"]), "0.5");
+}
+
+TEST(model_bounds) {
+    JsonDocument d;
+    deserializeJson(d, R"({"type":"number","writable":true,"min":-1000,"max":1000,"ui":{"bounds":"limit"}})");
+    Item speed = buildLeaf("speed", "/motors/1/speed", d.as<JsonObjectConst>(), "/motors/1", "/");
+    CHECK_EQ(speed.bounds, "/motors/1/limit");
+
+    deserializeJson(d, R"({"type":"number","writable":true,"min":0,"max":1,"ui":{"bounds":"../limit"}})");
+    Item control = buildLeaf("speed", "/motors/1/control/speed", d.as<JsonObjectConst>(), "/motors/1/control", "/");
+    CHECK_EQ(control.bounds, "/motors/1/limit");
+
+    // An action's object argument: relative to the action's parent.
+    deserializeJson(d, R"({"type":"action","arg":"object","ui":{"bounds":"limit"},"params":{"type":"object",
+        "children":{"speed":{"type":"number","writable":true,"min":0,"max":1,"ui":{"bounds":"limit"}}}}})");
+    Item action = buildLeaf("move", "/motors/1/move", d.as<JsonObjectConst>(), "/motors/1", "/");
+    CHECK_EQ(action.params.size(), size_t(1));
+    CHECK_EQ(action.params[0].bounds, "/motors/1/limit");
 }
 
 TEST(model_conditions) {

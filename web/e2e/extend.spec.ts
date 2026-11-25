@@ -44,7 +44,7 @@ test('UIs embed in a page that owns the URL', async ({ page }) => {
   const a = page.locator('#a .tesserui');
   const b = page.locator('#b .tesserui');
   await expect(a.locator('h1')).toHaveText('Lamp');
-  await expect(a.locator('.row', { hasText: 'Brightness' })).toBeVisible();
+  await expect(a.getByText('Brightness', { exact: true })).toBeVisible();
   await expect(a.locator('header')).toHaveCount(0);
   await expect(a.getByText('Speed')).toHaveCount(0);
   await expect(b.locator('h1')).toHaveText('Motor');

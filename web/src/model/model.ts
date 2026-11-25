@@ -83,6 +83,8 @@ export interface Leaf extends Base {
   editable: boolean;
   min?: number;
   max?: number;
+  // ui.bounds: another value's path whose value sets these (DESIGN.md §5.2).
+  bounds?: string;
   // An object argument's field: its default, to start the form from.
   default?: unknown;
   step?: number;
@@ -391,6 +393,7 @@ export function buildLeaf(name: string, path: string, s: Schema, parent: string,
   if (!leaf.editable && uiStr(s, 'style') === 'warning') leaf.style = 'warning';
   leaf.widget = s.secret && leaf.editable && s.type === 'string' ? 'password' : inferWidget(s, s.type, leaf.editable);
   number(leaf, s);
+  boundsHint(leaf, s, parent);
   choices(leaf, s, parent);
   const keepalive = uiNum(s, 'keepalive');
   if (keepalive && leaf.editable && (isNumeric(s.type) || s.type === 'boolean')) leaf.keepalive = keepalive;
@@ -428,6 +431,13 @@ function number(leaf: Leaf, s: Schema) {
   if (labels?.includes('=')) leaf.labels = Object.fromEntries(labels.split(',').map((p) => [p.slice(0, p.indexOf('=')).trim(), p.slice(p.indexOf('=') + 1).trim()]));
 }
 
+// Bounds that follow another value: a path, absolute or relative to the
+// value's parent, as a condition's (DESIGN.md §5.2).
+function boundsHint(leaf: Leaf, s: Schema, parent: string) {
+  const from = uiStr(s, 'bounds');
+  if (from && isNumeric(leaf.type)) leaf.bounds = resolvePath(from, parent, nodeRoot);
+}
+
 function action(leaf: Leaf, s: Schema, parent: string): Leaf {
   leaf.deferred = !!s.deferred;
   if (s.returns) leaf.returns = s.returns;
@@ -448,7 +458,7 @@ function action(leaf: Leaf, s: Schema, parent: string): Leaf {
   }
   if (arg === 'object') {
     leaf.editable = true;
-    leaf.params = s.params ? fields(s.params, '') : [];
+    leaf.params = s.params ? fields(s.params, '', parent) : [];
     return leaf;
   }
   if (hint === 'hold' && arg === 'boolean') {
@@ -466,6 +476,7 @@ function action(leaf: Leaf, s: Schema, parent: string): Leaf {
   const argSchema: Schema = { type: arg as Schema['type'], writable: true, min: s.min, max: s.max, step: s.step, ui: s.ui };
   leaf.field = inferWidget({ ...argSchema, ui: { ...s.ui, widget: hint === 'button' ? '' : (hint ?? '') } }, arg, true);
   number(leaf, s);
+  boundsHint(leaf, s, parent);
   choices(leaf, s, parent);
   return leaf;
 }
@@ -484,13 +495,14 @@ function columns(items: Schema, prefix: string): Leaf[] {
 }
 
 // The inputs of an object argument: its values, nested objects flattened
-// into paths relative to the argument.
-function fields(params: Schema, prefix: string): Leaf[] {
+// into paths relative to the argument, conditions and bounds relative to
+// the action's parent.
+function fields(params: Schema, prefix: string, parent: string): Leaf[] {
   const out: Leaf[] = [];
   for (const [name, c] of Object.entries(params.children ?? {})) {
     const rel = prefix ? `${prefix}/${name}` : name;
-    if (c.type === 'object') out.push(...fields(c, rel));
-    else if (valued(c) && ui(c, 'hidden') !== true) out.push(buildLeaf(name, rel, c, ''));
+    if (c.type === 'object') out.push(...fields(c, rel, parent));
+    else if (valued(c) && ui(c, 'hidden') !== true) out.push(buildLeaf(name, rel, c, parent));
   }
   return out;
 }

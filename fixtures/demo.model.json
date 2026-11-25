@@ -148,6 +148,22 @@
       "min": 0,
       "max": 255,
       "step": 5,
+      "precision": 0,
+      "bounds": "/lamp/maxBrightness"
+     },
+     {
+      "name": "maxBrightness",
+      "path": "/lamp/maxBrightness",
+      "label": "Brightness ceiling",
+      "advanced": false,
+      "hidden": false,
+      "kind": "leaf",
+      "widget": "slider",
+      "type": "integer",
+      "editable": true,
+      "min": 0,
+      "max": 255,
+      "step": 5,
       "precision": 0
      },
      {
@@ -1564,6 +1580,37 @@
       "submit": false
      },
      {
+      "name": "scale",
+      "path": "/widgets/scale",
+      "label": "Scale",
+      "advanced": false,
+      "hidden": false,
+      "kind": "leaf",
+      "widget": "button",
+      "type": "object",
+      "editable": true,
+      "deferred": false,
+      "submit": false,
+      "params": [
+       {
+        "name": "factor",
+        "path": "factor",
+        "label": "Factor",
+        "advanced": false,
+        "hidden": false,
+        "kind": "leaf",
+        "widget": "number",
+        "type": "integer",
+        "editable": true,
+        "min": 1,
+        "max": 10,
+        "default": 2,
+        "step": 1,
+        "precision": 0
+       }
+      ]
+     },
+     {
       "name": "scene",
       "path": "/widgets/scene",
       "label": "Scene",
@@ -2452,6 +2499,22 @@
        "name": "brightness",
        "path": "/lamp/brightness",
        "label": "Brightness",
+       "advanced": false,
+       "hidden": false,
+       "kind": "leaf",
+       "widget": "slider",
+       "type": "integer",
+       "editable": true,
+       "min": 0,
+       "max": 255,
+       "step": 5,
+       "precision": 0,
+       "bounds": "/lamp/maxBrightness"
+      },
+      {
+       "name": "maxBrightness",
+       "path": "/lamp/maxBrightness",
+       "label": "Brightness ceiling",
        "advanced": false,
        "hidden": false,
        "kind": "leaf",
@@ -4161,6 +4224,37 @@
        "options": [],
        "optionsFrom": "/peers",
        "optionsValue": "id"
+      },
+      {
+       "name": "scale",
+       "path": "/widgets/scale",
+       "label": "Scale",
+       "advanced": false,
+       "hidden": false,
+       "kind": "leaf",
+       "widget": "button",
+       "type": "object",
+       "editable": true,
+       "deferred": false,
+       "submit": false,
+       "params": [
+        {
+         "name": "factor",
+         "path": "factor",
+         "label": "Factor",
+         "advanced": false,
+         "hidden": false,
+         "kind": "leaf",
+         "widget": "number",
+         "type": "integer",
+         "editable": true,
+         "min": 1,
+         "max": 10,
+         "default": 2,
+         "step": 1,
+         "precision": 0
+        }
+       ]
       },
       {
        "name": "scene",

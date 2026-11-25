@@ -343,6 +343,13 @@ struct Builder {
         }
     }
 
+    // ui.bounds: another value's path, absolute or relative to the value's
+    // parent (section 5.2).
+    void boundsHint(Item& leaf, JsonObjectConst s, std::string_view parent) {
+        const char* from = uiStr(s, "bounds");
+        if (nonEmpty(from) && isNumeric(leaf.type)) leaf.bounds = resolvePath(from, parent, root);
+    }
+
     Infer inference(JsonObjectConst s, NodeType type, bool editable, const std::vector<Option>* options) {
         Infer in;
         in.type = type;
@@ -382,7 +389,7 @@ struct Builder {
         if (leaf.type == NodeType::Object) {
             leaf.editable = true;
             JsonObjectConst params = s["params"];
-            if (!params.isNull()) fields(params, "", leaf.params);
+            if (!params.isNull()) fields(params, "", parent, leaf.params);
             return;
         }
         if (hint && strcmp(hint, "hold") == 0 && leaf.type == NodeType::Boolean) {
@@ -406,19 +413,21 @@ struct Builder {
         leaf.hasField = true;
         leaf.field = inferWidget(in);
         number(leaf, s);
+        boundsHint(leaf, s, parent);
         choices(leaf, s, parent);
     }
 
     // The values of an object argument, nested objects flattened into paths
-    // relative to the argument.
-    void fields(JsonObjectConst params, std::string_view prefix, std::vector<Item>& out) {
+    // relative to the argument; their conditions and bounds relative to the
+    // action's parent.
+    void fields(JsonObjectConst params, std::string_view prefix, std::string_view parent, std::vector<Item>& out) {
         for (JsonPairConst kv : params["children"].as<JsonObjectConst>()) {
             JsonObjectConst c = kv.value();
             std::string rel = prefix.empty() ? std::string(kv.key().c_str()) : std::string(prefix) + "/" + kv.key().c_str();
             if (typeOf(c) == NodeType::Object) {
-                fields(c, rel, out);
+                fields(c, rel, parent, out);
             } else if (valued(c) && !uiTrue(c, "hidden")) {
-                out.push_back(leaf(kv.key().c_str(), rel, c, ""));
+                out.push_back(leaf(kv.key().c_str(), rel, c, parent));
             }
         }
     }
@@ -584,6 +593,7 @@ struct Builder {
             leaf.widget = inferWidget(inference(s, leaf.type, leaf.editable, &options));
         }
         number(leaf, s);
+        boundsHint(leaf, s, parent);
         choices(leaf, s, parent);
         JsonVariantConst keepalive = ui(s, "keepalive");
         if (keepalive.is<double>() && keepalive.as<double>() != 0 && leaf.editable &&

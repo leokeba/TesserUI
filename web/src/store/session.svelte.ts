@@ -579,6 +579,9 @@ export class Session extends Schemas {
     walk(items, (i) => {
       for (const c of [...(i.visibleWhen ?? []), ...(i.enabledWhen ?? [])]) followed.push(c.path);
       if (i.kind === 'leaf') {
+        // Bounds that follow another value (ui.bounds), its params' too.
+        if (i.bounds) followed.push(i.bounds);
+        for (const p of i.params ?? []) if (p.bounds) followed.push(p.bounds);
         // An object's children (nodes under /peers): a stub's change, its
         // online state, comes in the object's value.
         if (i.optionsFrom) {
@@ -594,7 +597,15 @@ export class Session extends Schemas {
       }
     });
     const all = [...specs];
-    const outside = followed.filter((p) => !specs.some((s) => isUnder(p, s.path)));
+    // A path a spec already brings (within its keys and depth) needs no
+    // subscription of its own.
+    const watched = (p: string, spec: SubSpec) => {
+      if (!isUnder(p, spec.path)) return false;
+      const rest = segments(p.slice(spec.path.length));
+      if (spec.keys && rest.length && !spec.keys.split(',').includes(rest[0])) return false;
+      return spec.depth === undefined || rest.length <= spec.depth;
+    };
+    const outside = followed.filter((p) => !specs.some((s) => watched(p, s)));
     if (outside.length) {
       const base = commonAncestor(outside.map(parentPath));
       all.push({ path: base, depth: Math.max(...outside.map((p) => segments(p).length - segments(base).length)) });

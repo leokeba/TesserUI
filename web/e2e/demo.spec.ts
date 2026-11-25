@@ -509,6 +509,46 @@ test('phone width: no horizontal scroll, 44 px controls, the menu in a drawer', 
   expect(small).toBe(0);
 });
 
+test('an action with fields is a fieldset, its button at the end of the line', async ({ page }) => {
+  let sent: unknown;
+  page.on('websocket', (ws) =>
+    ws.on('framesent', (f) => {
+      const m = typeof f.payload === 'string' ? JSON.parse(f.payload) : null;
+      if (m?.op === 'set' && m.path === '/widgets/scale') sent = m.body;
+    }),
+  );
+  await open(page, '#/widgets');
+  const form = page.locator('fieldset.action-form', { has: page.locator('legend:text-is("Scale")') });
+  await expect(form).toBeVisible();
+  const field = form.locator('input[type=number]');
+  const label = form.locator('label:text-is("Factor")');
+  const button = form.getByRole('button', { name: 'Scale' });
+  const [f, l, b] = await Promise.all([field, label, button].map((e) => e.boundingBox()));
+  // One line: label, field, then the button at its end.
+  expect(l!.x + l!.width).toBeLessThanOrEqual(f!.x + 1);
+  expect(b!.x).toBeGreaterThanOrEqual(f!.x + f!.width - 1);
+  for (const y of [l!.y + l!.height / 2, b!.y + b!.height / 2]) expect(Math.abs(y - (f!.y + f!.height / 2))).toBeLessThan(4);
+  await field.fill('3');
+  await field.press('Enter');
+  await button.click();
+  await expect(button).toBeEnabled();
+  await expect.poll(() => sent).toEqual({ factor: 3 });
+});
+
+test('a range follows another value (ui.bounds)', async ({ page }) => {
+  await open(page, '#/lamp');
+  const slider = row(page, 'Brightness').locator('input[type=range]');
+  // The lamp's ceiling starts at 200: 0..255 scaled to it.
+  await expect(slider).toHaveAttribute('max', '200');
+  const ceiling = row(page, 'Brightness ceiling').locator('input[type=number]');
+  await ceiling.fill('120');
+  await ceiling.press('Enter');
+  await expect(slider).toHaveAttribute('max', '120');
+  await ceiling.fill('255');
+  await ceiling.press('Enter');
+  await expect(slider).toHaveAttribute('max', '255');
+});
+
 test('a range control stays inside its card with a usable slider width', async ({ page }) => {
   await page.setViewportSize({ width: 576, height: 900 });
   await open(page, '#/lamp');
@@ -556,6 +596,15 @@ test('a range control stays inside its card with a usable slider width', async (
       expect(modeBoxes.control.top).toBeLessThan(modeBoxes.label.bottom);
     }
   }
+  // In a narrow column (an action's field), the value stays beside the
+  // slider: no second row under it.
+  await page.setViewportSize({ width: 576, height: 900 });
+  await range.evaluate((el) => (el.style.width = '180px'));
+  const tight = await layout();
+  expect(tight.slider.right).toBeLessThanOrEqual(tight.entry.left + 0.5);
+  expect(tight.slider.top).toBeLessThan(tight.entry.bottom);
+  expect(tight.entry.top).toBeLessThan(tight.slider.bottom);
+  await range.evaluate((el) => (el.style.width = ''));
 });
 
 // A list the device fills (TesserAPI's ListNode::readOnly()) has no

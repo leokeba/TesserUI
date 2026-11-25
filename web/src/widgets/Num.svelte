@@ -1,15 +1,17 @@
 <script lang="ts">
   import { useSession } from '../shared.svelte';
-  import { asNumber, bounds, fixed, parseNumber, type WidgetProps } from './types';
+  import { asNumber, bounds, fixed, parseNumber, span, type WidgetProps } from './types';
   let { leaf, value, set, disabled, id }: WidgetProps = $props();
 
   const session = useSession();
+  const store = session.store;
   const step = $derived(leaf.step ?? 1);
-  const b = $derived(bounds(leaf, value));
+  const r = $derived(span(leaf, (path) => store.get(path)));
+  const b = $derived(bounds(leaf, value, r.min, r.max));
   function bump(d: number) {
     const n = asNumber(value);
-    const next = (Number.isNaN(n) ? (leaf.min ?? 0) : n) + d * step;
-    set(Number(Math.min(Math.max(next, leaf.min ?? -Infinity), leaf.max ?? Infinity).toFixed(10)));
+    const next = (Number.isNaN(n) ? (r.min ?? 0) : n) + d * step;
+    set(Number(Math.min(Math.max(next, r.min ?? -Infinity), r.max ?? Infinity).toFixed(10)));
   }
 </script>
 

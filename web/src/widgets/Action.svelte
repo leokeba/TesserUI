@@ -128,20 +128,36 @@
   >
     {#if leaf.icon}<Icon name={leaf.icon} />{/if}{leaf.label}
   </button>
-{:else}
-  <div class="action" class:wide={leaf.field === 'json' || !!leaf.params} class:field={!!leaf.field}>
-    {#if leaf.params}
-      <div class="params">
-        {#each leaf.params as p (p.path)}
-          {@const F = fieldOf(p.widget)}
-          {#if F}
-            {@const pid = `${id}_${p.path.replace(/\W/g, '_')}`}
+{:else if leaf.params}
+  <fieldset class="action-form">
+    <legend>{leaf.label}</legend>
+    <div class="params">
+      {#each leaf.params as p (p.path)}
+        {@const F = fieldOf(p.widget)}
+        {#if F}
+          {@const pid = `${id}_${p.path.replace(/\W/g, '_')}`}
+          <div class="param w-{p.widget}">
             <label for={pid}>{p.label}</label>
             <F leaf={p} value={params[p.path]} set={(v) => (params[p.path] = v)} {disabled} id={pid} />
-          {/if}
-        {/each}
-      </div>
-    {:else if Field}
+          </div>
+        {/if}
+      {/each}
+      <button
+        type="button"
+        class={leaf.style}
+        disabled={disabled || busy}
+        aria-busy={busy}
+        onclick={() => run(paramsValue())}
+      >
+        {#if leaf.icon}<Icon name={leaf.icon} />{/if}
+        {leaf.label}{busy ? '…' : ''}
+      </button>
+    </div>
+    {#if result !== null}<output>→ {result}</output>{/if}
+  </fieldset>
+{:else}
+  <div class="action" class:wide={leaf.field === 'json'} class:field={!!leaf.field}>
+    {#if Field}
       <Field leaf={{ ...leaf, widget: leaf.field! }} value={arg} set={(v) => (arg = v)} {disabled} {id} />
     {:else if leaf.field === 'json'}
       <textarea {id} rows="2" bind:value={json} {disabled} spellcheck="false" aria-label={session.t('{label} argument (JSON)', { label: leaf.label })}></textarea>
@@ -152,25 +168,25 @@
       id={Field || leaf.field === 'json' ? undefined : id}
       disabled={disabled || busy}
       aria-busy={busy}
-      onclick={() => (leaf.field === 'json' ? runJson() : run(leaf.params ? paramsValue() : leaf.field ? arg : fixedArg()))}
+      onclick={() => (leaf.field === 'json' ? runJson() : run(leaf.field ? arg : fixedArg()))}
     >
       {#if leaf.icon}<Icon name={leaf.icon} />{/if}
       {leaf.field ? session.t('Run') : leaf.label}{busy ? '…' : ''}
     </button>
     {#if result !== null}<output>→ {result}</output>{/if}
   </div>
-  {#if rows}
-    <div class="rows">
-      <table>
-        <thead><tr>{#each Object.keys(rows[0]) as k (k)}<th>{k}</th>{/each}</tr></thead>
-        <tbody>
-          {#each rows as r, i (i)}<tr>{#each Object.keys(rows[0]) as k (k)}<td>{formatValue(r[k], { type: '' })}</td>{/each}</tr>{/each}
-        </tbody>
-      </table>
-    </div>
-  {/if}
-  {#if jsonError}<p class="error">{jsonError}</p>{/if}
 {/if}
+{#if rows}
+  <div class="rows">
+    <table>
+      <thead><tr>{#each Object.keys(rows[0]) as k (k)}<th>{k}</th>{/each}</tr></thead>
+      <tbody>
+        {#each rows as r, i (i)}<tr>{#each Object.keys(rows[0]) as k (k)}<td>{formatValue(r[k], { type: '' })}</td>{/each}</tr>{/each}
+      </tbody>
+    </table>
+  </div>
+{/if}
+{#if jsonError}<p class="error">{jsonError}</p>{/if}
 
 <style>
   .action {
@@ -194,11 +210,62 @@
   .action.wide button {
     align-self: flex-end;
   }
+  /* An object argument: its own fieldset, the fields on one line with the
+     button at the end (DESIGN.md §4). */
+  .action-form {
+    margin: 0;
+    padding: 6px 10px 8px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    min-width: 0;
+    width: 100%;
+  }
+  .action-form legend {
+    padding: 0 4px;
+    color: var(--muted);
+    font-size: 0.9em;
+  }
   .params {
-    display: grid;
-    grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+    display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 6px 12px;
+  }
+  .param {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: 1 1 12em;
+    min-width: 0;
+  }
+  .param.w-slider {
+    flex-basis: 16em;
+  }
+  .param.w-text,
+  .param.w-password {
+    flex-basis: 9em;
+  }
+  .param.w-knob {
+    flex: 0 0 auto;
+  }
+  .param.w-textarea {
+    flex-basis: 100%;
+  }
+  .param > label {
+    flex: none;
+    white-space: nowrap;
+  }
+  .param > :global(*) {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .params > button {
+    margin-left: auto;
+  }
+  .action-form output {
+    display: block;
+    margin-top: 4px;
+    text-align: right;
   }
   .rows {
     flex-basis: 100%;

@@ -1,11 +1,14 @@
 <script lang="ts">
   // A rotary control over 270°: drag around it, or use the arrow keys.
   import { formatValue } from '../model/format';
-  import { asNumber, detent, type WidgetProps } from './types';
+  import { useSession } from '../shared.svelte';
+  import { asNumber, detent, span, type WidgetProps } from './types';
   let { leaf, value, set, disabled, id }: WidgetProps = $props();
+  const store = useSession().store;
 
-  const min = $derived(leaf.min ?? 0);
-  const max = $derived(leaf.max ?? 1);
+  const r = $derived(span(leaf, (path) => store.get(path)));
+  const min = $derived(r.min ?? 0);
+  const max = $derived(r.max ?? 1);
   const step = $derived(leaf.step ?? (max - min) / 100);
   const n = $derived(Number.isNaN(asNumber(value)) ? min : asNumber(value));
   const angle = $derived(-135 + (270 * (Math.min(Math.max(n, min), max) - min)) / (max - min || 1));
@@ -22,7 +25,7 @@
     if (disabled || !el.hasPointerCapture(e.pointerId)) return;
     const r = el.getBoundingClientRect();
     const a = (Math.atan2(e.clientX - r.left - r.width / 2, r.top + r.height / 2 - e.clientY) * 180) / Math.PI;
-    put(detent(min + ((Math.min(Math.max(a, -135), 135) + 135) / 270) * (max - min), leaf), true);
+    put(detent(min + ((Math.min(Math.max(a, -135), 135) + 135) / 270) * (max - min), min, max), true);
   }
   function key(e: KeyboardEvent) {
     const d = { ArrowUp: 1, ArrowRight: 1, ArrowDown: -1, ArrowLeft: -1, PageUp: 10, PageDown: -10 }[e.key];
