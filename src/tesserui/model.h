@@ -156,6 +156,7 @@ struct Item {
     Toast toast = Toast::None;  // events
     uint32_t history = 0;       // charts of a value: samples kept
     std::vector<std::string> flagLabels;  // flags: one per bit (ui.labels)
+    std::vector<Option> labels;  // numbers: some values' labels (ui.labels "-1=none,0=off")
 
     // Lists and arrays
     bool hasColumns = false;
@@ -178,6 +179,8 @@ struct Item {
     // Links
     bool remote = false;
     bool online = true;
+    std::string summary;             // ui.summary: the value shown under its label, absolute
+    std::vector<Item> summaryLeaf;   // and its leaf, to format it, when the schema reached it
 
     bool isAction() const { return schemaType == NodeType::Action; }
 };
@@ -238,6 +241,10 @@ int decimalsOf(double step);
 // they are and numbers with up to 3 decimals; bytes and seconds scaled, the
 // unit after. Absent: an en dash.
 std::string formatValue(JsonVariantConst v, const Item& leaf);
+// A number's label (ui.labels "-1=none"), or null: shown instead of it.
+const std::string* labelOf(double v, const Item& leaf);
+// formatNumber(), or the value's label.
+std::string formatShown(double v, const Item& leaf);
 // An instant (ui.format "datetime"): local "YYYY-MM-DD HH:MM", or "—" for none.
 std::string formatDatetime(JsonVariantConst v, const std::string& unit);
 std::string formatNumber(double v, const Item& leaf);

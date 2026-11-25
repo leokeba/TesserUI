@@ -186,6 +186,8 @@ private:
     void rows(Bound& b, JsonVariantConst value);
     void removeFooter();
     void webOnly(lv_obj_t* parent, const std::string& text);
+    void numberUnit(Bound& b, double v);
+    void showSummary(Bound& b);
     lv_obj_t* control(Bound& b, lv_obj_t* parent, model::Widget w);
     Bound& bind(const model::Item& item, lv_obj_t* row);
     lv_obj_t* row(lv_obj_t* parent, bool column);

@@ -317,6 +317,19 @@ struct Builder {
         if (const char* format = uiStr(s, "format")) {
             if (*format) leaf.format = format;
         }
+        // Labels for some values: "-1=none,0=off" (an enum's are names).
+        const char* labels = uiStr(s, "labels");
+        if (labels && strchr(labels, '=')) {
+            std::string_view rest = labels;
+            while (!rest.empty()) {
+                size_t comma = rest.find(',');
+                std::string_view pair = rest.substr(0, comma);
+                rest = comma == std::string_view::npos ? std::string_view() : rest.substr(comma + 1);
+                size_t eq = pair.find('=');
+                if (eq == std::string_view::npos) continue;
+                leaf.labels.push_back(Option{std::string(trim(pair.substr(0, eq))), std::string(trim(pair.substr(eq + 1)))});
+            }
+        }
     }
 
     void choices(Item& leaf, JsonObjectConst s, std::string_view parent) {
@@ -600,6 +613,18 @@ struct Builder {
         l.remote = l.schemaType == NodeType::Remote;
         l.online = !(s["online"].is<bool>() && !s["online"].as<bool>());
         if (l.remote && !str(s, "label")) l.label = std::string(name);
+        const char* summary = uiStr(s, "summary");
+        if (nonEmpty(summary) && l.schemaType == NodeType::Object) {
+            l.summary = resolvePath(summary, path, root);
+            // Formatted as its readout would be: its schema, when the link's
+            // reaches it (not past the depth read).
+            if (isUnder(l.summary, path)) {
+                JsonObjectConst at = schemaAt(s, std::string_view(l.summary).substr(path == "/" ? 0 : path.size()));
+                if (!at.isNull() && valued(at)) {
+                    l.summaryLeaf.push_back(leaf(lastSegment(l.summary), l.summary, at, parentPath(l.summary)));
+                }
+            }
+        }
         return l;
     }
 
@@ -1365,9 +1390,28 @@ std::string formatDatetime(JsonVariantConst v, const std::string& unit) {
     return buf;
 }
 
+const std::string* labelOf(double v, const Item& leaf) {
+    for (const Option& o : leaf.labels) {
+        char* end = nullptr;
+        double k = strtod(o.value.c_str(), &end);
+        if (end == o.value.c_str() || *end) continue;
+        // Within a float's precision: ArduinoJson may keep a parsed number as one.
+        if (fabs(k - v) <= 1e-6 * fmax(1, fabs(k))) return &o.label;
+    }
+    return nullptr;
+}
+
+std::string formatShown(double v, const Item& leaf) {
+    const std::string* l = labelOf(v, leaf);
+    return l ? *l : formatNumber(v, leaf);
+}
+
 std::string formatValue(JsonVariantConst v, const Item& leaf) {
     if (v.isUnbound()) return "\xE2\x80\x93";  // –
     if (v.isNull()) return "null";
+    if (!leaf.labels.empty() && (v.is<double>() || v.is<int64_t>() || v.is<uint64_t>())) {
+        if (const std::string* l = labelOf(v.as<double>(), leaf)) return *l;
+    }
     if (leaf.format == "datetime") return formatDatetime(v, leaf.unit);
     if (!leaf.format.empty()) return printfValue(leaf.format, v);
     bool integer = v.is<int64_t>() || v.is<uint64_t>();

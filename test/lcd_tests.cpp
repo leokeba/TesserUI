@@ -31,6 +31,12 @@ struct Node {
     char name[9] = "lamp";  // maxLength 8
     int presses = 0;
     int resets = 0;
+    int turn = 20;
+    double power = 10;
+    int pin = -1;
+    int dim = 0;
+    char state[12] = "up";
+    bool linked = false;
 
     Node() {
         auto& lamp = api.object("lamp");
@@ -44,6 +50,17 @@ struct Node {
         lamp.action("reset", [this] { resets++; }).ui("confirm", "Reset the lamp?");
         auto& more = api.object("more");
         more.value("count", count);
+        auto& dials = api.object("dials");
+        dials.value("turn", turn).range(0, 100).ui("widget", "knob");
+        dials.value("power", power).range(0, 50).unit("W").ui("widget", "gauge");
+        dials.value("pin", pin).range(-1, 48).ui("widget", "number").ui("labels", "-1=none");
+        dials.value("dim", dim).range(0, 10).ui("labels", "0=off");
+        // An index (section 6.3): its sub-entries are rows, with summaries.
+        auto& sys = api.object("sys").ui("page");
+        auto& net = sys.object("net").label("Network").ui("summary", "status/state");
+        net.object("status").value("state", state);
+        auto& peer = sys.object("peer").label("Peer").ui("summary", "linked");
+        peer.value("linked", linked);
     }
 };
 
@@ -137,6 +154,87 @@ TEST(lcd_slider_writes_where_it_is_tapped) {
     r.screen.run(300, r.each);
     CHECK(r.node.level > 60 && r.node.level < 90);
     CHECK_EQ(r.text("Level"), std::to_string(r.node.level) + " %");
+}
+
+// A knob is an lv_arc with its value in the middle.
+TEST(lcd_knob_turns) {
+    Rig r;
+    r.open("/dials");
+    lv_obj_t* knob = r.screen.control("Turn");
+    CHECK(knob && lv_obj_check_type(knob, &lv_arc_class));
+    if (!knob) return;
+    lv_obj_t* value = lv_obj_get_child(knob, 0);
+    CHECK_EQ(std::string(lv_label_get_text(value)), "20");
+    // Dragged to its right (0 degrees, 225 of its 270): about 83.
+    lv_area_t a;
+    lv_obj_get_coords(knob, &a);
+    r.screen.press(a.x2 - 3, (a.y1 + a.y2) / 2);
+    r.screen.run(600, r.each);
+    r.screen.release();
+    r.screen.run(300, r.each);
+    CHECK(r.node.turn > 75 && r.node.turn < 90);
+    CHECK_EQ(std::string(lv_label_get_text(value)), std::to_string(r.node.turn));
+    r.deviceSet("/dials/turn", "40");
+    CHECK_EQ(lv_arc_get_value(knob), 40);
+    CHECK_EQ(std::string(lv_label_get_text(value)), "40");
+}
+
+// A gauge: an lv_scale's needle, and the value under it.
+TEST(lcd_gauge_follows_the_device) {
+    Rig r;
+    r.open("/dials");
+    lv_obj_t* box = r.screen.control("Power");
+    lv_obj_t* scale = box ? lv_obj_get_child(lv_obj_get_child(box, 0), 0) : nullptr;
+    CHECK(scale && lv_obj_check_type(scale, &lv_scale_class));
+    if (!scale) return;
+    lv_obj_t* value = lv_obj_get_child(box, 1);
+    lv_obj_t* needle = lv_obj_get_child(scale, 0);
+    CHECK_EQ(std::string(lv_label_get_text(value)), "10 W");
+    // At a fifth of its range, the needle points up and left of the centre.
+    int32_t centre = lv_obj_get_style_width(scale, LV_PART_MAIN) / 2;
+    const lv_point_precise_t* p = lv_line_get_points(needle);
+    CHECK(p && p[1].x < centre && p[1].y < centre);
+    r.deviceSet("/dials/power", "45");
+    CHECK_EQ(std::string(lv_label_get_text(value)), "45 W");
+    p = lv_line_get_points(needle);
+    CHECK(p && p[1].x > centre && p[1].y < centre);
+}
+
+// ui.labels on numbers: beside a number field, in place of a slider's value.
+TEST(lcd_number_labels) {
+    Rig r;
+    r.open("/dials");
+    lv_obj_t* box = r.screen.control("Pin");
+    CHECK(box && lv_obj_get_child_count(box) == 4);
+    if (!box || lv_obj_get_child_count(box) != 4) return;
+    lv_obj_t* field = lv_obj_get_child(box, 1);
+    lv_obj_t* unit = lv_obj_get_child(box, 2);
+    CHECK_EQ(std::string(lv_textarea_get_text(field)), "-1");
+    CHECK_EQ(std::string(lv_label_get_text(unit)), "none");
+    r.screen.tap(lv_obj_get_child(box, 3), r.each);  // +
+    CHECK_EQ(r.node.pin, 0);
+    CHECK_EQ(std::string(lv_label_get_text(unit)), "");
+    r.deviceSet("/dials/pin", "-1");
+    CHECK_EQ(std::string(lv_label_get_text(unit)), "none");
+    CHECK_EQ(r.text("Dim"), "off");
+    r.deviceSet("/dials/dim", "3");
+    CHECK_EQ(r.text("Dim"), "3");
+}
+
+// ui.summary: the row that opens an object shows a value of it.
+TEST(lcd_link_summaries) {
+    Rig r;
+    r.open("/sys");
+    CHECK(r.screen.label("up") != nullptr);
+    CHECK(r.screen.label("Off") != nullptr);
+    r.deviceSet("/sys/net/status/state", "\"down\"");
+    CHECK(r.screen.label("down") != nullptr);
+    r.deviceSet("/sys/peer/linked", "true");
+    CHECK(r.screen.label("On") != nullptr);
+    // Tapping the row, summary included, opens it.
+    r.screen.tap(r.screen.label("down"), r.each);
+    r.screen.run(300, r.each);
+    CHECK_EQ(r.ui.current(), "/sys/net");
 }
 
 TEST(lcd_number_steps) {
@@ -564,6 +662,19 @@ TEST(lcd_encoder_edits_a_slider) {
     b.screen.run(100, b.each);
     CHECK(!lv_group_get_editing(b.ui.group()));
     CHECK_EQ(b.ui.current(), "/lamp");
+}
+
+TEST(lcd_encoder_turns_a_knob) {
+    Buttons b;
+    b.ui.open("/dials");
+    b.screen.run(300, b.each);
+    lv_obj_t* knob = b.screen.control("Turn");
+    CHECK(knob && lv_obj_check_type(knob, &lv_arc_class) && b.focus(knob));
+    if (!knob) return;
+    b.screen.push(b.each);  // edit
+    b.screen.turn(2, b.each);  // two twentieths of 0..100
+    b.screen.run(300, b.each);
+    CHECK_EQ(b.node.turn, 30);
 }
 
 TEST(lcd_encoder_answers_a_question) {

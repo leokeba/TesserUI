@@ -161,7 +161,7 @@ m.object("pid").ui("advanced");
 
 | Key | Type | Applies to | Meaning |
 |---|---|---|---|
-| `labels` | string | enum, flags, numbers | Display labels in enum order, comma-separated: `"Off,Automatic,Manual"`; for `flags`, one per bit. For an `integer` or `number`, labels for some values, `value=label` pairs: `"-1=none,0=off"`: a readout (a table's cell, a slider's value) shows the label for that value, a numeric entry shows it beside the field (web; the LCD *(later)*). |
+| `labels` | string | enum, flags, numbers | Display labels in enum order, comma-separated: `"Off,Automatic,Manual"`; for `flags`, one per bit. For an `integer` or `number`, labels for some values, `value=label` pairs: `"-1=none,0=off"`: a readout (a table's cell, a slider's value) shows the label for that value, a numeric entry shows it beside the field, in place of its unit. |
 | `group` | string | top-level object, sub-entry | The menu heading it's listed under (§6.3): `"Connections"`; a sub-entry's also heads its rows on its parent's index. |
 | `options` | string | writable string, string action argument | The path of a keyed list (TesserAPI §4.4), relative or absolute as a condition's (§5.3): the value is one of its keys; or of an object: the value is one of its children's names, labelled from a remote node's own schema when it was read, `(offline)` after an offline one (a node to choose among those under `/peers`), chosen in a `select` (`radio` and `segmented` fit too). The renderer subscribes to the list even when it isn't shown. The device still validates the value. A list whose rows hold such a field opens element by element instead of being a table. |
 | `optionsExtra` | string | with `options` | Fixed choices listed before the keys, comma-separated: `"Sun"`. |
@@ -188,7 +188,7 @@ m.object("pid").ui("advanced");
 | `card` | flag | object | Its own card even when nested (§6.1). |
 | `page` | flag | object | Its own page or route instead of inline (§6); with sub-entries, their index (§6.3). |
 | `placement` | string | action | `"node"`: also in the header's node menu, on every page (§6.7). Web only; the LCD *(later)*. |
-| `summary` | string | object | A value below it, relative to it (`"status/state"`; a leading `/` from the node's root), shown under its label on the row that opens it (an index's, §6.3), formatted as its readout would be (labels, `unit`, `format`), booleans as On or Off. The page with the row watches it through its own subscription. Web only; the LCD *(later)*. |
+| `summary` | string | object | A value below it, relative to it (`"status/state"`; a leading `/` from the node's root), shown under its label on the row that opens it (an index's, §6.3), formatted as its readout would be (labels, `unit`, `format`), booleans as On or Off. The page with the row watches it through its own subscription, whose `keys` and `depth` reach it. |
 | `tabs` | flag | object | Child objects as tabs. |
 | `inline` | flag | object | Children on one row (a compact group, such as x/y/z). |
 | `collapsed` | flag | object | Starts collapsed. |
@@ -244,7 +244,7 @@ A node's UI is a **menu** of pages rather than one page of every card.
 - **Groups:** top-level objects with the same `ui.group` (`"Controllers"`, `"Connections"`) are gathered under that heading, where the first of them would be, and so are sub-entries (below) among their entry's; their entries are indented under it. Tree order stays otherwise.
 - **Sub-entries:** an object with `ui.page` (`/sys`), or one holding remote nodes (`/peers`), lists its objects, lists and nodes as sub-entries, one level deep. A list's page is the list alone. On the web, a chevron beside the entry folds and unfolds them in place, at every width (the drawer stays open; its label still opens the page); they start unfolded while the entry's page, or one of theirs, is open.
 - **Pages:** an entry's page follows §6.1 with the object as its root: its own values form the first card, and its child objects are cards. The start page shows its own values only, the rest being entries. A remote node's entry opens its root page (§7.6).
-- **Index:** an object with `ui.page` that has sub-entries (`/sys`) is their index, like a phone's settings: its own values first (its argument-less actions beside the title, its advanced values in the first card's group), then a card of links, one per sub-entry (its icon, its label, its summary below), gathered under their `ui.group` headings. Its sub-entries aren't cards there: each opens its own page, whose back arrow returns to the index. Both renderers (the LCD's rows have no summary yet).
+- **Index:** an object with `ui.page` that has sub-entries (`/sys`) is their index, like a phone's settings: its own values first (its argument-less actions beside the title, its advanced values in the first card's group), then a card of links, one per sub-entry (its icon, its label, its summary below), gathered under their `ui.group` headings. Its sub-entries aren't cards there: each opens its own page, whose back arrow returns to the index. Both renderers.
 - **Start:** the first entry opens when the route is empty, when it names a view that doesn't exist (renamed by a firmware update), or when it is the start page and that has no entry of its own.
 - **Web:** a sidebar beside the page; below 800 px, a drawer opened from the header's menu button, closed by choosing an entry. The header keeps the device label (or the node tabs, §6.5), the connection state and sign-in (on a phone, in two rows, §6.2). The menu replaces the view tabs. It's on for the node's own page and off when the UI is embedded or has no header (§9.9): those show the start page with every card, and view tabs. The `menu` option (§9.2) decides otherwise.
 
@@ -736,14 +736,14 @@ void lvglTask() {
 | `toggle`, `checkbox` | `lv_switch`, `lv_checkbox` |
 | `led` | `lv_led` |
 | `slider` | `lv_slider` + value label |
-| `knob` | `lv_arc` + value label |
+| `knob` | `lv_arc` over 270°, its value in the middle; a slider's writes and encoder steps |
 | `number`, `stepper` | − and + buttons (one `step` each) around a one-line `lv_textarea`, typed into with the numeric keyboard |
 | `select`, `radio` | `lv_dropdown` |
 | `segmented` | `lv_buttonmatrix` (one checked) |
 | `text`, `password`, `textarea` | `lv_textarea` + one shared `lv_keyboard` |
 | `readout` | `lv_label` |
 | `bar` | `lv_bar` |
-| `gauge` | `lv_scale` with a needle |
+| `gauge` | a half `lv_scale` with a needle, filled up to the value, the value under it |
 | `chart` | `lv_chart` |
 | `button`, `hold` | `lv_button` (`hold`: `LV_EVENT_PRESSED` / `LV_EVENT_RELEASED`) |
 | `events` | a toast (§7.8), when `ui.toast` says so |

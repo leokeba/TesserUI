@@ -72,6 +72,7 @@ void write(JsonObject o, const Item& i) {
             o["kind"] = "link";
             o["remote"] = i.remote;
             o["online"] = i.online;
+            if (!i.summary.empty()) o["summary"] = i.summary;
             return;
         case ItemKind::Leaf:
             break;
@@ -87,6 +88,10 @@ void write(JsonObject o, const Item& i) {
     if (i.maxLength) o["maxLength"] = i.maxLength;
     if (!i.unit.empty()) o["unit"] = i.unit;
     if (!i.format.empty()) o["format"] = i.format;
+    if (!i.labels.empty()) {
+        JsonObject l = o["labels"].to<JsonObject>();
+        for (const auto& x : i.labels) l[x.value] = x.label;
+    }
     if (!i.placeholder.empty()) o["placeholder"] = i.placeholder;
     if (!i.confirm.empty()) o["confirm"] = i.confirm;
     if (!i.style.empty()) o["style"] = i.style;
@@ -151,12 +156,11 @@ void write(JsonArray a, const std::vector<MenuEntry>& entries) {
 
 // Fields of the web model this one doesn't keep: help text (hidden on small
 // screens, section 4), widgets it doesn't draw yet, access levels, a list's
-// suggestions (ui.suggest, web only: its action stays a button here),
-// numbers' value labels (ui.labels "-1=none"), links' summaries (ui.summary)
-// and an object argument's field default (the web starts its form from it),
-// later here.
-const char* const kDropped[] = {"description", "script", "readable", "contentType", "lines", "schemaHash", "files", "suggest", "suggests", "labels",
-                                "summary", "default"};
+// suggestions (ui.suggest, web only: its action stays a button here) and an
+// object argument's field default (the web starts its form from it), later
+// here.
+const char* const kDropped[] = {"description", "script", "readable", "contentType", "lines", "schemaHash", "files", "suggest", "suggests",
+                                "default"};
 
 void project(JsonVariant v) {
     if (v.is<JsonObject>()) {

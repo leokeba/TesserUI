@@ -61,6 +61,37 @@ double scaleFor(const Item& i) {
     return s;
 }
 
+// A slider's or a knob's (lv_arc) position: the two take the same writes.
+bool isArc(const lv_obj_t* o) { return lv_obj_check_type(o, &lv_arc_class); }
+int32_t positionOf(lv_obj_t* o) { return isArc(o) ? lv_arc_get_value(o) : lv_slider_get_value(o); }
+void setPosition(lv_obj_t* o, int32_t v) {
+    if (isArc(o)) {
+        lv_arc_set_value(o, v);
+    } else {
+        lv_slider_set_value(o, v, LV_ANIM_OFF);
+    }
+}
+// Being moved by a finger: notifications don't move it until it lifts.
+bool dragged(lv_obj_t* o) { return isArc(o) ? lv_obj_has_state(o, LV_STATE_PRESSED) : lv_slider_is_dragged(o); }
+
+// A gauge's filled part of its dial: one style per arc width, shared.
+const lv_style_t* gaugeFill(int32_t width) {
+    static lv_style_t styles[2];
+    static int32_t widths[2] = {0, 0};
+    for (int i = 0; i < 2; i++) {
+        if (widths[i] == width) return &styles[i];
+        if (widths[i] == 0) {
+            lv_style_init(&styles[i]);
+            lv_style_set_arc_color(&styles[i], lv_palette_main(LV_PALETTE_BLUE));
+            lv_style_set_arc_width(&styles[i], width);
+            lv_style_set_arc_opa(&styles[i], LV_OPA_COVER);  // not the track's
+            widths[i] = width;
+            return &styles[i];
+        }
+    }
+    return &styles[0];
+}
+
 double stepFor(const Item& i) {
     if (i.hasStep && i.step > 0) return i.step;
     if (i.type == NodeType::Integer) return 1;
@@ -91,6 +122,41 @@ std::vector<std::string_view> segmentsOf(std::string_view path) {
         start = i + 1;
     }
     return out;
+}
+
+void summariesIn(const std::vector<Item>& items, std::vector<std::string>& out) {
+    for (const Item& i : items) {
+        if (i.kind == ItemKind::Link && !i.summary.empty()) out.push_back(i.summary);
+        if (i.kind == ItemKind::Section) {
+            summariesIn(i.items, out);
+            summariesIn(i.advancedItems, out);
+        }
+    }
+}
+
+// Links' summaries (ui.summary) are read by the page's own subscription: its
+// keys and depth reach them, as on the web.
+void reachSummaries(model::Page& page) {
+    std::vector<std::string> sums;
+    summariesIn(page.cards, sums);
+    size_t n = segmentsOf(page.path).size();
+    for (const std::string& sum : sums) {
+        std::vector<std::string_view> seg = segmentsOf(sum);
+        if (!model::isUnder(sum, page.path) || seg.size() <= n) continue;
+        int below = static_cast<int>(seg.size() - n);
+        if (page.depth >= 0 && below > page.depth) page.depth = below;
+        if (!page.hasKeys) continue;
+        bool listed = false;
+        std::string_view keys = page.keys;
+        while (!keys.empty() && !listed) {
+            size_t comma = keys.find(',');
+            listed = keys.substr(0, comma) == seg[n];
+            keys = comma == std::string_view::npos ? std::string_view() : keys.substr(comma + 1);
+        }
+        if (listed) continue;
+        if (!page.keys.empty()) page.keys += ',';
+        page.keys += seg[n];
+    }
 }
 
 bool hasNull(JsonVariantConst v) {
@@ -140,11 +206,15 @@ Draw drawn(const Item& item, Widget& w) {
             return Draw::Control;
         }
         case Widget::Knob:
-            w = Widget::Slider;
+        case Widget::Gauge: {
+            // Both need a range; a knob that can't be turned is a gauge.
+            if (!(item.hasMin && item.hasMax && item.max > item.min)) {
+                w = item.widget == Widget::Knob && item.editable ? Widget::Number : Widget::Readout;
+            } else if (!item.editable) {
+                w = Widget::Gauge;
+            }
             return Draw::Control;
-        case Widget::Gauge:
-            w = Widget::Bar;
-            return Draw::Control;
+        }
         case Widget::Stepper:
             w = Widget::Number;
             return Draw::Control;
@@ -243,6 +313,7 @@ struct LvglUi::Bound {
     lv_obj_t* result = nullptr;  // an action's reply
     lv_obj_t* minus = nullptr;
     lv_obj_t* plus = nullptr;
+    lv_obj_t* unit = nullptr;  // a number field's unit, or its value's label (ui.labels)
     int pending = 0;
     uint32_t lastSent = 0;
     bool dirty = false;
@@ -264,6 +335,8 @@ struct LvglUi::Bound {
     lv_chart_series_t* series = nullptr;
     std::vector<double> samples;  // a chart's, for its range
     lv_obj_t* swatch = nullptr;   // a colour's
+    lv_obj_t* needle = nullptr;   // a gauge's needle (an lv_line in its scale)
+    lv_scale_section_t* fill = nullptr;  // and its dial, filled up to the value
     std::vector<std::unique_ptr<RowRef>> rows;  // a list's
     std::vector<model::Option> choices;  // a select's, with a keyed list's keys (ui.options)
     bool hasChoices = false;
@@ -543,15 +616,16 @@ void LvglUi::onSliderKey(lv_event_t* e) {
     if (!dir) return;
     lv_obj_t* sl = lv_event_get_target_obj(e);
     Bound* b = static_cast<Bound*>(lv_event_get_user_data(e));
-    int32_t lo = lv_slider_get_min_value(sl), hi = lv_slider_get_max_value(sl);
+    int32_t lo = isArc(sl) ? lv_arc_get_min_value(sl) : lv_slider_get_min_value(sl);
+    int32_t hi = isArc(sl) ? lv_arc_get_max_value(sl) : lv_slider_get_max_value(sl);
     int32_t step = (hi - lo) / 20;
-    if (b->widget == Widget::Slider && b->item) {
+    if ((b->widget == Widget::Slider || b->widget == Widget::Knob) && b->item) {
         int32_t own = static_cast<int32_t>(lround(stepFor(*b->item) * b->scale));
         if (own > step) step = own;
     }
     if (step < 1) step = 1;
-    int32_t v = lv_slider_get_value(sl) + dir * step;
-    lv_slider_set_value(sl, v < lo ? lo : v > hi ? hi : v, LV_ANIM_OFF);
+    int32_t v = positionOf(sl) + dir * step;
+    setPosition(sl, v < lo ? lo : v > hi ? hi : v);
     lv_event_stop_processing(e);
     lv_obj_send_event(sl, LV_EVENT_VALUE_CHANGED, nullptr);
 }
@@ -1043,6 +1117,7 @@ void LvglUi::showPage() {
             page_.label = r.title;
         } else {
             page_ = model::buildPage(reply, r.path, root, r.status, r.above);
+            reachSummaries(page_);
         }
         if (r.status) {
             setTitle("Status");
@@ -1441,7 +1516,11 @@ void LvglUi::syncAll() {
 
 void LvglUi::sync(Bound& b) {
     if (!b.item || b.section || b.forAction || b.pending > 0 || b.edited || typing_ == &b || (!b.control && !b.value)) return;
-    if (b.item->isAction() || b.widget == Widget::Link) return;
+    if (b.widget == Widget::Link) {
+        if (b.value) showSummary(b);
+        return;
+    }
+    if (b.item->isAction()) return;
     // An action argument's fields have no value to follow.
     if (b.draft && drafts_[b.draft - 1].action) return;
     JsonVariantConst v = valueAt(b.item->path);
@@ -1467,10 +1546,20 @@ void LvglUi::sync(Bound& b) {
             }
             break;
         case Widget::Slider:
-            if (lv_slider_is_dragged(b.control)) return;  // the finger wins until it lifts
-            lv_slider_set_value(b.control, static_cast<int32_t>(lround(v.as<double>() * b.scale)), LV_ANIM_OFF);
+        case Widget::Knob:
+            if (dragged(b.control)) return;  // the finger wins until it lifts
+            setPosition(b.control, static_cast<int32_t>(lround(v.as<double>() * b.scale)));
             setLabel(b.value, model::formatValue(v, item).c_str());
             break;
+        case Widget::Gauge: {
+            int32_t lo = lv_scale_get_range_min_value(b.control), hi = lv_scale_get_range_max_value(b.control);
+            int32_t at = static_cast<int32_t>(lround(v.as<double>() * b.scale));
+            at = at < lo ? lo : at > hi ? hi : at;
+            lv_scale_set_section_range(b.control, b.fill, lo, at);
+            lv_scale_set_line_needle_value(b.control, b.needle, lv_obj_get_style_width(b.control, LV_PART_MAIN) / 2 - (m_.compact ? 8 : 10), at);
+            setLabel(b.value, model::formatValue(v, item).c_str());
+            break;
+        }
         case Widget::Bar:
             lv_bar_set_value(b.control, static_cast<int32_t>(lround(v.as<double>() * b.scale)), LV_ANIM_OFF);
             setLabel(b.value, model::formatValue(v, item).c_str());
@@ -1478,7 +1567,9 @@ void LvglUi::sync(Bound& b) {
         case Widget::Number: {
             Item plain = item;
             plain.unit.clear();
+            plain.labels.clear();  // the field holds the number, its label beside it
             lv_textarea_set_text(b.control, model::formatValue(v, plain).c_str());
+            numberUnit(b, v.as<double>());
             break;
         }
         case Widget::Segmented: {
@@ -1721,11 +1812,26 @@ void LvglUi::dot(lv_obj_t* parent, bool online) {
 void LvglUi::link(lv_obj_t* parent, const Item& item, const Route& target) {
     lv_obj_t* r = row(parent, false);
     lv_obj_set_clickable(r, true);
-    label(r, item.label, true);
+    lv_obj_t* summary = nullptr;
+    if (item.summary.empty()) {
+        label(r, item.label, true);
+    } else {
+        // Its summary (ui.summary) under its label, once it has a value.
+        lv_obj_t* names = row(r, true);
+        lv_obj_set_flex_grow(names, 1);
+        lv_obj_set_style_pad_row(names, 0, 0);
+        lv_obj_set_clickable(names, false);  // taps go to the row
+        lv_obj_set_flex_align(names, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+        label(names, item.label, false);
+        summary = label(names, "", false);
+        lv_obj_set_style_text_opa(summary, LV_OPA_60, 0);
+        lv_obj_set_hidden(summary, true);
+    }
     if (item.remote) dot(r, item.online);
     lv_obj_t* chevron = lv_label_create(r);
     setLabel(chevron, LV_SYMBOL_RIGHT);
     Bound& b = bind(item, r);
+    b.value = summary;
     b.widget = Widget::Link;
     b.control = r;
     b.target = target;
@@ -1739,6 +1845,37 @@ void LvglUi::webOnly(lv_obj_t* parent, const std::string& text) {
     label(r, text, true);
     lv_obj_t* note = label(r, "web only", false);
     lv_obj_set_style_text_opa(note, LV_OPA_50, 0);
+}
+
+// A link's summary (ui.summary): its value as its readout would show it,
+// booleans as On or Off; nothing while it has none.
+void LvglUi::showSummary(Bound& b) {
+    JsonVariantConst v = valueAt(b.item->summary);
+    std::string t;
+    if (v.is<bool>()) {
+        t = v.as<bool>() ? "On" : "Off";
+    } else if (!v.isNull() && !v.isUnbound()) {
+        if (b.item->summaryLeaf.empty()) {
+            t = text(v);
+        } else {
+            const Item& leaf = b.item->summaryLeaf[0];
+            t = model::formatValue(v, leaf);
+            const char* s = v.as<const char*>();
+            for (size_t i = 0; s && i < leaf.options.size(); i++) {
+                if (leaf.options[i].value == s) t = leaf.options[i].label;
+            }
+        }
+    }
+    if (t == lv_label_get_text(b.value)) return;
+    setLabel(b.value, t);
+    lv_obj_set_hidden(b.value, t.empty());
+}
+
+// Beside a number field: its value's label (ui.labels), else its unit.
+void LvglUi::numberUnit(Bound& b, double v) {
+    if (!b.unit) return;
+    const std::string* l = model::labelOf(v, *b.item);
+    setLabel(b.unit, l ? *l : b.item->unit);
 }
 
 LvglUi::Bound& LvglUi::bind(const Item& item, lv_obj_t* r) {
@@ -1836,6 +1973,66 @@ lv_obj_t* LvglUi::control(Bound& b, lv_obj_t* parent, Widget w) {
             on(c, {LV_EVENT_VALUE_CHANGED, LV_EVENT_RELEASED});
             lv_obj_add_event_cb(c, onSliderKey, static_cast<lv_event_code_t>(LV_EVENT_KEY | LV_EVENT_PREPROCESS), &b);
             break;
+        case Widget::Knob: {
+            // 270 degrees, LVGL's default, its value in the middle.
+            c = lv_arc_create(parent);
+            int32_t d = m_.compact ? 56 : 72;
+            lv_obj_set_size(c, d, d);
+            lv_obj_set_style_arc_width(c, m_.compact ? 6 : 8, LV_PART_MAIN);
+            lv_obj_set_style_arc_width(c, m_.compact ? 6 : 8, LV_PART_INDICATOR);
+            lv_obj_set_style_pad_all(c, m_.compact ? 1 : 2, LV_PART_KNOB);
+            b.scale = scaleFor(item);
+            lv_arc_set_range(c, static_cast<int32_t>(lround(item.min * b.scale)), static_cast<int32_t>(lround(item.max * b.scale)));
+            lv_arc_set_value(c, static_cast<int32_t>(lround(item.min * b.scale)));
+            b.value = lv_label_create(c);
+            setLabel(b.value, b.forAction ? model::formatShown(item.min, item) : std::string("\xE2\x80\x93"));
+            lv_obj_center(b.value);
+            on(c, {LV_EVENT_VALUE_CHANGED, LV_EVENT_RELEASED});
+            lv_obj_add_event_cb(c, onSliderKey, static_cast<lv_event_code_t>(LV_EVENT_KEY | LV_EVENT_PREPROCESS), &b);
+            break;
+        }
+        case Widget::Gauge: {
+            // A half dial with a needle, filled up to the value, which is
+            // written under it. The scale is square (its needle needs it):
+            // a box shows its top half.
+            lv_obj_t* box = row(parent, true);
+            lv_obj_set_width(box, LV_SIZE_CONTENT);
+            lv_obj_set_flex_align(box, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+            lv_obj_set_style_pad_row(box, 0, 0);
+            int32_t d = m_.compact ? 72 : 100, arc = m_.compact ? 6 : 8;
+            lv_obj_t* half = lv_obj_create(box);
+            lv_obj_remove_style_all(half);
+            lv_obj_set_size(half, d, d / 2 + 4);
+            lv_obj_set_scrollable(half, false);
+            c = lv_scale_create(half);
+            lv_obj_set_size(c, d, d);
+            lv_scale_set_mode(c, LV_SCALE_MODE_ROUND_INNER);
+            lv_scale_set_angle_range(c, 180);
+            lv_scale_set_rotation(c, 180);
+            b.scale = scaleFor(item);
+            int32_t lo = static_cast<int32_t>(lround(item.min * b.scale));
+            lv_scale_set_range(c, lo, static_cast<int32_t>(lround(item.max * b.scale)));
+            lv_scale_set_total_tick_count(c, 0);  // no ticks, as on the web
+            lv_scale_set_label_show(c, false);
+            lv_obj_set_style_arc_width(c, arc, LV_PART_MAIN);
+            // The track: the theme's text, faint, for light and dark themes.
+            lv_obj_set_style_arc_color(c, lv_obj_get_style_text_color(c, LV_PART_MAIN), LV_PART_MAIN);
+            lv_obj_set_style_arc_opa(c, LV_OPA_20, LV_PART_MAIN);
+            b.fill = lv_scale_add_section(c);
+            lv_scale_set_section_style_main(c, b.fill, gaugeFill(arc));
+            lv_scale_set_section_range(c, b.fill, lo, lo);
+            b.needle = lv_line_create(c);
+            lv_obj_set_style_line_width(b.needle, m_.compact ? 2 : 3, 0);
+            lv_obj_set_style_line_rounded(b.needle, true, 0);
+            lv_obj_set_style_line_color(b.needle, lv_obj_get_style_text_color(c, LV_PART_MAIN), 0);
+            lv_scale_set_line_needle_value(c, b.needle, d / 2 - (m_.compact ? 8 : 10), lo);
+            b.value = lv_label_create(box);
+            setLabel(b.value, "\xE2\x80\x93");
+            if (item.style == "warning") lv_obj_set_style_text_color(b.value, lv_palette_main(LV_PALETTE_AMBER), 0);
+            b.widget = w;
+            b.control = c;
+            return c;  // nothing to focus
+        }
         case Widget::Bar:
             c = lv_bar_create(parent);
             lv_obj_set_size(c, LV_PCT(100), 10);
@@ -1857,7 +2054,7 @@ lv_obj_t* LvglUi::control(Bound& b, lv_obj_t* parent, Widget w) {
             lv_textarea_set_max_length(c, 16);
             lv_obj_set_width(c, m_.compact ? 60 : 76);
             lv_obj_set_style_pad_ver(c, m_.fieldPad, 0);
-            if (!item.unit.empty()) label(box, item.unit, false);
+            if (!item.unit.empty() || !item.labels.empty()) b.unit = label(box, item.unit, false);
             b.plus = lv_button_create(box);
             lv_obj_set_size(b.plus, m_.button, m_.button);
             lv_obj_t* p = lv_label_create(b.plus);
@@ -1980,7 +2177,8 @@ void LvglUi::action(lv_obj_t* parent, const Item& item) {
         Item probe = item;
         probe.widget = item.field;
         Draw d = drawn(probe, field);
-        if (d != Draw::Control || field == Widget::Readout || field == Widget::Led || field == Widget::Bar) {
+        if (d != Draw::Control || field == Widget::Readout || field == Widget::Led || field == Widget::Bar ||
+            field == Widget::Gauge) {
             webOnly(parent, item.label);
             return;
         }
@@ -2009,9 +2207,10 @@ void LvglUi::action(lv_obj_t* parent, const Item& item) {
         }
         if (field == Widget::Slider && item.hasMin) {
             lv_slider_set_value(b.control, static_cast<int32_t>(lround(item.min * b.scale)), LV_ANIM_OFF);
-            setLabel(b.value, model::formatNumber(item.min, item).c_str());
+            setLabel(b.value, model::formatShown(item.min, item).c_str());
         } else if (field == Widget::Number) {
             lv_textarea_set_text(b.control, model::formatNumber(clampTo(item, 0), Item()).c_str());
+            numberUnit(b, clampTo(item, 0));
         }
         b.widget = item.widget;  // events of the field come with the action's widget
         b.fieldWidget = field;
@@ -2057,8 +2256,9 @@ std::string LvglUi::controlJson(Bound& b) {
         case Widget::Toggle:
         case Widget::Checkbox:
             return lv_obj_has_state(b.control, LV_STATE_CHECKED) ? "true" : "false";
-        case Widget::Slider: {
-            double v = snap(item, lv_slider_get_value(b.control) / b.scale);
+        case Widget::Slider:
+        case Widget::Knob: {
+            double v = snap(item, positionOf(b.control) / b.scale);
             return numberJson(item, v);
         }
         case Widget::Number: {
@@ -2165,8 +2365,9 @@ void LvglUi::event(Bound& b, lv_event_t* e) {
         return;
     }
     if (target == b.zero && b.zero) {
-        if (b.widget == Widget::Slider) {
-            lv_slider_set_value(b.control, static_cast<int32_t>(lround(clampTo(item, 0) * b.scale)), LV_ANIM_OFF);
+        if (b.widget == Widget::Slider || b.widget == Widget::Knob) {
+            setPosition(b.control, static_cast<int32_t>(lround(clampTo(item, 0) * b.scale)));
+            if (b.value) setLabel(b.value, model::formatShown(clampTo(item, 0), item).c_str());
         } else if (b.widget == Widget::Number) {
             lv_textarea_set_text(b.control, "0");
         }
@@ -2176,10 +2377,11 @@ void LvglUi::event(Bound& b, lv_event_t* e) {
     Widget w = b.forAction ? b.fieldWidget : b.widget;
     switch (w) {
         case Widget::Slider:
+        case Widget::Knob:
         case Widget::Color: {
-            if (w == Widget::Slider) {
-                double v = snap(item, lv_slider_get_value(b.control) / b.scale);
-                if (b.value) setLabel(b.value, model::formatNumber(v, item).c_str());
+            if (w != Widget::Color) {
+                double v = snap(item, positionOf(b.control) / b.scale);
+                if (b.value) setLabel(b.value, model::formatShown(v, item).c_str());
             } else {
                 uint8_t rgb[3];
                 for (int i = 0; i < 3; i++) {
@@ -2213,6 +2415,7 @@ void LvglUi::event(Bound& b, lv_event_t* e) {
                 Item plain = item;
                 plain.unit.clear();
                 lv_textarea_set_text(b.control, model::formatNumber(v, plain).c_str());
+                numberUnit(b, v);
                 if (!b.forAction) commit(b, numberJson(item, v));
                 return;
             }
@@ -2255,6 +2458,7 @@ void LvglUi::commit(Bound& b, const std::string& json) {
 void LvglUi::textDone(Bound& b, bool ok) {
     hideKeyboard();
     lv_obj_remove_state(b.control, LV_STATE_FOCUSED);
+    if (ok && (b.forAction ? b.fieldWidget : b.widget) == Widget::Number) numberUnit(b, strtod(lv_textarea_get_text(b.control), nullptr));
     if (b.forAction) return;
     if (b.draft) {
         if (ok) {
@@ -2551,9 +2755,10 @@ void LvglUi::params(lv_obj_t* parent, const Item& act) {
             Item plain = *f.item;
             plain.unit.clear();
             lv_textarea_set_text(f.control, model::formatNumber(start, plain).c_str());
-        } else if (f.widget == Widget::Slider) {
-            lv_slider_set_value(f.control, static_cast<int32_t>(lround(start * f.scale)), LV_ANIM_OFF);
-            if (f.value) setLabel(f.value, model::formatNumber(start, *f.item).c_str());
+            numberUnit(f, start);
+        } else if (f.widget == Widget::Slider || f.widget == Widget::Knob) {
+            setPosition(f.control, static_cast<int32_t>(lround(start * f.scale)));
+            if (f.value) setLabel(f.value, model::formatShown(start, *f.item).c_str());
         }
     }
     Bound& b = bind(act, nullptr);
