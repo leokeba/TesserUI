@@ -5,5 +5,5 @@
 # One owner/repo@sha per line. Update it with scripts/pin.sh, after the
 # siblings' commits are pushed, and commit it with the change that needs them.
 leokeba/TesserAPI@8b6294a18198f6387ebec6681a57d1b78a178ac5
-leokeba/NowTP@c6d1d491efc7529573b981d72eb2261278f3d7ed
+leokeba/NowTP@f2eb26f70e00049819ecd873101f1409deff0afa
 leokeba/TesserKIT@57d517fa38aa80fc2baa317a10605e9b43f3fac2

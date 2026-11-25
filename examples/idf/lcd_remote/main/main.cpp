@@ -15,7 +15,10 @@
 // channel following, ChannelPick::Busiest), follows it if the router moves,
 // and keeps the channel it used, to start there next time: a restart comes
 // back to the same nodes. A fixed channel stays put. "Scan channels" lists
-// what each channel hears; "Use this channel" on one fixes it.
+// what each channel hears; "Use this channel" on one fixes it. Nodes heard
+// faintly from other channels never move it: in auto it follows the node
+// whose page is open if that one moves (NowTP's followPeer()), else the
+// last node on its channel.
 //
 // Security: if the nodes share a NowTP installation key, open "Let a node
 // join" on one of them (TesserKIT: NowTP > Pairing), then "Join" here
@@ -81,6 +84,7 @@ enum class ChannelChoice : uint8_t { Auto = 0 };  // 1-13: that channel
 const char* const kChannelNames[] = {"auto", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13"};
 ChannelChoice channelChoice = ChannelChoice::Auto;
 int lastChannel = 0;  // in auto, the channel used last (0: none yet), tried first at boot
+std::string following;  // the node whose page is open, followed if it moves (guarded by the API lock)
 
 uint8_t fixedChannel() { return static_cast<uint8_t>(channelChoice); }
 
@@ -126,6 +130,25 @@ void fillRows(const nowtp::ChannelSweep& sweep) {
     channelList->changed();
 }
 
+// The node whose page `path` is (/peers/<name>/...): its name, or empty.
+std::string peerOf(const std::string& path) {
+    static const char kPeers[] = "/peers/";
+    if (path.compare(0, sizeof kPeers - 1, kPeers) != 0) return std::string();
+    size_t end = path.find('/', sizeof kPeers - 1);
+    return path.substr(sizeof kPeers - 1, end == std::string::npos ? std::string::npos : end - (sizeof kPeers - 1));
+}
+
+// Its address on the radio, if it has one now.
+bool peerMac(const std::string& name, nowtp::Mac& out) {
+    tesser::Lock lock(api);
+    tesser::Node* n = peersObject->child(name);
+    if (!n || n->type() != tesser::NodeType::Remote) return false;
+    tesser::PeerAddress a = static_cast<tesser::RemoteNode*>(n)->peer();
+    if (a.length != 6) return false;
+    out = nowtp::Mac::from(a.bytes);
+    return true;
+}
+
 // "c8c9a3c7f850" -> its six bytes.
 bool parseDevice(const std::string& id, tesser::PeerAddress& out) {
     if (id.size() != 12) return false;
@@ -159,6 +182,7 @@ void buildTree() {
         .persist();
     self.value("current", [] { return radio.channel(); }).label("Channel in use").watch();
     self.value("lastChannel", lastChannel).range(0, 13).persist().ui("hidden");
+    self.value("following", static_cast<const std::string&>(following)).label("Following");
 
     auto& scan = self.object("scan").label("Scan channels");
     scan.action("start",
@@ -264,6 +288,7 @@ extern "C" void app_main() {
     // Without a channel to start on, NowTP sweeps first: keep the channel
     // only once a sweep ended, or a restart meanwhile would stay on channel 1.
     bool settled = cfg.channel.preferred != 0;
+    std::string followed;  // `following`, kept by this loop
     for (;;) {
         if (orientation != shown) board::orientation(shown = orientation);
         if (channelChoice != applied) {
@@ -276,6 +301,21 @@ extern "C" void app_main() {
         }
         if (now() - sweepCheck >= 500) {
             sweepCheck = now();
+            std::string open = peerOf(ui.current());
+            if (open != followed) {
+                nowtp::Mac mac;
+                if (!open.empty() && peerMac(open, mac) && radio.followPeer(mac) == nowtp::Status::Ok) {
+                    followed = open;
+                } else if (!followed.empty()) {
+                    radio.unfollowPeer();  // the menu, or a node not reachable yet (tried again)
+                    followed.clear();
+                }
+                tesser::Lock lock(api);
+                if (following != followed) {
+                    following = followed;
+                    api.changed("/remote/following");
+                }
+            }
             // The scan's rows, while a sweep fills them and once after (the
             // boot sweep may have ended before the first look).
             bool sweeping = radio.sweepingChannels();
